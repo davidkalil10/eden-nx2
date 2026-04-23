@@ -72,6 +72,7 @@ class RuntimeCheatMenu;
 #ifdef HAS_RESHADE
 class ConfigurePostProcessing;
 #endif
+class BackupManager;
 enum class GameListOpenTarget;
 enum class DumpRomFSTarget;
 class GameListPlaceholder;
@@ -422,6 +423,8 @@ private slots:
     void OnAbout();
     void OnEdenDependencies();
     void OnDataDialog();
+    void OnBackupSettings();
+    void OnBackupFinished(bool success, const QString& message);
     void OnToggleFilterBar();
     void OnToggleStatusBar();
     void OnTogglePerfOverlay();
@@ -564,6 +567,9 @@ private:
 
     UserDataMigrator user_data_migrator;
     std::unique_ptr<QtConfig> config;
+
+    // Automatic save backup
+    std::unique_ptr<BackupManager> backup_manager;
 
     // Whether emulation is currently running in yuzu.
     bool emulation_running = false;
