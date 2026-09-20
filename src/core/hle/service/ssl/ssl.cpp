@@ -636,7 +636,7 @@ class ISslServiceForSystem final : public ServiceFramework<ISslServiceForSystem>
         explicit ISslServiceForSystem(Core::System& system_) : ServiceFramework{system_, "ssl:s"} {
             // clang-format off
             static const FunctionInfo functions[] = {
-                {0, D<&ISslServiceForSystem::CreateContext>, "CreateContext"},
+                {0, &ISslServiceForSystem::CreateContext, "CreateContext"},
                 {1, D<&ISslServiceForSystem::GetContextCount>, "GetContextCount"},
                 {2, D<&ISslServiceForSystem::GetCertificates>, "GetCertificates"},
                 {3, D<&ISslServiceForSystem::GetCertificateBufSize>, "GetCertificateBufSize"},
@@ -646,7 +646,7 @@ class ISslServiceForSystem final : public ServiceFramework<ISslServiceForSystem>
                 {7, D<&ISslServiceForSystem::SetDebugOption>, "SetDebugOption"},
                 {8, D<&ISslServiceForSystem::GetDebugOption>, "GetDebugOption"},
                 {9, D<&ISslServiceForSystem::ClearTls12FallbackFlag>, "ClearTls12FallbackFlag"},
-                {100, D<&ISslServiceForSystem::CreateContextForSystem>, "CreateContextForSystem"},
+                {100, &ISslServiceForSystem::CreateContextForSystem, "CreateContextForSystem"},
                 {101, D<&ISslServiceForSystem::SetThreadCoreMask>, "SetThreadCoreMask"},
                 {102, D<&ISslServiceForSystem::GetThreadCoreMask>, "GetThreadCoreMask"},
                 {103, D<&ISslServiceForSystem::VerifySignature>, "VerifySignature"}
@@ -656,13 +656,9 @@ class ISslServiceForSystem final : public ServiceFramework<ISslServiceForSystem>
             RegisterHandlers(functions);
         };
 
-        Result CreateContext() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
+        void CreateContext(HLERequestContext& ctx) {
+            PushNewContext(ctx, "CreateContext");
+        }
 
         Result GetContextCount() {
             LOG_DEBUG(Service_SSL, "(STUBBED) called.");
@@ -736,13 +732,31 @@ class ISslServiceForSystem final : public ServiceFramework<ISslServiceForSystem>
             return ResultSuccess;
         };
 
-        Result CreateContextForSystem() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
+        void CreateContextForSystem(HLERequestContext& ctx) {
+            PushNewContext(ctx, "CreateContextForSystem");
+        }
 
-            // TODO (jarrodnorwell)
+        /// Both commands hand back a context. On hardware the system one is accounted to a
+        /// process the caller names, a difference this HLE does not track, so one body serves
+        /// both.
+        void PushNewContext(HLERequestContext& ctx, const char* command) {
+            struct Parameters {
+                SslVersion ssl_version;
+                INSERT_PADDING_BYTES(0x4);
+                u64 pid_placeholder;
+            };
+            static_assert(sizeof(Parameters) == 0x10, "Parameters is an invalid size");
 
-            return ResultSuccess;
-        };
+            IPC::RequestParser rp{ctx};
+            const auto parameters = rp.PopRaw<Parameters>();
+
+            LOG_DEBUG(Service_SSL, "{}: api_version={}, pid_placeholder={}", command,
+                      parameters.ssl_version.api_version.Value(), parameters.pid_placeholder);
+
+            IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+            rb.Push(ResultSuccess);
+            rb.PushIpcInterface<ISslContext>(ctx, system, parameters.ssl_version);
+        }
 
         Result SetThreadCoreMask() {
             LOG_DEBUG(Service_SSL, "(STUBBED) called.");
