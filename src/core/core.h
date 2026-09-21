@@ -200,6 +200,10 @@ public:
      */
     void InitializeDebugger();
 
+    /// Creates the service manager if there is none; SetupForApplicationProcess calls it too, so a
+    /// test can register services without an EmuWindow, a GPU or a game.
+    void InitializeServiceManager();
+
     /**
      * Load an executable application.
      * @param emu_window Reference to the host-system window used for video output and keyboard

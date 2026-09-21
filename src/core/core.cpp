@@ -268,6 +268,12 @@ struct System::Impl {
         kernel.Initialize();
     }
 
+    void InitializeServiceManager() {
+        if (!service_manager) {
+            service_manager = std::make_shared<Service::SM::ServiceManager>(kernel);
+        }
+    }
+
     SystemResultStatus SetupForApplicationProcess(System& system, Frontend::EmuWindow& emu_window) {
         host1x_core.emplace(system);
         VideoCore::CreateGPU(gpu_core, emu_window, system);
@@ -276,7 +282,7 @@ struct System::Impl {
 
         audio_core.emplace(system);
 
-        service_manager = std::make_shared<Service::SM::ServiceManager>(kernel);
+        InitializeServiceManager();
         services.emplace(service_manager, system, stop_event.get_token());
 
         is_powered_on = true;
@@ -590,6 +596,10 @@ bool System::GetNVDECActive() {
 
 void System::InitializeDebugger() {
     impl->InitializeDebugger(*this, Settings::values.gdbstub_port.GetValue());
+}
+
+void System::InitializeServiceManager() {
+    impl->InitializeServiceManager();
 }
 
 SystemResultStatus System::Load(Frontend::EmuWindow& emu_window, const std::string& filepath,
