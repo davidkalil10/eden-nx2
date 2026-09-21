@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <algorithm>
 #include <chrono>
 #include <stdexcept>
 #include <utility>
@@ -12,6 +13,8 @@
 #include "common/thread.h"
 #include "core/core.h"
 #include "core/file_sys/program_metadata.h"
+#include "core/file_sys/vfs/vfs.h"
+#include "core/hle/kernel/k_client_port.h"
 #include "core/hle/kernel/k_client_session.h"
 #include "core/hle/kernel/k_event.h"
 #include "core/hle/kernel/k_handle_table.h"
@@ -24,8 +27,10 @@
 #include "core/hle/kernel/k_thread.h"
 #include "core/hle/kernel/kernel.h"
 #include "core/hle/result.h"
+#include "core/hle/service/filesystem/filesystem.h"
 #include "core/hle/service/hle_ipc.h"
 #include "core/hle/service/server_manager.h"
+#include "core/hle/service/sm/sm.h"
 #include "core/memory.h"
 #include "tests/core/kernel_fixture.h"
 #include "tests/core/service_fixture.h"
@@ -128,6 +133,12 @@ std::vector<u8> GuestProcess::Read(u64 address, u64 size) const {
 ServiceHarness::ServiceHarness(Core::System& system_) : system{system_} {
     auto& kernel = system.Kernel();
 
+    // A module started by StartModule registers its names through System::ServiceManager(), which
+    // the boot path would otherwise be the only thing to create. Unconditional because the cost
+    // is one empty map and a controller, and because a service that failed here would fail deep
+    // inside R_ASSERT in ServerManager::RegisterNamedService instead.
+    system.InitializeServiceManager();
+
     guest.emplace(kernel, HarnessHeapSize);
 
     // A ServerManager is only needed because SessionRequestManager cannot be built without one,
@@ -184,6 +195,22 @@ ServiceHarness::~ServiceHarness() {
         OnThread([this] {
             for (auto* event : deferral_events) {
                 event->GetReadableEvent().Close(system.Kernel());
+            }
+
+            // What ~ServiceManager does to every port it registered, done here instead, which is
+            // where ShutdownMainProcess does it too: that destructor runs with System, and by then
+            // KernelCore::Shutdown has destroyed the object container the last reference to a port
+            // unregisters itself from. It is a std::optional, so the storage outlives the object
+            // and the use-after-destroy passes unnoticed rather than faulting.
+            // The server ends stay with the modules, for kernel shutdown to retire.
+            auto& manager = system.ServiceManager();
+            for (const auto& name : module_services) {
+                Kernel::KClientPort* port{};
+                if (manager.GetServicePort(std::addressof(port), name).IsError()) {
+                    continue;
+                }
+                Demand(manager.UnregisterService(name), "unregistering a service");
+                port->Close(system.Kernel());
             }
         });
     } catch (const std::exception& e) {
@@ -288,6 +315,51 @@ SessionId ServiceHarness::Open(std::shared_ptr<Service::SessionRequestHandler> h
 
     sessions.push_back(std::move(open));
     return static_cast<SessionId>(sessions.size() - 1);
+}
+
+void ServiceHarness::StartModule(void (*loop_process)(Core::System&),
+                                 std::span<const std::string_view> names) {
+    if (std::ranges::find(modules, loop_process) != modules.end()) {
+        return;
+    }
+    modules.push_back(loop_process);
+    module_services.insert(module_services.end(), names.begin(), names.end());
+
+    // The one thing Service::Services does before it starts any module, and modules count on it:
+    // Service::SSL::LoopProcess builds a CertStore, which reads GetSystemNANDContents() without
+    // checking it, and that is null until the factories exist. Without overwrite, so a second
+    // module finds the factories the first one made.
+    system.GetFileSystemController().CreateFactories(*system.GetFilesystem(), false);
+
+    // Detached and never joined, the way every real module runs: LoopProcess only returns once
+    // KernelCore::Shutdown has cleared the server managers, which is after the last test.
+    system.Kernel()
+        .RunOnHostCoreProcess("hle-harness-module",
+                              [target = std::addressof(system), loop_process] {
+                                  loop_process(*target);
+                              })
+        .detach();
+}
+
+SessionId ServiceHarness::OpenNamed(std::string_view name, SessionKind kind) {
+    const std::string service{name};
+
+    // Polled rather than asked for with GetService's own blocking wait, which sleeps the calling
+    // thread through the SleepThread SVC: that needs a thread the scheduler runs, and this one is
+    // a dummy the scheduler never sees, so a service that was slow to register would hang instead
+    // of arriving. A module registers all its names before its server loop starts, so the wait is
+    // only for the host thread to get that far.
+    const auto expiry = std::chrono::steady_clock::now() + Patience;
+    auto& manager = system.ServiceManager();
+    while (true) {
+        if (auto handler = manager.GetService<Service::SessionRequestHandler>(service, false)) {
+            return Open(std::move(handler), kind);
+        }
+        if (std::chrono::steady_clock::now() > expiry) {
+            throw std::runtime_error{std::format("{} was never registered", service)};
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
 }
 
 SessionId ServiceHarness::OpenInterface(SessionId parent, const Reply& reply, u32 object_index) {

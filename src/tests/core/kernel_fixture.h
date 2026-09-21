@@ -20,9 +20,10 @@ namespace TestKernel {
  *
  * Tests share it, so do not leave kernel objects behind. Close what you open.
  *
- * What it does not reach: the service classes themselves. Most live inside their own .cpp with
- * no header, so a test cannot name them, and invoking a command needs a thread and a session
- * this does not build. Anything reachable from a public header works.
+ * What it does not reach on its own: the service classes. Invoking a command needs a thread, a
+ * session and a process with memory, which tests/core/service_fixture.h builds on top of this.
+ * That harness brings up the service manager too, so a service that lives inside its own .cpp
+ * with no header is still reachable, by the name its module registers.
  */
 [[nodiscard]] Core::System& Shared();
 

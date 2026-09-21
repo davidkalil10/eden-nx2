@@ -25,6 +25,7 @@ add_executable(tests
     core/service_fixture.h
     core/hle_harness.cpp
     core/internal_network/network.cpp
+    core/ssl_service.cpp
     video_core/memory_tracker.cpp
     input_common/calibration_configuration_job.cpp
 )

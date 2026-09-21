@@ -11,6 +11,8 @@
 #include <mutex>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -113,14 +115,17 @@ struct DeferredReply {
 /**
  * Enough of the HLE transport to invoke a service command and read its reply.
  *
- * Not the real transport: driving a service the way a game does needs a full boot, for four
+ * Not the real transport: driving a service the way a game does needs a full boot, for three
  * independent reasons. The reply is written to the calling thread's thread-local region, which
  * only a ThreadType::User thread has; a client thread cannot block in SendSyncRequest from a host
- * thread; System::ServiceManager() does not exist until a game is set up, so no service can be
- * registered by name; and ServiceFrameworkBase::HandleSyncRequest skips writing the reply out
- * unless the system is powered on. What is left once those are dropped is still the whole of the
- * command path: the request buffer is parsed by the real HLERequestContext, the real
+ * thread; and ServiceFrameworkBase::HandleSyncRequest skips writing the reply out unless the
+ * system is powered on. What is left once those are dropped is still the whole of the command
+ * path: the request buffer is parsed by the real HLERequestContext, the real
  * SessionRequestManager dispatches it, and the handler answers through the real ResponseBuilder.
+ *
+ * The service manager is the one piece a test can have in full, over
+ * Core::System::InitializeServiceManager, so a module that only exists inside its own .cpp is
+ * still reachable by the name it registers. StartModule and OpenNamed are that route.
  *
  * Everything here runs on one thread of its own, and it must. Registering a host thread with the
  * kernel is one-shot, and the main thread was already claimed during KernelCore::Initialize with
@@ -147,6 +152,26 @@ public:
     /// A session onto @p handler, which the session keeps alive.
     [[nodiscard]] SessionId Open(std::shared_ptr<Service::SessionRequestHandler> handler,
                                  SessionKind kind);
+
+    /**
+     * Runs a service module's LoopProcess on a host thread of its own, as Service::Services does.
+     *
+     * The way to reach a service whose class has no header: it registers itself by name on the
+     * way in, and OpenNamed asks the service manager for it afterwards. Calling this twice for
+     * the same module does nothing, because sm: refuses a name it already holds and every test in
+     * a suite wants the same module up. The filesystem factories Service::Services creates before
+     * it starts anything are created here too, since a module may read them on the way in.
+     *
+     * @p names is every service the module registers, not only the one a test means to open. The
+     * harness closes each of their ports itself, in the destructor: the service manager belongs to
+     * System and is destroyed after KernelCore::Shutdown, where the last reference to a port
+     * unregisters itself from an object container the kernel has already destroyed.
+     */
+    void StartModule(void (*loop_process)(Core::System&),
+                     std::span<const std::string_view> names);
+
+    /// A session onto the service registered as @p name, the handler sm: would hand a guest.
+    [[nodiscard]] SessionId OpenNamed(std::string_view name, SessionKind kind);
 
     /// An interface a domain command handed back, addressable as a session of its own.
     [[nodiscard]] SessionId OpenInterface(SessionId parent, const Reply& reply,
@@ -195,6 +220,8 @@ private:
     Kernel::KThread* host_thread{};
     std::vector<OpenSession> sessions;
     std::vector<Kernel::KEvent*> deferral_events;
+    std::vector<void (*)(Core::System&)> modules;
+    std::vector<std::string> module_services;
 
     std::mutex mutex;
     std::condition_variable posted;
