@@ -325,11 +325,8 @@ void ServiceHarness::StartModule(void (*loop_process)(Core::System&),
     modules.push_back(loop_process);
     module_services.insert(module_services.end(), names.begin(), names.end());
 
-    // The one thing Service::Services does before it starts any module, and modules count on it:
-    // Service::SSL::LoopProcess builds a CertStore, which reads GetSystemNANDContents() without
-    // checking it, and that is null until the factories exist. Without overwrite, so a second
-    // module finds the factories the first one made.
-    system.GetFileSystemController().CreateFactories(*system.GetFilesystem(), false);
+    // No CreateFactories: they would point this process at the NAND directory of whoever runs
+    // the tests, creating it if absent. A module that reads the filesystem gets a null controller.
 
     // Detached and never joined, the way every real module runs: LoopProcess only returns once
     // KernelCore::Shutdown has cleared the server managers, which is after the last test.

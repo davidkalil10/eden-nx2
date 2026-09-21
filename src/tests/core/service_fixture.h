@@ -158,9 +158,7 @@ public:
      *
      * The way to reach a service whose class has no header: it registers itself by name on the
      * way in, and OpenNamed asks the service manager for it afterwards. Calling this twice for
-     * the same module does nothing, because sm: refuses a name it already holds and every test in
-     * a suite wants the same module up. The filesystem factories Service::Services creates before
-     * it starts anything are created here too, since a module may read them on the way in.
+     * the same module does nothing. The filesystem factories are not created: see StartModule.
      *
      * @p names is every service the module registers, not only the one a test means to open. The
      * harness closes each of their ports itself, in the destructor: the service manager belongs to

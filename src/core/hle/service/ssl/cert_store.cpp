@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "common/alignment.h"
+#include "common/logging.h"
 #include "core/core.h"
 #include "core/file_sys/content_archive.h"
 #include "core/file_sys/nca_metadata.h"
@@ -22,9 +23,15 @@ CertStore::CertStore(Core::System& system) {
 
     auto& fsc = system.GetFileSystemController();
 
+    // Null until another service has run CreateFactories.
+    const auto* const system_contents = fsc.GetSystemNANDContents();
+    if (!system_contents) {
+        LOG_WARNING(Service_SSL, "No system contents yet, so no CertStore");
+        return;
+    }
+
     // Attempt to load certificate data from storage
-    const auto nca =
-        fsc.GetSystemNANDContents()->GetEntry(CertStoreDataId, FileSys::ContentRecordType::Data);
+    const auto nca = system_contents->GetEntry(CertStoreDataId, FileSys::ContentRecordType::Data);
     if (!nca) {
         return;
     }
