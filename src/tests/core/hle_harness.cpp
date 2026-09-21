@@ -52,6 +52,28 @@ private:
     }
 };
 
+/// Copies its send buffer into its receive buffer, which is the only thing a buffer test needs a
+/// handler to do, and reports how much of it fit.
+class EchoService final : public Service::ServiceFramework<EchoService> {
+public:
+    explicit EchoService(Core::System& system_) : ServiceFramework{system_, "EchoService"} {
+        static const FunctionInfo functions[] = {
+            {1, &EchoService::Echo, "Echo"},
+        };
+        RegisterHandlers(functions);
+    }
+
+private:
+    void Echo(Service::HLERequestContext& ctx) {
+        const auto input = ctx.ReadBuffer();
+        const auto written = ctx.WriteBuffer(input.data(), input.size());
+
+        IPC::ResponseBuilder rb{ctx, 4};
+        rb.Push(ResultSuccess);
+        rb.Push<u64>(written);
+    }
+};
+
 } // Anonymous namespace
 
 // The whole HLE harness rests on this: a process built from the default metadata, with no ROM
@@ -129,6 +151,64 @@ TEST_CASE("TestKernel::ServiceHarness addresses a domain object", "[core][kernel
     // Nothing was handed back, so a domain reply says so rather than leaving the count wherever
     // the previous reply left it.
     REQUIRE(reply.DomainObjectCount() == 0);
+
+    harness.Close(service);
+}
+
+// The HLE receive path never remaps anything: it reads and writes the addresses the request names
+// in the caller's own page table. So a descriptor built here has to land on the guest heap the
+// request was filled from, and a handler's ReadBuffer and WriteBuffer have to reach it.
+TEST_CASE("TestKernel::ServiceHarness carries buffers to and from a handler", "[core][kernel]") {
+    auto& harness = TestKernel::Harness();
+    const auto service = harness.Open(std::make_shared<EchoService>(TestKernel::Shared()),
+                                      TestKernel::SessionKind::Plain);
+
+    const std::array<u64, 3> payload{0xfeed, 0, 0xbeef};
+    const auto sent = harness.Process().Write(AsBytes(payload));
+    const auto received = harness.Process().Reserve(sizeof(payload));
+    REQUIRE(sent.address != received.address);
+
+    TestKernel::RequestBuilder request{1};
+    request.AddSendBuffer(sent.address, sent.size).AddReceiveBuffer(received.address,
+                                                                    received.size);
+
+    auto reply = harness.Call(service, request);
+    REQUIRE(reply.GetResult() == ResultSuccess);
+    REQUIRE(reply.Pop<u64>() == sizeof(payload));
+    REQUIRE(harness.Process().Read(received.address, received.size) ==
+            std::vector<u8>(AsBytes(payload).begin(), AsBytes(payload).end()));
+
+    harness.Close(service);
+}
+
+// A descriptor's size is the only thing stopping a handler from writing past the buffer the guest
+// gave it, so a receive buffer that is too small has to be respected rather than overrun.
+TEST_CASE("TestKernel::ServiceHarness holds a handler to the receive buffer it was given",
+          "[core][kernel]") {
+    auto& harness = TestKernel::Harness();
+    const auto service = harness.Open(std::make_shared<EchoService>(TestKernel::Shared()),
+                                      TestKernel::SessionKind::Plain);
+
+    const std::array<u64, 3> payload{0x1111, 0x2222, 0x3333};
+    const auto sent = harness.Process().Write(AsBytes(payload));
+    const auto received = harness.Process().Reserve(sizeof(u64));
+    const auto beyond = harness.Process().Reserve(sizeof(payload));
+
+    TestKernel::RequestBuilder request{1};
+    request.AddSendBuffer(sent.address, sent.size).AddReceiveBuffer(received.address,
+                                                                    received.size);
+
+    auto reply = harness.Call(service, request);
+    REQUIRE(reply.GetResult() == ResultSuccess);
+    REQUIRE(reply.Pop<u64>() == sizeof(u64));
+    REQUIRE(harness.Process().Read(received.address, sizeof(u64)) ==
+            std::vector<u8>(AsBytes(payload).begin(), AsBytes(payload).begin() + sizeof(u64)));
+
+    // Everything the rest of the payload would have run into, up to and past the next
+    // reservation, which Reserve left zeroed.
+    const u64 overrun = beyond.address + beyond.size - received.address - sizeof(u64);
+    REQUIRE(harness.Process().Read(received.address + sizeof(u64), overrun) ==
+            std::vector<u8>(overrun, 0));
 
     harness.Close(service);
 }
