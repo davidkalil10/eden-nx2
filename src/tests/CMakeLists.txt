@@ -17,6 +17,11 @@ add_executable(tests
     common/undefined_fix.cpp
     common/unique_function.cpp
     core/core_timing.cpp
+    core/kernel_fixture.cpp
+    core/kernel_fixture.h
+    core/service_fixture.cpp
+    core/service_fixture.h
+    core/hle_harness.cpp
     core/internal_network/network.cpp
     video_core/memory_tracker.cpp
     input_common/calibration_configuration_job.cpp
