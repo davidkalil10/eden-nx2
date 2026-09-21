@@ -19,6 +19,8 @@ add_executable(tests
     core/core_timing.cpp
     core/kernel_fixture.cpp
     core/kernel_fixture.h
+    core/ipc_request.cpp
+    core/ipc_request.h
     core/service_fixture.cpp
     core/service_fixture.h
     core/hle_harness.cpp
