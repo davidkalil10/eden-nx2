@@ -304,10 +304,11 @@ std::optional<s64> CoreTiming::Advance() {
 
 void CoreTiming::Reset() {
     paused = true;
+    // Before the signals: the thread reads the token only after a wait returns.
+    timer_thread.request_stop();
     pause_event.Set();
     event.Set();
     if (timer_thread.joinable()) {
-        timer_thread.request_stop();
         timer_thread.join();
     }
     has_started = false;

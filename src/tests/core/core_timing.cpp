@@ -1,15 +1,20 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: 2016 Dolphin Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <atomic>
 #include <bitset>
 #include <chrono>
 #include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 
 #include "core/core.h"
 #include "core/core_timing.h"
@@ -138,4 +143,57 @@ TEST_CASE("CoreTiming[BasicOrderNoPausing]", "[core]") {
     printf("HostTimer No Pausing Scheduling Time: %.3f %.6f\n", micro, mili);
     printf("HostTimer No Pausing Timer Time: %.3f %.6f\n", timer_time / 1000.f,
            timer_time / 1000000.f);
+}
+
+TEST_CASE("CoreTiming[ResetKeepsTheStop]", "[core]") {
+    // The timer thread reads the stop token only after a wait returns, so Reset has to request
+    // the stop before it signals. Waiting for paused_set hits that window on purpose.
+    constexpr int attempts = 64;
+    constexpr int reinitializations = 8;
+    auto const finished = std::make_shared<std::atomic<int>>(0);
+
+    // Detached, with a shared counter: a worker that never comes back fails the count instead
+    // of hanging the suite on a join.
+    std::thread([finished] {
+        // Bounded, so a build that never starts a timer thread fails the count instead of
+        // spinning here forever.
+        auto const wait_for = [](auto&& ready) {
+            auto const by = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (!ready() && std::chrono::steady_clock::now() < by) {
+            }
+        };
+
+        for (int i = 0; i < attempts; ++i) {
+            {
+                Core::Timing::CoreTiming core_timing;
+                core_timing.SetMulticore(true);
+                core_timing.Initialize([] {});
+                // A fresh object publishes paused_set only once the thread is on its way into
+                // pause_event.Wait(), which is where every shutdown finds it.
+                wait_for([&core_timing] { return !core_timing.IsRunning(); });
+            }
+            finished->fetch_add(1, std::memory_order_release);
+        }
+
+        // Initialize resets first, so a second game on one System goes through that same stop
+        // request, and only a timer thread that came back sets has_started again.
+        Core::Timing::CoreTiming reused;
+        reused.SetMulticore(true);
+        for (int i = 0; i < reinitializations; ++i) {
+            reused.Initialize([] {});
+            wait_for([&reused] { return reused.HasStarted(); });
+            if (!reused.HasStarted()) {
+                return;
+            }
+            finished->fetch_add(1, std::memory_order_release);
+        }
+    }).detach();
+
+    auto const deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (finished->load(std::memory_order_acquire) < attempts + reinitializations &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    REQUIRE(finished->load(std::memory_order_acquire) == attempts + reinitializations);
 }
