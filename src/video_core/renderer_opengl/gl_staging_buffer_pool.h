@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: Copyright 2021 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -18,6 +21,19 @@
 namespace OpenGL {
 
 using namespace Common::Literals;
+
+/// The storage and mapping flags a staging pool asks for, less the persistent bit that
+/// RequestBuffer adds to both. Named here so the driver check cannot drift from the pools.
+struct StagingFlags {
+    GLenum storage;
+    GLenum map;
+};
+constexpr StagingFlags UPLOAD_FLAGS{GL_MAP_WRITE_BIT, GL_MAP_WRITE_BIT | GL_MAP_FLUSH_EXPLICIT_BIT};
+constexpr StagingFlags DOWNLOAD_FLAGS{GL_MAP_READ_BIT | GL_CLIENT_STORAGE_BIT, GL_MAP_READ_BIT};
+
+/// The span for @p requested_size bytes of an allocation of @p alloc_size bytes mapped at @p map;
+/// empty when there is no pointer or the allocation cannot cover the request.
+[[nodiscard]] std::span<u8> StagingSpan(u8* map, size_t alloc_size, size_t requested_size) noexcept;
 
 struct StagingBufferMap {
     ~StagingBufferMap();
@@ -96,8 +112,8 @@ public:
     void FreeDeferredStagingBuffer(StagingBufferMap& buffer);
 
 private:
-    StagingBuffers upload_buffers{GL_MAP_WRITE_BIT, GL_MAP_WRITE_BIT | GL_MAP_FLUSH_EXPLICIT_BIT};
-    StagingBuffers download_buffers{GL_MAP_READ_BIT | GL_CLIENT_STORAGE_BIT, GL_MAP_READ_BIT};
+    StagingBuffers upload_buffers{UPLOAD_FLAGS.storage, UPLOAD_FLAGS.map};
+    StagingBuffers download_buffers{DOWNLOAD_FLAGS.storage, DOWNLOAD_FLAGS.map};
 };
 
 } // namespace OpenGL

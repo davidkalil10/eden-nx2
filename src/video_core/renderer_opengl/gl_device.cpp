@@ -22,6 +22,7 @@
 #include "shader_recompiler/stage.h"
 #include "video_core/renderer_opengl/gl_device.h"
 #include "video_core/renderer_opengl/gl_resource_manager.h"
+#include "video_core/renderer_opengl/gl_staging_buffer_pool.h"
 
 using namespace Common::Literals;
 
@@ -48,6 +49,21 @@ bool TestProgram(const GLchar* glsl) {
     glGetProgramiv(shader, GL_LINK_STATUS, &link_status);
     glDeleteProgram(shader);
     return link_status == GL_TRUE;
+}
+
+/// Every upload and download writes through a persistently mapped buffer, so a driver that refuses
+/// one cannot run this renderer. Both pools' flags are asked for: a driver may refuse only one.
+bool TestPersistentMapping(StagingFlags flags) {
+    constexpr GLsizeiptr size = 4096;
+    OGLBuffer buffer;
+    buffer.Create();
+    glNamedBufferStorage(buffer.handle, size, nullptr, flags.storage | GL_MAP_PERSISTENT_BIT);
+    if (glMapNamedBufferRange(buffer.handle, 0, size, flags.map | GL_MAP_PERSISTENT_BIT) ==
+        nullptr) {
+        return false;
+    }
+    glUnmapNamedBuffer(buffer.handle);
+    return true;
 }
 
 /// @brief Query OpenGL extensions
@@ -175,6 +191,14 @@ Device::Device(Core::Frontend::EmuWindow& emu_window) {
     const std::string version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
     const std::string renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
     const std::vector<std::string> extensions = GetExtensions();
+
+    if (!TestPersistentMapping(UPLOAD_FLAGS) || !TestPersistentMapping(DOWNLOAD_FLAGS)) {
+        LOG_ERROR(Render_OpenGL,
+                  "{} ({}) will not keep a buffer mapped; every upload and download this "
+                  "renderer makes goes through one",
+                  vendor_name, renderer);
+        throw std::runtime_error{"No persistent buffer mapping"};
+    }
 
     const bool is_nvidia = vendor_name == "NVIDIA Corporation";
     const bool is_amd = vendor_name == "ATI Technologies Inc.";

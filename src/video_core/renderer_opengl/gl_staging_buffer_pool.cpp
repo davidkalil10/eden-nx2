@@ -1,22 +1,60 @@
-// SPDX-FileCopyrightText: Copyright 2025 Eden Emulator Project
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // SPDX-FileCopyrightText: Copyright 2021 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
 #include <array>
+#include <format>
 #include <memory>
 #include <span>
+#include <stdexcept>
+#include <string>
 
 #include <glad/glad.h>
 
 #include "common/alignment.h"
 #include "common/assert.h"
 #include "common/bit_util.h"
+#include "common/logging.h"
 #include "video_core/renderer_opengl/gl_staging_buffer_pool.h"
 
 
 namespace OpenGL {
+namespace {
+
+/// The driver's own description of a failed mapping; glMapNamedBufferRange only returns null.
+std::string MapFailureReason(size_t size) {
+    // The last queued error describes the mapping; the bound stops a queue that never empties.
+    GLenum error = GL_NO_ERROR;
+    for (int drained = 0; drained < 16; ++drained) {
+        const GLenum next = glGetError();
+        if (next == GL_NO_ERROR) {
+            break;
+        }
+        error = next;
+    }
+    const auto* const vendor = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
+    const auto* const renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    if (vendor == nullptr || renderer == nullptr) {
+        return std::format("no driver answered a {} byte persistent mapping, and none answered "
+                           "its own name either: this thread has no current context",
+                           size);
+    }
+    return std::format("{} ({}) returned no pointer for a {} byte persistent mapping, GL error "
+                       "{:#06x}",
+                       vendor, renderer, size, error);
+}
+
+} // Anonymous namespace
+
+std::span<u8> StagingSpan(u8* map, size_t alloc_size, size_t requested_size) noexcept {
+    if (map == nullptr || requested_size > alloc_size) {
+        return {};
+    }
+    return std::span<u8>{map, requested_size};
+}
 
 StagingBufferMap::~StagingBufferMap() {
     if (sync) {
@@ -37,7 +75,7 @@ StagingBufferMap StagingBuffers::RequestMap(size_t requested_size, bool insert_f
     allocs[index].sync_index = insert_fence ? ++current_sync_index : 0;
     allocs[index].deferred = deferred;
     return StagingBufferMap{
-        .mapped_span = std::span(allocs[index].map, requested_size),
+        .mapped_span = StagingSpan(allocs[index].map, allocs[index].size, requested_size),
         .sync = sync,
         .buffer = allocs[index].buffer.handle,
         .index = index,
@@ -55,12 +93,22 @@ size_t StagingBuffers::RequestBuffer(size_t requested_size) {
     }
     StagingBufferAlloc alloc;
     alloc.buffer.Create();
-    const auto next_pow2_size = Common::NextPow2(requested_size);
+    // NextPow2 is undefined for zero and wraps for a request too large to round up, so the max
+    // is what makes "the allocation covers the request" true by construction.
+    const size_t next_pow2_size =
+        requested_size < 2 ? size_t{1}
+                           : (std::max)(requested_size, Common::NextPow2(requested_size));
     glNamedBufferStorage(alloc.buffer.handle, next_pow2_size, nullptr,
                          storage_flags | GL_MAP_PERSISTENT_BIT);
     alloc.map = static_cast<u8*>(glMapNamedBufferRange(alloc.buffer.handle, 0, next_pow2_size,
                                                        map_flags | GL_MAP_PERSISTENT_BIT));
-    DEBUG_ASSERT(alloc.map != nullptr);
+    if (alloc.map == nullptr) {
+        // Device already checked these mappings, so this is exhaustion, and callers write guest
+        // data straight into the mapping: there is nothing to fall back to.
+        LOG_CRITICAL(Render_OpenGL, "Staging buffer mapping refused: {}",
+                     MapFailureReason(next_pow2_size));
+        UNREACHABLE_MSG("no staging buffer to write guest data through");
+    }
     alloc.size = next_pow2_size;
     allocs.emplace_back(std::move(alloc));
     return allocs.size() - 1;
@@ -106,6 +154,13 @@ StreamBuffer::StreamBuffer() {
     glNamedBufferStorage(buffer.handle, STREAM_BUFFER_SIZE, nullptr, flags);
     mapped_pointer =
         static_cast<u8*>(glMapNamedBufferRange(buffer.handle, 0, STREAM_BUFFER_SIZE, flags));
+    if (mapped_pointer == nullptr) {
+        // This one runs while the renderer is still being built, so CreateGPU catches the throw
+        // and the emulator comes up without a GPU instead of with an unwritable stream buffer.
+        const std::string reason = MapFailureReason(STREAM_BUFFER_SIZE);
+        LOG_CRITICAL(Render_OpenGL, "Stream buffer mapping refused: {}", reason);
+        throw std::runtime_error{"Stream buffer could not be mapped: " + reason};
+    }
     for (OGLSync& sync : fences) {
         sync.Create();
     }
