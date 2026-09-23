@@ -6,6 +6,7 @@ package org.yuzu.yuzu_emu
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
 
@@ -39,6 +40,28 @@ class SettingsArraysTest {
 
     private fun normalize(s: String) = s.replace("_", "").lowercase()
 
+    // Every names/values pair used in Kotlin, found by scanning the sources.
+    private fun usedPairs(): Set<Pair<String, String>> {
+        val pair = Regex(
+            """R\.array\.(\w+)\s*,\s*(?:valuesId\s*=\s*)?R\.array\.(\w+)"""
+        )
+        return File("src/main/java").walk().filter { it.extension == "kt" }
+            .flatMap { f -> pair.findAll(f.readText()).map { it.groupValues[1] to it.groupValues[2] } }
+            .toSet()
+    }
+
+    @Test
+    fun namesAndValuesArraysHaveTheSameLength() {
+        val pairs = usedPairs()
+        assertTrue("no array pairs found", pairs.isNotEmpty())
+        val problems = pairs.mapNotNull { (names, values) ->
+            val n = arrays[names] ?: return@mapNotNull "$names missing"
+            val v = arrays[values] ?: return@mapNotNull "$values missing"
+            if (n.size != v.size) "$names has ${n.size} items, $values has ${v.size}" else null
+        }
+        assertTrue(problems.joinToString("\n"), problems.isEmpty())
+    }
+
     @Test
     fun scalingFilterNamesMatchTheNativeEnum() {
         val members = enumMembers("ScalingFilter")
@@ -49,5 +72,14 @@ class SettingsArraysTest {
             val label = name.removePrefix("@string/scaling_filter_")
             assertEquals("entry $name stores $value", normalize(members[value]), normalize(label))
         }
+    }
+
+    @Test
+    fun everyAppLanguageHasALocaleCode() {
+        assertEquals(
+            arrays.getValue("appLanguageNames").size,
+            YuzuApplication.LANGUAGE_CODES.size
+        )
+        arrays.getValue("appLanguageValues").forEachIndexed { i, v -> assertEquals(i, v.toInt()) }
     }
 }
