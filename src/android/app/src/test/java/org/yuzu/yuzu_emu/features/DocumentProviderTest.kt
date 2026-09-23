@@ -96,14 +96,25 @@ class DocumentProviderTest {
     fun everyMutatingCallRefusesTheRoot() {
         val source = File("src/main/java/org/yuzu/yuzu_emu/features/DocumentProvider.kt")
             .readText()
-        listOf("deleteDocument", "removeDocument", "renameDocument", "moveDocument").forEach {
-            val start = source.indexOf("override fun $it(")
-            assertTrue("$it not found", start >= 0)
+        // The statement that resolves the document acted on, not merely any getFile call.
+        mapOf(
+            "deleteDocument" to "val file = getFile(documentId!!, allowRoot = false)",
+            "removeDocument" to "val file = getFile(documentId, allowRoot = false)",
+            "renameDocument" to "val sourceFile = getFile(documentId!!, allowRoot = false)",
+            "moveDocument" to "getFile(sourceDocumentId, allowRoot = false)"
+        ).forEach { (function, statement) ->
+            val start = source.indexOf("override fun $function(")
+            assertTrue("$function not found", start >= 0)
             val end = source.indexOf("\n    }\n", start)
-            assertTrue(
-                "$it can act on the root",
-                source.substring(start, end).contains("allowRoot = false")
-            )
+            val text = source.substring(start, end)
+            val lines = text.lines().map { it.trim() }
+            assertTrue("$function can act on the root", statement in lines)
+            // Any other lookup of a document id may only be the parent's.
+            val lookups = Regex("""getFile\(([^)]*)\)""").findAll(text).map { it.groupValues[1] }
+            val unguarded = lookups.filter {
+                !it.endsWith("allowRoot = false") && !it.startsWith("parentDocumentId")
+            }
+            assertTrue("$function resolves $unguarded without refusing the root", unguarded.none())
         }
     }
 

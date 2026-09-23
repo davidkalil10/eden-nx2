@@ -613,10 +613,18 @@ class EmulationActivityTest {
         val fragment = File("src/main/java/org/yuzu/yuzu_emu/fragments/EmulationFragment.kt")
             .readText()
         val onPause = body(fragment, "override fun onPause()")
-        val gate = onPause.indexOf("isInPictureInPictureMode != true")
-        assertTrue("onPause stops the overlays in picture-in-picture", gate >= 0)
-        assertTrue(onPause.indexOf("stopStatsOverlays()") > gate)
-        assertTrue(body(fragment, "override fun onStop()").contains("stopStatsOverlays()"))
+        // The call inside the gate's braces, and nowhere else in onPause.
+        val gated = """
+            |        if (emulationActivity?.isInPictureInPictureMode != true) {
+            |            stopStatsOverlays()
+            |        }
+        """.trimMargin()
+        assertTrue("onPause stops the overlays in picture-in-picture", onPause.contains(gated))
+        assertEquals(1, Regex("""stopStatsOverlays\(\)""").findAll(onPause).count())
+        // Nor an inline stop of either overlay beside the gate.
+        assertFalse(onPause.contains("removeCallbacks"))
+        val onStop = body(fragment, "override fun onStop()").lines().map { it.trim() }
+        assertTrue("stopStatsOverlays()" in onStop)
     }
 
     @Test
