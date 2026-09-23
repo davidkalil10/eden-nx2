@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2025 Eden Emulator Project
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 package org.yuzu.yuzu_emu.overlay
@@ -20,8 +20,8 @@ class OverlayScaleDialog(
     private val onScaleChanged: (Float) -> Unit
 ) : Dialog(context) {
 
-    private var currentScale = overlayControlData.individualScale
-    private val originalScale = overlayControlData.individualScale
+    private var currentScale = sliderValue(overlayControlData.individualScale)
+    private val originalScale = currentScale
     private lateinit var scaleValueText: TextView
     private lateinit var scaleSlider: Slider
 
@@ -121,4 +121,23 @@ class OverlayScaleDialog(
 
     }
 
+
+    companion object {
+        // Must match the slider in dialog_overlay_scale.xml.
+        const val MIN_SCALE = 0.5f
+        const val MAX_SCALE = 4.0f
+        const val SCALE_STEP = 0.1f
+
+        /**
+         * A value the slider accepts. Configs written before per-control scale read back 0,
+         * and Slider throws on draw for values off its range or step grid.
+         */
+        fun sliderValue(scale: Float): Float {
+            if (!(scale >= MIN_SCALE && scale <= MAX_SCALE)) {
+                return 1.0f
+            }
+            val steps = Math.round((scale - MIN_SCALE) / SCALE_STEP)
+            return (MIN_SCALE + steps * SCALE_STEP).coerceIn(MIN_SCALE, MAX_SCALE)
+        }
+    }
 }
