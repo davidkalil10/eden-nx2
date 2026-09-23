@@ -37,6 +37,7 @@ import org.yuzu.yuzu_emu.model.ButtonState
 import org.yuzu.yuzu_emu.model.GamesViewModel
 import org.yuzu.yuzu_emu.model.HomeViewModel
 import org.yuzu.yuzu_emu.model.PageButton
+import androidx.recyclerview.widget.RecyclerView
 import org.yuzu.yuzu_emu.model.SetupCallback
 import org.yuzu.yuzu_emu.model.SetupPage
 import org.yuzu.yuzu_emu.model.PageState
@@ -61,7 +62,8 @@ class SetupFragment : Fragment() {
 
     private lateinit var pages: MutableList<SetupPage>
 
-    private lateinit var pageButtonCallback: SetupCallback
+    // Set when a page button is tapped; a recreated fragment gets results without one.
+    private var pageButtonCallback: SetupCallback? = null
 
     companion object {
         const val KEY_NEXT_VISIBILITY = "NextButtonVisibility"
@@ -411,17 +413,24 @@ class SetupFragment : Fragment() {
     }
 
     private val checkForButtonState: () -> Unit = {
-        val page = pages[binding.viewPager2.currentItem]
-        page.pageButtons?.forEach {
-            if (it.buttonState() == ButtonState.BUTTON_ACTION_COMPLETE) {
-                pageButtonCallback.onStepCompleted(
-                    it.titleId,
-                    pageFullyCompleted = false
-                )
-            }
+        val currentItem = binding.viewPager2.currentItem
+        val page = pages[currentItem]
+        // A recreated fragment has no callback from a tap; the visible page holder is one.
+        val callback = pageButtonCallback
+            ?: ((binding.viewPager2.getChildAt(0) as? RecyclerView)
+                ?.findViewHolderForAdapterPosition(currentItem) as? SetupCallback)
+        if (callback != null) {
+            page.pageButtons?.forEach {
+                if (it.buttonState() == ButtonState.BUTTON_ACTION_COMPLETE) {
+                    callback.onStepCompleted(
+                        it.titleId,
+                        pageFullyCompleted = false
+                    )
+                }
 
-            if (page.pageSteps() == PageState.COMPLETE) {
-                pageButtonCallback.onStepCompleted(0, pageFullyCompleted = true)
+                if (page.pageSteps() == PageState.COMPLETE) {
+                    callback.onStepCompleted(0, pageFullyCompleted = true)
+                }
             }
         }
     }
