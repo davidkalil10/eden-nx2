@@ -72,7 +72,6 @@ import androidx.core.os.BundleCompat
 class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager.InputDeviceListener {
     private lateinit var binding: ActivityEmulationBinding
 
-    var isActivityRecreated = false
     private lateinit var nfcReader: NfcReader
     private lateinit var inputManager: InputManager
 
@@ -158,7 +157,11 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
         setContentView(binding.root)
 
         val launchIntent = Intent(intent)
-        val shouldDeferLaunchForSwap = hasEmulationSession && isSwapIntent(launchIntent)
+        val shouldDeferLaunchForSwap = shouldDeferLaunchForSwap(
+            isRecreated = savedInstanceState != null,
+            hasSession = hasEmulationSession,
+            isSwapIntent = isSwapIntent(launchIntent)
+        )
         if (shouldDeferLaunchForSwap) {
             Log.info("[EmulationActivity] onCreate detected existing session; deferring new game setup for swap")
             emulationViewModel.setIsEmulationStopping(true)
@@ -180,8 +183,6 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
                 handleSwapIntent(launchIntent)
             }
         }
-
-        isActivityRecreated = savedInstanceState != null
 
         // Set these options now so that the SurfaceView the game renders into is the right size.
         enableFullscreenImmersive()
@@ -840,6 +841,14 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
         private var processHasEmulationSession = false
         @Volatile
         private var processSessionGame: Game? = null
+
+        // A recreated activity still carries the launch intent; treating it as a new game
+        // would stop the running session instead of resuming it.
+        fun shouldDeferLaunchForSwap(
+            isRecreated: Boolean,
+            hasSession: Boolean,
+            isSwapIntent: Boolean
+        ): Boolean = !isRecreated && hasSession && isSwapIntent
 
         fun stopForegroundService(activity: Activity) {
             val startIntent = Intent(activity, ForegroundService::class.java)

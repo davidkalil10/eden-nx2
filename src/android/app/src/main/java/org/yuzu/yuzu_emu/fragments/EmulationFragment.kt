@@ -108,7 +108,7 @@ import kotlin.coroutines.suspendCoroutine
 import kotlin.or
 
 class EmulationFragment : Fragment(), SurfaceHolder.Callback {
-    private lateinit var emulationState: EmulationState
+    private lateinit var emulationState: EmulationState<Surface>
     private var emulationActivity: EmulationActivity? = null
 
     private var perfStatsUpdater: (() -> Unit)? = null
@@ -360,10 +360,15 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
             Log.warning("[EmulationFragment] Failed to load Freedreno config: ${e.message}")
         }
 
-        emulationState = EmulationState(game!!.path) {
-            return@EmulationState driverViewModel.isInteractionAllowed.value &&
-                !isStoppingForRomSwap
-        }
+        emulationState = EmulationState(
+            gamePath = game!!.path,
+            emulationCanStart = {
+                driverViewModel.isInteractionAllowed.value && !isStoppingForRomSwap
+            },
+            canAttach = { !isStoppingForRomSwap },
+            onAttachedToRunningSession = { onAttachedToRunningSession() },
+            backend = EmulationState.NativeBackend
+        )
     }
 
     /**
@@ -1054,7 +1059,7 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
 
                 updateScreenLayout()
 
-                emulationState.run(emulationActivity!!.isActivityRecreated)
+                emulationState.run()
             }
         }
 
@@ -1408,6 +1413,16 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         emulationState.resume()
         updatePauseMenuEntry(emulationState.isPaused)
         updatePausedFrameVisibility()
+    }
+
+    // The activity was recreated over a live game: the loading screen of a fresh
+    // ViewModel would hide it, and the menu must offer resume.
+    private fun onAttachedToRunningSession() {
+        emulationViewModel.setEmulationStarted(true)
+        if (_binding != null) {
+            updatePauseMenuEntry(true)
+            updatePausedFrameVisibility()
+        }
     }
 
     private fun clearPausedFrame() {
@@ -2022,7 +2037,7 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
             onStopped()
             return
         }
-        val emuThread = runCatching { emulationState.emulationThread }.getOrNull()
+        val emuThread = emulationState.emulationThread
         if (emuThread == null || !emuThread.isAlive) {
             onStopped()
             return
@@ -2317,189 +2332,6 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
                 )
             }
             insets
-        }
-    }
-
-    private class EmulationState(
-        private val gamePath: String,
-        private val emulationCanStart: () -> Boolean
-    ) {
-        private var state: State
-        private var surface: Surface? = null
-        lateinit var emulationThread: Thread
-
-        init {
-            state = State.STOPPED
-        }
-
-        @get:Synchronized
-        val isStopped: Boolean
-            get() = state == State.STOPPED
-
-        @get:Synchronized
-        val isPaused: Boolean
-            get() = state == State.PAUSED
-
-        @get:Synchronized
-        val isRunning: Boolean
-            get() = state == State.RUNNING
-
-        @Synchronized
-        fun stop() {
-            if (state != State.STOPPED) {
-                Log.debug("[EmulationFragment] Stopping emulation.")
-                NativeLibrary.stopEmulation()
-                state = State.STOPPED
-            } else {
-                Log.warning("[EmulationFragment] Stop called while already stopped.")
-                NativeLibrary.stopEmulation()
-            }
-        }
-
-        @Synchronized
-        fun pause() {
-            if (state != State.PAUSED) {
-                Log.debug("[EmulationFragment] Pausing emulation.")
-
-                NativeLibrary.pauseEmulation()
-                NativeLibrary.playTimeManagerStop()
-
-                state = State.PAUSED
-            } else {
-                Log.warning("[EmulationFragment] Pause called while already paused.")
-            }
-        }
-
-        @Synchronized
-        fun run(isActivityRecreated: Boolean, programIndex: Int = 0) {
-            if (isActivityRecreated) {
-                if (NativeLibrary.isRunning()) {
-                    state = State.PAUSED
-                }
-            } else {
-                Log.debug("[EmulationFragment] activity resumed or fresh start")
-            }
-
-            // If the surface is set, run now. Otherwise, wait for it to get set.
-            if (surface != null) {
-                runWithValidSurface(programIndex)
-            }
-        }
-
-        @Synchronized
-        fun resume() {
-            if (state != State.PAUSED) {
-                Log.warning("[EmulationFragment] Resume called while emulation is not paused.")
-                return
-            }
-            if (!emulationCanStart.invoke()) {
-                Log.warning("[EmulationFragment] Resume blocked by emulationCanStart check.")
-                return
-            }
-            val currentSurface = surface
-            if (currentSurface == null || !currentSurface.isValid) {
-                Log.debug("[EmulationFragment] Resume requested with invalid surface.")
-                return
-            }
-
-            NativeLibrary.surfaceChanged(currentSurface)
-            Log.debug("[EmulationFragment] Resuming emulation.")
-            NativeLibrary.unpauseEmulation()
-            NativeLibrary.playTimeManagerStart()
-            state = State.RUNNING
-        }
-
-        @Synchronized
-        fun changeProgram(programIndex: Int) {
-            emulationThread.join()
-            emulationThread = Thread({
-                Log.debug("[EmulationFragment] Starting emulation thread.")
-                NativeLibrary.run(gamePath, programIndex, false)
-            }, "NativeEmulation")
-            emulationThread.start()
-        }
-
-        // Surface callbacks
-        @Synchronized
-        fun newSurface(surface: Surface?) {
-            this.surface = surface
-            if (this.surface != null) {
-                runWithValidSurface()
-            }
-        }
-
-        @Synchronized
-        fun updateSurface() {
-            if (surface != null && state == State.RUNNING) {
-                NativeLibrary.surfaceChanged(surface)
-            }
-        }
-
-        @Synchronized
-        fun updateSurfaceReference(surface: Surface?) {
-            this.surface = surface
-            if (this.surface != null && state == State.RUNNING) {
-                NativeLibrary.surfaceChanged(this.surface)
-            }
-        }
-
-        @Synchronized
-        fun clearSurface() {
-            if (surface == null) {
-                Log.debug("[EmulationFragment] clearSurface called, but surface already null.")
-            } else {
-                if (state == State.RUNNING) {
-                    pause()
-                }
-                NativeLibrary.surfaceDestroyed()
-                surface = null
-                Log.debug("[EmulationFragment] Surface destroyed.")
-                when (state) {
-                    State.PAUSED -> Log.debug(
-                        "[EmulationFragment] Surface cleared while emulation paused."
-                    )
-
-                    else -> Log.debug(
-                        "[EmulationFragment] Surface cleared while emulation stopped."
-                    )
-                }
-            }
-        }
-
-        private fun runWithValidSurface(programIndex: Int = 0) {
-            if (!emulationCanStart.invoke()) {
-                return
-            }
-            val currentSurface = surface
-            if (currentSurface == null || !currentSurface.isValid) {
-                Log.debug("[EmulationFragment] runWithValidSurface called with invalid surface.")
-                return
-            }
-
-            when (state) {
-                State.STOPPED -> {
-                    NativeLibrary.surfaceChanged(currentSurface)
-                    emulationThread = Thread({
-                        Log.debug("[EmulationFragment] Starting emulation thread.")
-                        NativeLibrary.run(gamePath, programIndex, true)
-                    }, "NativeEmulation")
-                    emulationThread.start()
-                    state = State.RUNNING
-                }
-
-                State.PAUSED -> {
-                    Log.debug(
-                        "[EmulationFragment] Surface restored while emulation paused; " +
-                            "waiting for explicit resume."
-                    )
-                }
-
-                else -> Log.debug("[EmulationFragment] Bug, run called while already running.")
-            }
-        }
-
-        private enum class State {
-            STOPPED, RUNNING, PAUSED
         }
     }
 
