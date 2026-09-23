@@ -448,22 +448,32 @@ object NativeLibrary {
         sEmulationActivity.clear()
     }
 
+    // Called from the emulation thread, which can outlive the activity; an exception here
+    // would escape into native code and abort the process.
     @Keep
     @JvmStatic
     fun onEmulationStarted() {
-        sEmulationActivity.get()!!.onEmulationStarted()
+        sEmulationActivity.get()?.onEmulationStarted()
+            ?: Log.warning("[NativeLibrary] onEmulationStarted without an EmulationActivity")
     }
 
     @Keep
     @JvmStatic
     fun onEmulationStopped(status: Int) {
-        sEmulationActivity.get()!!.onEmulationStopped(status)
+        val activity = sEmulationActivity.get()
+        if (activity != null) {
+            activity.onEmulationStopped(status)
+        } else {
+            Log.warning("[NativeLibrary] onEmulationStopped without an EmulationActivity")
+            EmulationActivity.clearProcessSession()
+        }
     }
 
     @Keep
     @JvmStatic
     fun onProgramChanged(programIndex: Int) {
-        sEmulationActivity.get()!!.onProgramChanged(programIndex)
+        sEmulationActivity.get()?.onProgramChanged(programIndex)
+            ?: Log.warning("[NativeLibrary] onProgramChanged without an EmulationActivity")
     }
 
     /**

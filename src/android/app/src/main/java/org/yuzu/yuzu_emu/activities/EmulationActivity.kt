@@ -850,6 +850,13 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
             isSwapIntent: Boolean
         ): Boolean = !isRecreated && hasSession && isSwapIntent
 
+        // The session ended while no activity was attached; the next launch must not wait
+        // for it to stop.
+        fun clearProcessSession() {
+            processHasEmulationSession = false
+            processSessionGame = null
+        }
+
         fun stopForegroundService(activity: Activity) {
             val startIntent = Intent(activity, ForegroundService::class.java)
             startIntent.action = ForegroundService.ACTION_STOP
