@@ -503,7 +503,8 @@ object FileUtil {
                 DocumentsContract.getDocumentId(uri)
             }
             val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(uri, docId)
-            resolver.query(childrenUri, columns, null, null, null)
+            // Only whether the query succeeds matters; the cursor must not outlive it.
+            resolver.query(childrenUri, columns, null, null, null)?.close()
             true
         } catch (_: Exception) {
             false
