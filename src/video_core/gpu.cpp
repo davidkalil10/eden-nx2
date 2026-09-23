@@ -62,7 +62,10 @@ struct GPU::Impl {
         , is_async{is_async_}
     {}
 
-    ~Impl() = default;
+    // Before the channels: the rasterizer's state tracker points into the bound channel's Maxwell3D.
+    ~Impl() {
+        renderer.reset();
+    }
 
     std::shared_ptr<Control::ChannelState> CreateChannel(s32 channel_id) {
         auto channel_state = std::make_shared<Tegra::Control::ChannelState>(channel_id);
