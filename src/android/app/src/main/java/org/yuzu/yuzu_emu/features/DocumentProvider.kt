@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -46,6 +49,47 @@ class DocumentProvider : DocumentsProvider() {
 
         const val AUTHORITY: String = BuildConfig.APPLICATION_ID + ".user"
         const val ROOT_ID: String = "root"
+
+        /**
+         * The file for [documentId] under [base], or null when the ID escapes it, cannot be
+         * resolved (a NUL byte, a symlink loop) or names the root while [allowRoot] is false.
+         */
+        fun resolveDocumentFile(base: File, documentId: String, allowRoot: Boolean = true): File? {
+            if (documentId != ROOT_ID && !documentId.startsWith("$ROOT_ID/")) {
+                return null
+            }
+            val root: File
+            val file: File
+            try {
+                root = base.canonicalFile
+                file = File(root, documentId.drop(ROOT_ID.length + 1)).canonicalFile
+            } catch (_: IOException) {
+                return null
+            }
+            if (file == root) {
+                return root.takeIf { allowRoot }
+            }
+            return file.takeIf { it.path.startsWith(root.path + File.separator) }
+        }
+
+        fun isChildDocumentId(parentDocumentId: String, documentId: String): Boolean {
+            val parent = parentDocumentId.trimEnd('/')
+            return documentId.startsWith("$parent/") &&
+                documentId.split('/').none { it == ".." || it == "." }
+        }
+
+        /** A single path component, or null for names that would leave the directory. */
+        fun sanitizeDisplayName(displayName: String): String? =
+            displayName.takeIf { it.isNotEmpty() && it != "." && it != ".." && '/' !in it }
+
+        fun conflictFreeName(name: String, index: Int): String {
+            val dot = name.lastIndexOf('.')
+            return if (dot <= 0) {
+                "$name ($index)"
+            } else {
+                "${name.substring(0, dot)} ($index)${name.substring(dot)}"
+            }
+        }
     }
 
     override fun onCreate(): Boolean {
@@ -55,18 +99,14 @@ class DocumentProvider : DocumentsProvider() {
     /**
      * @return The [File] that corresponds to the document ID supplied by [getDocumentId]
      */
-    private fun getFile(documentId: String): File {
-        if (documentId.startsWith(ROOT_ID)) {
-            val file = baseDirectory.resolve(documentId.drop(ROOT_ID.length + 1))
-            if (!file.exists()) {
-                throw FileNotFoundException(
-                    "${file.absolutePath} ($documentId) not found"
-                )
-            }
-            return file
-        } else {
-            throw FileNotFoundException("'$documentId' is not in any known root")
+    private fun getFile(documentId: String, allowRoot: Boolean = true): File {
+        // The root is the user directory itself: renaming, moving or deleting it is refused.
+        val file = resolveDocumentFile(baseDirectory, documentId, allowRoot)
+            ?: throw FileNotFoundException("'$documentId' is not a document that can be used here")
+        if (!file.exists()) {
+            throw FileNotFoundException("${file.absolutePath} ($documentId) not found")
         }
+        return file
     }
 
     /**
@@ -103,21 +143,20 @@ class DocumentProvider : DocumentsProvider() {
     }
 
     override fun isChildDocument(parentDocumentId: String?, documentId: String?): Boolean {
-        return documentId?.startsWith(parentDocumentId!!) ?: false
+        if (parentDocumentId == null || documentId == null) return false
+        return isChildDocumentId(parentDocumentId, documentId)
     }
 
     /**
      * @return A new [File] with a unique name based off the supplied [name], not conflicting with any existing file
      */
-    private fun File.resolveWithoutConflict(name: String): File {
+    private fun File.resolveWithoutConflict(displayName: String): File {
+        val name = sanitizeDisplayName(displayName)
+            ?: throw FileNotFoundException("Invalid document name '$displayName'")
         var file = resolve(name)
-        if (file.exists()) {
-            var noConflictId =
-                1 // Makes sure two files don't have the same name by adding a number to the end
-            val extension = name.substringAfterLast('.')
-            val baseName = name.substringBeforeLast('.')
-            while (file.exists())
-                file = resolve("$baseName (${noConflictId++}).$extension")
+        var noConflictId = 1
+        while (file.exists()) {
+            file = resolve(conflictFreeName(name, noConflictId++))
         }
         return file
     }
@@ -148,7 +187,7 @@ class DocumentProvider : DocumentsProvider() {
     }
 
     override fun deleteDocument(documentId: String?) {
-        val file = getFile(documentId!!)
+        val file = getFile(documentId!!, allowRoot = false)
         if (!file.delete()) {
             throw FileNotFoundException("Couldn't delete document with ID '$documentId'")
         }
@@ -156,7 +195,7 @@ class DocumentProvider : DocumentsProvider() {
 
     override fun removeDocument(documentId: String, parentDocumentId: String?) {
         val parent = getFile(parentDocumentId!!)
-        val file = getFile(documentId)
+        val file = getFile(documentId, allowRoot = false)
 
         if (parent == file || file.parentFile == null || file.parentFile!! == parent) {
             if (!file.delete()) {
@@ -174,12 +213,15 @@ class DocumentProvider : DocumentsProvider() {
             )
         }
 
-        val sourceFile = getFile(documentId!!)
+        val sourceFile = getFile(documentId!!, allowRoot = false)
         val sourceParentFile = sourceFile.parentFile
             ?: throw FileNotFoundException(
                 "Couldn't rename document '$documentId' as it has no parent"
             )
-        val destFile = sourceParentFile.resolve(displayName)
+        val destFile = sourceParentFile.resolve(
+            sanitizeDisplayName(displayName)
+                ?: throw FileNotFoundException("Invalid document name '$displayName'")
+        )
 
         try {
             if (!sourceFile.renameTo(destFile)) {
@@ -243,6 +285,7 @@ class DocumentProvider : DocumentsProvider() {
         sourceParentDocumentId: String?,
         targetParentDocumentId: String?
     ): String {
+        getFile(sourceDocumentId, allowRoot = false)
         try {
             val newDocumentId = copyDocument(
                 sourceDocumentId,
@@ -312,7 +355,7 @@ class DocumentProvider : DocumentsProvider() {
                 return mime
             }
         }
-        return "application/octect-stream"
+        return "application/octet-stream"
     }
 
     override fun queryChildDocuments(
