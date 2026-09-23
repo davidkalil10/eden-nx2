@@ -19,6 +19,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.libsdl.app.SDL
 import java.lang.ref.WeakReference
 import org.yuzu.yuzu_emu.activities.EmulationActivity
+import org.yuzu.yuzu_emu.fragments.EmulationState
 import org.yuzu.yuzu_emu.fragments.CoreErrorDialogFragment
 import org.yuzu.yuzu_emu.utils.DocumentsTree
 import org.yuzu.yuzu_emu.utils.FileUtil
@@ -190,6 +191,16 @@ object NativeLibrary {
     external fun pauseEmulation()
 
     /**
+     * Asks a game that is still loading to start paused, without waiting for the load.
+     */
+    external fun requestPauseEmulation()
+
+    /**
+     * Withdraws a pause request whose session ended before running.
+     */
+    external fun cancelPauseRequest()
+
+    /**
      * Stops emulation.
      */
     external fun stopEmulation()
@@ -206,6 +217,12 @@ object NativeLibrary {
 
     external fun getRuntimeCheats(): Array<RuntimeCheat>
     external fun setRuntimeCheatEnabled(id: Int, enabled: Boolean): Boolean
+
+    /**
+     * Returns true once the game has loaded its disk shader cache and runs; before that,
+     * unpausing would race the cache load.
+     */
+    external fun isStarted(): Boolean
 
     /**
      * Returns the performance stats for the current game
@@ -386,6 +403,9 @@ object NativeLibrary {
     @Keep
     @JvmStatic
     fun exitEmulationActivity(resultCode: Int) {
+        // Called on the session thread before it ends: no fragment may boot this load again,
+        // and one recreated without an activity here shows the error itself.
+        EmulationState.markSessionFailed(resultCode, shown = sEmulationActivity.get() != null)
         val Success = 0
         val ErrorNotInitialized = 1
         val ErrorGetLoader = 2

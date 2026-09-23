@@ -44,7 +44,10 @@ public:
 
     bool IsRunning() const;
     bool IsPaused() const;
+    bool IsStarted() const;
     void PauseEmulation();
+    void RequestPause();
+    void ClearPauseRequest();
     void UnPauseEmulation();
     void HaltEmulation();
     void RunEmulation();
@@ -91,6 +94,8 @@ private:
     Core::SystemResultStatus m_load_result{Core::SystemResultStatus::ErrorNotInitialized};
     std::atomic<bool> m_is_running = false;
     std::atomic<bool> m_is_paused = false;
+    // Set once the disk shader cache is loaded and the game runs (or holds a requested pause).
+    std::atomic<bool> m_is_started = false;
     Common::Android::SoftwareKeyboard::AndroidKeyboard* m_software_keyboard{};
     std::unique_ptr<FileSys::ManualContentProvider> m_manual_provider;
     int m_applet_id{1};

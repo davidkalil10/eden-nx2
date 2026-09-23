@@ -210,6 +210,10 @@ bool EmulationSession::IsRunning() const {
     return m_is_running;
 }
 
+bool EmulationSession::IsStarted() const {
+    return m_is_running && m_is_started;
+}
+
 bool EmulationSession::IsPaused() const {
     return m_is_running && m_is_paused;
 }
@@ -379,6 +383,7 @@ void EmulationSession::ShutdownEmulation() {
     }
 
     m_is_running = false;
+    m_is_started = false;
     // A session stopped while paused must not start the next one paused. Cleared here and
     // not at load, so a pause requested while the next game loads is kept.
     m_is_paused = false;
@@ -411,6 +416,17 @@ void EmulationSession::PauseEmulation() {
     m_is_paused = true;
 }
 
+void EmulationSession::RequestPause() {
+    // No m_mutex: InitializeEmulation holds it for the whole load. RunEmulation reads the
+    // flag once the game runs.
+    m_is_paused = true;
+}
+
+void EmulationSession::ClearPauseRequest() {
+    // Lock-free like RequestPause, for a request whose session never ran.
+    m_is_paused = false;
+}
+
 void EmulationSession::UnPauseEmulation() {
     std::scoped_lock lock(m_mutex);
     m_system.Run();
@@ -426,6 +442,7 @@ void EmulationSession::HaltEmulation() {
 void EmulationSession::RunEmulation() {
     {
         std::scoped_lock lock(m_mutex);
+        m_is_started = false;
         m_is_running = true;
     }
 
@@ -446,6 +463,8 @@ void EmulationSession::RunEmulation() {
             m_system.Pause();
         }
     }
+    // Only now may the frontend unpause: before this, Run() and LoadDiskResources race.
+    m_is_started = true;
 
     if (m_system.DebuggerEnabled()) {
         m_system.InitializeDebugger();
@@ -992,6 +1011,14 @@ void Java_org_yuzu_yuzu_1emu_NativeLibrary_unpauseEmulation(JNIEnv* env, jclass 
     EmulationSession::GetInstance().UnPauseEmulation();
 }
 
+void Java_org_yuzu_yuzu_1emu_NativeLibrary_requestPauseEmulation(JNIEnv* env, jclass clazz) {
+    EmulationSession::GetInstance().RequestPause();
+}
+
+void Java_org_yuzu_yuzu_1emu_NativeLibrary_cancelPauseRequest(JNIEnv* env, jclass clazz) {
+    EmulationSession::GetInstance().ClearPauseRequest();
+}
+
 void Java_org_yuzu_yuzu_1emu_NativeLibrary_pauseEmulation(JNIEnv* env, jclass clazz) {
     EmulationSession::GetInstance().PauseEmulation();
 }
@@ -1002,6 +1029,10 @@ void Java_org_yuzu_yuzu_1emu_NativeLibrary_stopEmulation(JNIEnv* env, jclass cla
 
 jboolean Java_org_yuzu_yuzu_1emu_NativeLibrary_isRunning(JNIEnv* env, jclass clazz) {
     return static_cast<jboolean>(EmulationSession::GetInstance().IsRunning());
+}
+
+jboolean Java_org_yuzu_yuzu_1emu_NativeLibrary_isStarted(JNIEnv* env, jclass clazz) {
+    return static_cast<jboolean>(EmulationSession::GetInstance().IsStarted());
 }
 
 jboolean Java_org_yuzu_yuzu_1emu_NativeLibrary_isPaused(JNIEnv* env, jclass clazz) {

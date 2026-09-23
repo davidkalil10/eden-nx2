@@ -365,7 +365,8 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
                 driverViewModel.isInteractionAllowed.value && !isStoppingForRomSwap
             },
             canAttach = { !isStoppingForRomSwap },
-            onAttachedToRunningSession = { onAttachedToRunningSession() },
+            onAttachedToRunningSession = { loading -> onAttachedToRunningSession(loading) },
+            onWaitingForSession = { watchDeferredPause() },
             backend = EmulationState.NativeBackend
         )
     }
@@ -1372,6 +1373,9 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
 
     private fun pauseEmulationAndCaptureFrame() {
         emulationState.pause()
+        if (emulationState.isPauseDeferred) {
+            watchDeferredPause()
+        }
         updatePauseMenuEntry(true)
         capturePausedFrameFromCore()
         updatePausedFrameVisibility()
@@ -1412,7 +1416,9 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
 
     private fun updatePausedFrameVisibility() {
         val b = _binding ?: return
-        val showPausedUi = this::emulationState.isInitialized && emulationState.isPaused
+        // A pause deferred during the load has nothing to resume yet: no play icon.
+        val showPausedUi = this::emulationState.isInitialized && emulationState.isPaused &&
+            !emulationState.isPauseDeferred
         b.pausedIcon.setVisible(showPausedUi)
 
         val bitmap = if (showPausedUi) pausedFrameBitmap else null
@@ -1429,12 +1435,49 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
 
     // The activity was recreated over a live game: the loading screen of a fresh
     // ViewModel would hide it, and the menu must offer resume.
-    private fun onAttachedToRunningSession() {
+    private fun onAttachedToRunningSession(loading: Boolean) {
+        if (loading) {
+            watchDeferredPause()
+            return
+        }
         emulationViewModel.setEmulationStarted(true)
         if (_binding != null) {
             updatePauseMenuEntry(true)
             updatePausedFrameVisibility()
         }
+    }
+
+    // A pause asked for during the load holds only once the game runs, and a paused game
+    // draws no first frame to end the loading screen, so both happen here.
+    private val deferredPauseWatch = object : Runnable {
+        override fun run() {
+            if (_binding == null || !this@EmulationFragment::emulationState.isInitialized) {
+                return
+            }
+            when (emulationState.reconcileDeferredPause()) {
+                EmulationState.DeferredPause.Loading ->
+                    deferredPauseHandler.postDelayed(this, DEFERRED_PAUSE_POLL_MS)
+                EmulationState.DeferredPause.Started -> {
+                    emulationViewModel.setEmulationStarted(true)
+                    updatePauseMenuEntry(emulationState.isPaused)
+                    updatePausedFrameVisibility()
+                }
+                EmulationState.DeferredPause.None -> updatePausedFrameVisibility()
+                // With no activity to show it then, the error comes here, off the loading card.
+                EmulationState.DeferredPause.Failed ->
+                    EmulationState.takeUnshownFailure()?.let {
+                        NativeLibrary.exitEmulationActivity(it)
+                    }
+            }
+        }
+    }
+
+    // Its own handler: the overlay auto-hide clears every message on the shared one.
+    private val deferredPauseHandler = Handler(Looper.getMainLooper())
+
+    private fun watchDeferredPause() {
+        deferredPauseHandler.removeCallbacks(deferredPauseWatch)
+        deferredPauseHandler.post(deferredPauseWatch)
     }
 
     private fun clearPausedFrame() {
@@ -1568,6 +1611,7 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         perfStatsRunnable?.let { perfStatsUpdateHandler.removeCallbacks(it) }
         socRunnable?.let { socUpdateHandler.removeCallbacks(it) }
         handler.removeCallbacksAndMessages(null)
+        deferredPauseHandler.removeCallbacks(deferredPauseWatch)
         clearPausedFrame()
         _binding?.surfaceInputOverlay?.touchEventListener = null
         _binding = null
@@ -2395,6 +2439,7 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
             arrayOf("application/octet-stream", "application/x-binary", "*/*")
         private val perfStatsUpdateHandler = Handler(Looper.myLooper()!!)
         private val socUpdateHandler = Handler(Looper.myLooper()!!)
+        private const val DEFERRED_PAUSE_POLL_MS = 250L
     }
 
     private fun startOverlayAutoHideTimer(seconds: Int) {
