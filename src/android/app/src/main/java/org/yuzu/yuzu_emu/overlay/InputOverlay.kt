@@ -1290,6 +1290,8 @@ class InputOverlay(context: Context, attrs: AttributeSet?) :
             // Need to set the image's position
             overlayDrawable.setPosition(drawableX - (width / 2), drawableY - (height / 2))
             overlayDrawable.setOpacity(IntSetting.OVERLAY_OPACITY.getInt() * 255 / 100)
+            // Saved back on drag; must hold the configured scale, not the default.
+            dpadData?.individualScale?.takeIf { it > 0f }?.let { overlayDrawable.individualScale = it }
             return overlayDrawable
         }
 
@@ -1372,6 +1374,8 @@ class InputOverlay(context: Context, attrs: AttributeSet?) :
             // Need to set the image's position
             overlayDrawable.setPosition(drawableX, drawableY)
             overlayDrawable.setOpacity(IntSetting.OVERLAY_OPACITY.getInt() * 255 / 100)
+            // Saved back on drag; must hold the configured scale, not the default.
+            overlayControlData.individualScale.takeIf { it > 0f }?.let { overlayDrawable.individualScale = it }
             return overlayDrawable
         }
     }
