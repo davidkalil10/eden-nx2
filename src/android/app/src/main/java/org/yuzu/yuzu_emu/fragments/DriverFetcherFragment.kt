@@ -18,7 +18,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.transition.MaterialSharedAxis
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -164,7 +164,8 @@ class DriverFetcherFragment : Fragment() {
             val sortMode = driver.sortMode
             val sort = driver.sort
 
-            CoroutineScope(Dispatchers.Main).launch {
+            // Cancelled with the view, so a late answer never reaches a destroyed binding.
+            viewLifecycleOwner.lifecycleScope.launch {
                 val request =
                     Request.Builder().url("https://api.github.com/repos/$path/releases").build()
 
@@ -200,17 +201,19 @@ class DriverFetcherFragment : Fragment() {
                         sort
                     )
 
-                    synchronized(driverGroups) {
+                    val snapshot = synchronized(driverGroups) {
                         driverGroups.add(group)
                         driverGroups.sortBy {
                             it.sort
                         }
+                        // The adapter must not share a list the other fetches still modify.
+                        driverGroups.toList()
                     }
 
                     withContext(Dispatchers.Main) {
-                        driverGroupAdapter.updateDriverGroups(driverGroups)
+                        driverGroupAdapter.updateDriverGroups(snapshot)
 
-                        if (driverGroups.size >= repoList.size) {
+                        if (snapshot.size >= repoList.size) {
                             binding.loadingIndicator.isVisible = false
                         }
                     }
