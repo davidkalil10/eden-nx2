@@ -9,6 +9,7 @@
 #include <common/settings_input.h>
 #include <common/thread.h>
 #include <jni.h>
+#include "common/scope_exit.h"
 #include "common/android/android_common.h"
 #include "common/android/id_cache.h"
 #include "input_common/drivers/android.h"
@@ -37,10 +38,11 @@ void Android::RegisterController(jobject j_input_device) {
     const auto identifier = GetIdentifier(guid, static_cast<size_t>(port));
     PreSetController(identifier);
 
+    auto new_device = env->NewGlobalRef(j_input_device);
+    std::scoped_lock lock{input_devices_mutex};
     if (input_devices.find(identifier) != input_devices.end()) {
         env->DeleteGlobalRef(input_devices[identifier]);
     }
-    auto new_device = env->NewGlobalRef(j_input_device);
     input_devices[identifier] = new_device;
 }
 
@@ -80,21 +82,42 @@ Common::Input::DriverResult Android::SetVibration(
     return Common::Input::DriverResult::Success;
 }
 
+jobject Android::AcquireDevice(JNIEnv* env, const PadIdentifier& identifier) const {
+    std::scoped_lock lock{input_devices_mutex};
+    const auto it = input_devices.find(identifier);
+    return it != input_devices.end() && it->second ? env->NewLocalRef(it->second) : nullptr;
+}
+
 bool Android::IsVibrationEnabled([[maybe_unused]] const PadIdentifier& identifier) {
-    auto device = input_devices.find(identifier);
-    if (device != input_devices.end()) {
-        return Common::Android::RunJNIOnFiber<bool>([&](JNIEnv* env) {
-            return static_cast<bool>(env->CallBooleanMethod(
-                device->second, Common::Android::GetYuzuDeviceGetSupportsVibration()));
-        });
-    }
-    return false;
+    // All JNI here runs on the attached helper thread; the caller may be a guest core.
+    return Common::Android::RunJNIOnFiber<bool>([&](JNIEnv* env) {
+        const jobject device = AcquireDevice(env, identifier);
+        if (device == nullptr) {
+            return false;
+        }
+        const bool enabled = static_cast<bool>(
+            env->CallBooleanMethod(device, Common::Android::GetYuzuDeviceGetSupportsVibration()));
+        env->DeleteLocalRef(device);
+        return enabled;
+    });
 }
 
 std::vector<Common::ParamPackage> Android::GetInputDevices() const {
     std::vector<Common::ParamPackage> devices;
     auto env = Common::Android::GetEnvForThread();
-    for (const auto& [key, value] : input_devices) {
+    std::vector<std::pair<PadIdentifier, jobject>> snapshot;
+    {
+        std::scoped_lock lock{input_devices_mutex};
+        for (const auto& [key, value] : input_devices) {
+            if (value) {
+                snapshot.emplace_back(key, env->NewLocalRef(value));
+            }
+        }
+    }
+    for (const auto& [key, value] : snapshot) {
+        SCOPE_EXIT {
+            env->DeleteLocalRef(value);
+        };
         auto name_object = static_cast<jstring>(
             env->CallObjectMethod(value, Common::Android::GetYuzuDeviceGetName()));
         const std::string name =
@@ -176,12 +199,14 @@ AnalogMapping Android::GetAnalogMappingForDevice(const Common::ParamPackage& par
 
     auto identifier =
         GetIdentifier(params.Get("guid", ""), static_cast<size_t>(params.Get("port", 0)));
-    auto& j_device = input_devices[identifier];
+    auto env = Common::Android::GetEnvForThread();
+    jobject j_device = AcquireDevice(env, identifier);
     if (j_device == nullptr) {
         return {};
     }
-
-    auto env = Common::Android::GetEnvForThread();
+    SCOPE_EXIT {
+        env->DeleteLocalRef(j_device);
+    };
     std::set<s32> axes = GetDeviceAxes(env, j_device);
     if (axes.size() == 0) {
         return {};
@@ -210,12 +235,14 @@ ButtonMapping Android::GetButtonMappingForDevice(const Common::ParamPackage& par
 
     auto identifier =
         GetIdentifier(params.Get("guid", ""), static_cast<size_t>(params.Get("port", 0)));
-    auto& j_device = input_devices[identifier];
+    auto env = Common::Android::GetEnvForThread();
+    jobject j_device = AcquireDevice(env, identifier);
     if (j_device == nullptr) {
         return {};
     }
-
-    auto env = Common::Android::GetEnvForThread();
+    SCOPE_EXIT {
+        env->DeleteLocalRef(j_device);
+    };
     jintArray j_keys = env->NewIntArray(static_cast<int>(keycode_ids.size()));
     env->SetIntArrayRegion(j_keys, 0, static_cast<int>(keycode_ids.size()), keycode_ids.data());
     auto j_has_keys_object = static_cast<jbooleanArray>(
@@ -360,12 +387,19 @@ PadIdentifier Android::GetIdentifier(const std::string& guid, size_t port) const
 
 void Android::SendVibrations(JNIEnv* env, std::stop_token token) {
     VibrationRequest request = vibration_queue.PopWait(token);
-    auto device = input_devices.find(request.identifier);
-    if (device != input_devices.end()) {
+    jobject device = nullptr;
+    {
+        // A local ref keeps the device alive if RegisterController replaces it meanwhile.
+        std::scoped_lock lock{input_devices_mutex};
+        if (auto it = input_devices.find(request.identifier); it != input_devices.end()) {
+            device = env->NewLocalRef(it->second);
+        }
+    }
+    if (device != nullptr) {
         float average_intensity = static_cast<float>(
             (request.vibration.high_amplitude + request.vibration.low_amplitude) / 2.0);
-        env->CallVoidMethod(device->second, Common::Android::GetYuzuDeviceVibrate(),
-                            average_intensity);
+        env->CallVoidMethod(device, Common::Android::GetYuzuDeviceVibrate(), average_intensity);
+        env->DeleteLocalRef(device);
     }
 }
 

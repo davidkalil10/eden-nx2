@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <mutex>
 #include <set>
 #include <common/threadsafe_queue.h>
 #include <jni.h>
@@ -91,6 +92,12 @@ public:
 
 private:
     ::Common::unordered_map<PadIdentifier, jobject> input_devices;
+    /// Guards input_devices against the vibration and HID threads while the UI thread
+    /// registers controllers.
+    mutable std::mutex input_devices_mutex;
+
+    /// A new local ref to the registered device, or nullptr; the caller deletes it.
+    jobject AcquireDevice(JNIEnv* env, const PadIdentifier& identifier) const;
 
     /// Returns the correct identifier corresponding to the player index
     PadIdentifier GetIdentifier(const std::string& guid, size_t port) const;
