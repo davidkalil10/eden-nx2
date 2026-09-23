@@ -232,6 +232,22 @@ class InputOverlay(context: Context, attrs: AttributeSet?) :
             return onTouchWhileEditing(event)
         }
 
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            // A parent took the gesture (drawer or back swipe): release every pointer, or the
+            // controls and touches it held stay pressed in the game.
+            for (i in 0 until event.pointerCount) {
+                val up = MotionEvent.obtain(event)
+                up.action = if (event.pointerCount == 1) {
+                    MotionEvent.ACTION_UP
+                } else {
+                    MotionEvent.ACTION_POINTER_UP or (i shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+                }
+                onTouch(v, up)
+                up.recycle()
+            }
+            return true
+        }
+
         var shouldUpdateView = false
         val playerIndex = when (NativeInput.getStyleIndex(0)) {
             NpadStyleIndex.Handheld -> 8
