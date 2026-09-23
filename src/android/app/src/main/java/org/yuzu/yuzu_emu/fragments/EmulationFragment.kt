@@ -1525,6 +1525,9 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         }
 
     override fun onPause() {
+        // The overlays poll JNI, /proc and the battery; nothing shows them in the background.
+        perfStatsRunnable?.let { perfStatsUpdateHandler.removeCallbacks(it) }
+        socRunnable?.let { socUpdateHandler.removeCallbacks(it) }
         if (this::emulationState.isInitialized) {
             if (emulationState.isRunning && emulationActivity?.isInPictureInPictureMode != true) {
                 pauseEmulationAndCaptureFrame()
@@ -1561,6 +1564,14 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         val b = _binding ?: return
         updateStatsPosition(IntSetting.PERF_OVERLAY_POSITION.getInt())
         updateSocPosition(IntSetting.SOC_OVERLAY_POSITION.getInt())
+        perfStatsRunnable?.let {
+            perfStatsUpdateHandler.removeCallbacks(it)
+            perfStatsUpdateHandler.post(it)
+        }
+        socRunnable?.let {
+            socUpdateHandler.removeCallbacks(it)
+            socUpdateHandler.post(it)
+        }
 
         if (this::emulationState.isInitialized) {
             b.inGameMenu.post {
@@ -1707,12 +1718,14 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
 
                     binding.showStatsOverlayText.text = sb.toString()
                 }
-                perfStatsUpdateHandler.postDelayed(perfStatsRunnable!!, 800)
+                perfStatsRunnable?.let { perfStatsUpdateHandler.postDelayed(it, 800) }
             }
+            perfStatsRunnable?.let { perfStatsUpdateHandler.removeCallbacks(it) }
             perfStatsRunnable = Runnable { perfStatsUpdater?.invoke() }
             perfStatsUpdateHandler.post(perfStatsRunnable!!)
         } else {
             perfStatsRunnable?.let { perfStatsUpdateHandler.removeCallbacks(it) }
+            perfStatsRunnable = null
         }
     }
 
@@ -1858,12 +1871,14 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
                     }
                 }
 
-                socUpdateHandler.postDelayed(socRunnable!!, 1000)
+                socRunnable?.let { socUpdateHandler.postDelayed(it, 1000) }
             }
+            socRunnable?.let { socUpdateHandler.removeCallbacks(it) }
             socRunnable = Runnable { socUpdater?.invoke() }
             socUpdateHandler.post(socRunnable!!)
         } else {
             socRunnable?.let { socUpdateHandler.removeCallbacks(it) }
+            socRunnable = null
         }
     }
 
