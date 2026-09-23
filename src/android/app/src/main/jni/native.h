@@ -4,7 +4,9 @@
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <mutex>
 #include <optional>
+#include <vector>
 
 #include <android/native_window_jni.h>
 #include "common/android/applets/software_keyboard.h"
@@ -33,6 +35,7 @@ public:
     EmuWindow_Android& Window();
     ANativeWindow* NativeWindow() const;
     void SetNativeWindow(ANativeWindow* native_window);
+    void RetireNativeWindow(ANativeWindow* native_window);
     void SurfaceChanged();
 
     void InitializeGpuDriver(const std::string& hook_lib_dir, const std::string& custom_driver_dir,
@@ -74,6 +77,10 @@ private:
     // Window management
     std::unique_ptr<EmuWindow_Android> m_window;
     ANativeWindow* m_native_window{};
+    // Replaced windows the render threads may still read; released once they are joined.
+    std::vector<ANativeWindow*> m_retired_windows;
+    std::mutex m_retired_windows_mutex;
+    void ReleaseRetiredNativeWindows();
 
     // Core emulation
     Core::System m_system;

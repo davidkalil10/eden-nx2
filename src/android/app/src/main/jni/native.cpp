@@ -161,6 +161,19 @@ void EmulationSession::SetNativeWindow(ANativeWindow* native_window) {
     m_native_window = native_window;
 }
 
+void EmulationSession::RetireNativeWindow(ANativeWindow* native_window) {
+    std::scoped_lock lock{m_retired_windows_mutex};
+    m_retired_windows.push_back(native_window);
+}
+
+void EmulationSession::ReleaseRetiredNativeWindows() {
+    std::scoped_lock lock{m_retired_windows_mutex};
+    for (ANativeWindow* const window : m_retired_windows) {
+        ANativeWindow_release(window);
+    }
+    m_retired_windows.clear();
+}
+
 void EmulationSession::InitializeGpuDriver(const std::string& hook_lib_dir,
                                            const std::string& custom_driver_dir,
                                            const std::string& custom_driver_name,
@@ -382,12 +395,14 @@ void EmulationSession::ShutdownEmulation() {
         m_system.ShutdownMainProcess();
         m_load_result = Core::SystemResultStatus::ErrorNotInitialized;
         m_window.reset();
+        ReleaseRetiredNativeWindows();
         OnEmulationStopped(Core::SystemResultStatus::Success);
         return;
     }
 
     // Tear down the render window.
     m_window.reset();
+    ReleaseRetiredNativeWindows();
 }
 
 void EmulationSession::PauseEmulation() {
@@ -765,15 +780,29 @@ extern "C" {
 
 void Java_org_yuzu_yuzu_1emu_NativeLibrary_surfaceChanged(JNIEnv* env, jobject instance,
                                                           [[maybe_unused]] jobject surf) {
-    EmulationSession::GetInstance().SetNativeWindow(ANativeWindow_fromSurface(env, surf));
-    EmulationSession::GetInstance().SurfaceChanged();
+    auto& session = EmulationSession::GetInstance();
+    // fromSurface takes a reference; hold exactly one per window.
+    ANativeWindow* const window = ANativeWindow_fromSurface(env, surf);
+    ANativeWindow* const previous = session.NativeWindow();
+    session.SetNativeWindow(window);
+    session.SurfaceChanged();
+    if (previous == window) {
+        // Same window: the new reference keeps it alive, drop the duplicate.
+        ANativeWindow_release(previous);
+    } else if (previous) {
+        // A render thread may still hold the old pointer; free it after they stop.
+        session.RetireNativeWindow(previous);
+    }
 }
 
 void Java_org_yuzu_yuzu_1emu_NativeLibrary_surfaceDestroyed(JNIEnv* env, jobject instance) {
-    if (auto* native_window = EmulationSession::GetInstance().NativeWindow(); native_window) {
-        ANativeWindow_release(native_window);
+    auto& session = EmulationSession::GetInstance();
+    ANativeWindow* const window = session.NativeWindow();
+    session.SetNativeWindow(nullptr);
+    if (window) {
+        // The render window still points at it; free it once the render threads stop.
+        session.RetireNativeWindow(window);
     }
-    EmulationSession::GetInstance().SetNativeWindow(nullptr);
 }
 
 void Java_org_yuzu_yuzu_1emu_NativeLibrary_setAppDirectory(JNIEnv* env, jobject instance,
