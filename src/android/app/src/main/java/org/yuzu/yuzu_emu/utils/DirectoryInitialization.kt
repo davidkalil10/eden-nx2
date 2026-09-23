@@ -4,6 +4,7 @@
 package org.yuzu.yuzu_emu.utils
 
 import androidx.preference.PreferenceManager
+import java.io.File
 import java.io.IOException
 import org.yuzu.yuzu_emu.NativeLibrary
 import org.yuzu.yuzu_emu.YuzuApplication
@@ -40,6 +41,8 @@ object DirectoryInitialization {
     private fun initializeInternalStorage() {
         try {
             userPath = YuzuApplication.appContext.getExternalFilesDir(null)!!.canonicalPath
+            // Settle an import killed mid-swap before native code reads the user directory.
+            DirectorySwap.recover(File(userPath!!))
             NativeLibrary.setAppDirectory(userPath!!)
         } catch (e: IOException) {
             e.printStackTrace()

@@ -349,19 +349,23 @@ object InstallableActions {
             activity,
             R.string.importing_user_data
         ) { progressCallback, _ ->
-            val checkStream = ZipInputStream(
-                BufferedInputStream(activity.contentResolver.openInputStream(result))
-            )
             var isYuzuBackup = false
-            checkStream.use { stream ->
-                var ze: ZipEntry? = null
-                while (stream.nextEntry?.also { ze = it } != null) {
-                    val itemName = ze!!.name.trim()
-                    if (itemName == "/config/config.ini" || itemName == "config/config.ini") {
-                        isYuzuBackup = true
-                        return@use
+            try {
+                val checkStream = ZipInputStream(
+                    BufferedInputStream(activity.contentResolver.openInputStream(result))
+                )
+                checkStream.use { stream ->
+                    var ze: ZipEntry? = null
+                    while (stream.nextEntry?.also { ze = it } != null) {
+                        val itemName = ze!!.name.trim()
+                        if (itemName == "/config/config.ini" || itemName == "config/config.ini") {
+                            isYuzuBackup = true
+                            return@use
+                        }
                     }
                 }
+            } catch (_: Exception) {
+                // Unreadable or revoked URI: same answer as a zip without a config.
             }
             if (!isYuzuBackup) {
                 return@newInstance MessageDialogFragment.newInstance(
@@ -371,16 +375,17 @@ object InstallableActions {
                 )
             }
 
-            NativeConfig.unloadGlobalConfig()
-            File(userDirectory).deleteRecursively()
-
-            try {
-                FileUtil.unzipToInternalStorage(
-                    result.toString(),
-                    File(userDirectory),
-                    progressCallback
-                )
-            } catch (_: Exception) {
+            // A bad or truncated backup must leave the current data in place.
+            val swap = DirectorySwap.replace(
+                File(userDirectory),
+                beforeSwap = { NativeConfig.unloadGlobalConfig() }
+            ) { staging ->
+                FileUtil.unzipToInternalStorage(result.toString(), staging, progressCallback)
+            }
+            if (swap != DirectorySwap.Result.Replaced) {
+                if (swap == DirectorySwap.Result.SwapFailed) {
+                    NativeConfig.initializeGlobalConfig()
+                }
                 return@newInstance MessageDialogFragment.newInstance(
                     activity,
                     titleId = R.string.import_failed,
