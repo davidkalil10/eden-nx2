@@ -84,10 +84,15 @@ object InputHandler {
             else -> return false
         }
 
-        var controllerData = androidControllers[event.device.controllerNumber]
+        val controllerNumber = event.device?.controllerNumber ?: return false
+        var controllerData = androidControllers[controllerNumber]
         if (controllerData == null) {
+            // Keyboards and mice have no controller number; a rescan on their keys finds nothing.
+            if (controllerNumber == 0) {
+                return false
+            }
             updateControllerData()
-            controllerData = androidControllers[event.device.controllerNumber] ?: return false
+            controllerData = androidControllers[controllerNumber] ?: return false
         }
 
         NativeInput.onGamePadButtonEvent(
