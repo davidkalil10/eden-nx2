@@ -43,9 +43,16 @@ class InputDialogFragment : DialogFragment() {
 
     private val settingsViewModel: SettingsViewModel by activityViewModels()
 
+    // Restored after the activity was recreated: the item lived only in the old ViewModel.
+    private var isStale = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (settingsViewModel.clickedItem == null) dismiss()
+        if (settingsViewModel.clickedItem !is InputSetting) {
+            isStale = true
+            dismissAllowingStateLoss()
+            return
+        }
 
         position = requireArguments().getInt(POSITION)
 
@@ -53,6 +60,9 @@ class InputDialogFragment : DialogFragment() {
     }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        if (isStale) {
+            return super.onCreateDialog(savedInstanceState)
+        }
         inputSetting = settingsViewModel.clickedItem as InputSetting
         binding = DialogMappingBinding.inflate(layoutInflater)
 
@@ -137,8 +147,8 @@ class InputDialogFragment : DialogFragment() {
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View {
-        return binding.root
+    ): View? {
+        return if (isStale) null else binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
