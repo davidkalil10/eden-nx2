@@ -229,6 +229,7 @@ ButtonMapping Android::GetButtonMappingForDevice(const Common::ParamPackage& par
             available_keys.insert(keycode_ids[i]);
         }
     }
+    env->ReleaseBooleanArrayElements(j_has_keys_object, j_has_keys, JNI_ABORT);
 
     // Some devices use axes instead of buttons for certain controls so we need all the axes here
     std::set<s32> axes = GetDeviceAxes(env, j_device);
