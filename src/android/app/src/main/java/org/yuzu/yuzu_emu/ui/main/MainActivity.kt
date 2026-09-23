@@ -51,6 +51,7 @@ import org.yuzu.yuzu_emu.features.settings.model.BooleanSetting
 import org.yuzu.yuzu_emu.YuzuApplication
 import org.yuzu.yuzu_emu.updater.APKDownloader
 import org.yuzu.yuzu_emu.updater.APKInstaller
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -163,22 +164,24 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
         val firstTimeSetup = PreferenceManager.getDefaultSharedPreferences(applicationContext)
                 .getBoolean(Settings.PREF_FIRST_APP_LAUNCH, true)
 
-        if (!firstTimeSetup && NativeLibrary.isUpdateCheckerEnabled() && BooleanSetting.ENABLE_UPDATE_CHECKS.getBoolean()) {
-             checkForUpdates()
+        // Once per launch, not again on every rotation.
+        if (savedInstanceState == null && !firstTimeSetup &&
+            NativeLibrary.isUpdateCheckerEnabled() && BooleanSetting.ENABLE_UPDATE_CHECKS.getBoolean()
+        ) {
+            checkForUpdates()
         }
         setInsets()
         applyFullscreenPreference()
     }
 
     private fun checkForUpdates() {
-        Thread {
-            val latestVersion = NativeLibrary.checkForUpdate()
-            if (latestVersion != null) {
-                runOnUiThread {
-                    showUpdateDialog(latestVersion)
-                }
+        // Tied to this activity: a result arriving after it is destroyed must not show a dialog.
+        lifecycleScope.launch {
+            val latestVersion = withContext(Dispatchers.IO) { NativeLibrary.checkForUpdate() }
+            if (latestVersion != null && !isFinishing && !isDestroyed) {
+                showUpdateDialog(latestVersion)
             }
-        }.start()
+        }
     }
 
     // TODO(crueter): body, "View on Forgejo" button
