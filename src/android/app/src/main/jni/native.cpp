@@ -571,6 +571,19 @@ static Core::SystemResultStatus RunEmulation(const std::string& filepath,
 
 namespace {
 
+// Cuts to at most max_bytes without splitting a UTF-8 sequence.
+std::string TruncateUtf8(std::string text, std::size_t max_bytes) {
+    if (text.size() <= max_bytes) {
+        return text;
+    }
+    std::size_t size = max_bytes;
+    while (size > 0 && (static_cast<unsigned char>(text[size]) & 0xC0) == 0x80) {
+        --size;
+    }
+    text.resize(size);
+    return text;
+}
+
 struct CpuPartInfo {
     u32 vendor;
     u32 part;
@@ -2105,7 +2118,8 @@ JNIEXPORT jboolean JNICALL Java_org_yuzu_yuzu_1emu_NativeLibrary_createUser(
         jstring jusername) {
     auto& manager = EmulationSession::GetInstance().System().GetProfileManager();
     const auto uuid_string = Common::Android::GetJString(env, juuid);
-    const auto username = Common::Android::GetJString(env, jusername);
+    const auto username = TruncateUtf8(Common::Android::GetJString(env, jusername),
+                                       Service::Account::profile_username_size);
     const auto uuid = Common::UUID{uuid_string};
 
     const auto result = manager.CreateNewUser(uuid, username);
@@ -2123,7 +2137,9 @@ JNIEXPORT jboolean JNICALL Java_org_yuzu_yuzu_1emu_NativeLibrary_updateUserUsern
         jstring jusername) {
     auto& manager = EmulationSession::GetInstance().System().GetProfileManager();
     const auto uuid_string = Common::Android::GetJString(env, juuid);
-    const auto username = Common::Android::GetJString(env, jusername);
+    // The profile holds 32 bytes; the text field counts UTF-16 units.
+    const auto username = TruncateUtf8(Common::Android::GetJString(env, jusername),
+                                       Service::Account::profile_username_size);
     const auto uuid = Common::UUID{uuid_string};
 
     Service::Account::ProfileBase profile{};

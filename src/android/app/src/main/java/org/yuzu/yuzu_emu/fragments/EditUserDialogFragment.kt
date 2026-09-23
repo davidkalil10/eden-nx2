@@ -58,6 +58,11 @@ class EditUserDialogFragment : Fragment() {
 
     companion object {
         private const val ARG_UUID = "uuid"
+        private const val USERNAME_MAX_BYTES = 32
+
+        // The profile stores UTF-8 bytes, not characters.
+        fun isValidUsername(name: String): Boolean =
+            name.isNotEmpty() && name.toByteArray(Charsets.UTF_8).size <= USERNAME_MAX_BYTES
         private const val ARG_USERNAME = "username"
 
         fun newInstance(profile: UserProfile?): EditUserDialogFragment {
@@ -263,7 +268,7 @@ class EditUserDialogFragment : Fragment() {
 
     private fun validateInput() {
         val username = binding.editUsername.text.toString()
-        val isValid = username.isNotEmpty() && username.length <= 32
+        val isValid = isValidUsername(username)
         binding.buttonSave.isEnabled = isValid
     }
 
