@@ -250,9 +250,9 @@
     <string name="folder_already_added">Ова мапа је већ додата!</string>
     <string name="game_folder_properties">Играње некретнина</string>
     <plurals name="saves_import_failed">
-        <item quantity="one">Није успео увоз %d сачуване позиције</item>
-        <item quantity="few">Није успео увоз %d сачуване позиције</item>
-        <item quantity="other">Није успео увоз %d сачуваних позиција</item>
+        <item quantity="one">Увоз%d уштедите</item>
+        <item quantity="few">Увоз%d уносе</item>
+        <item quantity="other">Увоз%d уносе</item>
     </plurals>
     <plurals name="saves_import_success">
         <item quantity="one">Успешно увезено%d уштеда</item>

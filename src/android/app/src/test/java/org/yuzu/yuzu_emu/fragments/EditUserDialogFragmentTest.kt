@@ -17,9 +17,9 @@ class EditUserDialogFragmentTest {
     @Test
     fun multiByteNamesAreMeasuredInBytes() {
         // 11 CJK characters are 33 UTF-8 bytes; 9 emoji are 36.
-        assertFalse(EditUserDialogFragment.isValidUsername("名".repeat(11)))
-        assertTrue(EditUserDialogFragment.isValidUsername("名".repeat(10)))
-        assertFalse(EditUserDialogFragment.isValidUsername("😀".repeat(9)))
+        assertFalse(EditUserDialogFragment.isValidUsername("\u540D".repeat(11)))
+        assertTrue(EditUserDialogFragment.isValidUsername("\u540D".repeat(10)))
+        assertFalse(EditUserDialogFragment.isValidUsername("\uD83D\uDE00".repeat(9)))
     }
 
     @Test
