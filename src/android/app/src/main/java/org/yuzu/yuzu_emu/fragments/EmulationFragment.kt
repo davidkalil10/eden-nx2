@@ -1359,6 +1359,18 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         }
     }
 
+    /** Play/pause from the picture-in-picture actions, kept in step with the in-game menu. */
+    fun setPausedFromPictureInPicture(paused: Boolean) {
+        if (!this::emulationState.isInitialized) {
+            return
+        }
+        if (paused && !emulationState.isPaused) {
+            pauseEmulationAndCaptureFrame()
+        } else if (!paused && emulationState.isPaused) {
+            resumeEmulationFromUi()
+        }
+    }
+
     private fun pauseEmulationAndCaptureFrame() {
         emulationState.pause()
         updatePauseMenuEntry(true)

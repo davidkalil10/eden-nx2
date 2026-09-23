@@ -3,6 +3,7 @@
 
 package org.yuzu.yuzu_emu.activities
 
+import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -165,5 +166,35 @@ class EmulationActivityTest {
         val state = bootedGame(session)
         assertTrue(state.isRunning)
         assertEquals("first", session.surface)
+    }
+
+    private val activitySource: String by lazy {
+        File("src/main/java/org/yuzu/yuzu_emu/activities/EmulationActivity.kt").readText()
+    }
+
+    // The argument list of each call to [name], with nested parentheses kept.
+    private fun calls(source: String, name: String): List<Pair<String, String>> =
+        Regex("""([\w.]*)\b$name\(""").findAll(source).map { match ->
+            var depth = 1
+            var end = match.range.last + 1
+            while (depth > 0) {
+                when (source[end]) {
+                    '(' -> depth++
+                    ')' -> depth--
+                }
+                end++
+            }
+            match.groupValues[1] to source.substring(match.range.last + 1, end - 1)
+        }.toList()
+
+    @Test
+    fun pictureInPictureReceiverIsNotExportedOnAnyApiLevel() {
+        val registrations = calls(activitySource, "registerReceiver")
+        assertTrue("no receiver registration found", registrations.isNotEmpty())
+        registrations.forEach { (receiver, args) ->
+            // Context.registerReceiver without the flag exports the receiver below API 33.
+            assertEquals("ContextCompat.", receiver)
+            assertTrue(args, args.contains("RECEIVER_NOT_EXPORTED"))
+        }
     }
 }

@@ -6,7 +6,6 @@
 
 package org.yuzu.yuzu_emu.activities
 
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
@@ -67,6 +66,7 @@ import org.yuzu.yuzu_emu.utils.ThemeHelper
 import java.text.NumberFormat
 import kotlin.math.roundToInt
 import org.yuzu.yuzu_emu.utils.ForegroundService
+import androidx.core.content.ContextCompat
 import androidx.core.os.BundleCompat
 
 class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager.InputDeviceListener {
@@ -598,7 +598,7 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
             val playPendingIntent = PendingIntent.getBroadcast(
                 this@EmulationActivity,
                 R.drawable.ic_pip_play,
-                Intent(actionPlay),
+                Intent(actionPlay).setPackage(packageName),
                 pendingFlags
             )
             val playRemoteAction = RemoteAction(
@@ -613,7 +613,7 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
             val pausePendingIntent = PendingIntent.getBroadcast(
                 this@EmulationActivity,
                 R.drawable.ic_pip_pause,
-                Intent(actionPause),
+                Intent(actionPause).setPackage(packageName),
                 pendingFlags
             )
             val pauseRemoteAction = RemoteAction(
@@ -633,7 +633,7 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
             val unmutePendingIntent = PendingIntent.getBroadcast(
                 this@EmulationActivity,
                 R.drawable.ic_pip_unmute,
-                Intent(actionUnmute),
+                Intent(actionUnmute).setPackage(packageName),
                 pendingFlags
             )
             val unmuteRemoteAction = RemoteAction(
@@ -648,7 +648,7 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
             val mutePendingIntent = PendingIntent.getBroadcast(
                 this@EmulationActivity,
                 R.drawable.ic_pip_mute,
-                Intent(actionMute),
+                Intent(actionMute).setPackage(packageName),
                 pendingFlags
             )
             val muteRemoteAction = RemoteAction(
@@ -687,10 +687,17 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
 
     private var pictureInPictureReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
-            if (intent.action == actionPlay) {
-                if (NativeLibrary.isPaused()) NativeLibrary.unpauseEmulation()
-            } else if (intent.action == actionPause) {
-                if (!NativeLibrary.isPaused()) NativeLibrary.pauseEmulation()
+            // Through the fragment so its pause state, menu and paused frame follow.
+            val fragment = (
+                supportFragmentManager.findFragmentById(R.id.fragment_container) as? NavHostFragment
+                )?.childFragmentManager?.fragments?.firstOrNull() as? EmulationFragment
+            if (intent.action == actionPlay || intent.action == actionPause) {
+                val pause = intent.action == actionPause
+                if (fragment != null) {
+                    fragment.setPausedFromPictureInPicture(pause)
+                } else if (pause != NativeLibrary.isPaused()) {
+                    if (pause) NativeLibrary.pauseEmulation() else NativeLibrary.unpauseEmulation()
+                }
             }
             if (intent.action == actionUnmute) {
                 if (BooleanSetting.AUDIO_MUTED.getBoolean()) {
@@ -705,7 +712,6 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
         }
     }
 
-    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onPictureInPictureModeChanged(
         isInPictureInPictureMode: Boolean,
         newConfig: Configuration
@@ -718,11 +724,14 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
                 addAction(actionMute)
                 addAction(actionUnmute)
             }.also {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    registerReceiver(pictureInPictureReceiver, it, RECEIVER_EXPORTED)
-                } else {
-                    registerReceiver(pictureInPictureReceiver, it)
-                }
+                // Only our own PendingIntents send these; before API 33 the compat call guards
+                // the receiver with a signature permission instead of the flag.
+                ContextCompat.registerReceiver(
+                    this,
+                    pictureInPictureReceiver,
+                    it,
+                    ContextCompat.RECEIVER_NOT_EXPORTED
+                )
             }
         } else {
             try {
