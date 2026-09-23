@@ -110,7 +110,8 @@
     "libadrenotools": {
         "hash": "191b8dad7ec39c4431ee155ca74ffb51d9c9b085e6f44d631bc03a34b09894dff6b7e1dd153b6eaac95647662b851ccc5ebb7ef54e6f57a6ee114a9516cf7282",
         "patches": [
-            "0001-use-cpmfile-def-for-linkernsbypass.patch"
+            "0001-use-cpmfile-def-for-linkernsbypass.patch",
+            "0002-load-custom-driver-uniquely-on-soname-collision.patch"
         ],
         "repo": "eden-emulator/libadrenotools",
         "version": "6727fe4218"
