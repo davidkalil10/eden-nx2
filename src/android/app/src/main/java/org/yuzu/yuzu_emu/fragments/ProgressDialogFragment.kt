@@ -52,7 +52,12 @@ class ProgressDialogFragment : DialogFragment() {
         alertDialog.setCanceledOnTouchOutside(false)
 
         if (!taskViewModel.isRunning.value) {
-            taskViewModel.runTask()
+            if (taskViewModel.hasTask) {
+                taskViewModel.runTask()
+            } else {
+                // Restored after process death with nothing left to run.
+                dismissAllowingStateLoss()
+            }
         }
         return alertDialog
     }

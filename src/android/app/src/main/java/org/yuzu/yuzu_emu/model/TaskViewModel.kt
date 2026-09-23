@@ -36,6 +36,9 @@ class TaskViewModel : ViewModel() {
     private val _message = MutableStateFlow("")
     val message = _message.asStateFlow()
 
+    // False in a ViewModel recreated after process death: the lambda is not restorable.
+    val hasTask: Boolean get() = this::task.isInitialized
+
     lateinit var task: suspend (
         progressCallback: (max: Long, progress: Long) -> Boolean,
         messageCallback: (message: String) -> Unit
