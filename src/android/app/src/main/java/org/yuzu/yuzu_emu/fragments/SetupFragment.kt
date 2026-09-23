@@ -416,9 +416,9 @@ class SetupFragment : Fragment() {
         val currentItem = binding.viewPager2.currentItem
         val page = pages[currentItem]
         // A recreated fragment has no callback from a tap; the visible page holder is one.
-        val callback = pageButtonCallback
-            ?: ((binding.viewPager2.getChildAt(0) as? RecyclerView)
-                ?.findViewHolderForAdapterPosition(currentItem) as? SetupCallback)
+        val holder = (binding.viewPager2.getChildAt(0) as? RecyclerView)
+            ?.findViewHolderForAdapterPosition(currentItem)
+        val callback = pageButtonCallback ?: holder as? SetupCallback
         if (callback != null) {
             page.pageButtons?.forEach {
                 if (it.buttonState() == ButtonState.BUTTON_ACTION_COMPLETE) {

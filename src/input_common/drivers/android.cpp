@@ -88,7 +88,7 @@ jobject Android::AcquireDevice(JNIEnv* env, const PadIdentifier& identifier) con
     return it != input_devices.end() && it->second ? env->NewLocalRef(it->second) : nullptr;
 }
 
-bool Android::IsVibrationEnabled([[maybe_unused]] const PadIdentifier& identifier) {
+bool Android::IsVibrationEnabled(const PadIdentifier& identifier) {
     // All JNI here runs on the attached helper thread; the caller may be a guest core.
     return Common::Android::RunJNIOnFiber<bool>([&](JNIEnv* env) {
         const jobject device = AcquireDevice(env, identifier);
