@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2025 Eden Emulator Project
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // SPDX-FileCopyrightText: 2023 yuzu Emulator Project
@@ -275,9 +275,11 @@ object FileUtil {
         try {
             val fileName =
                 if (destinationFilename == "") getFilename(sourceUri) else "/$destinationFilename"
+            // The display name comes from the provider; it must not climb out of the target.
+            val safeName = safeFileName(fileName) ?: throw IOException("Invalid name '$fileName'")
             val inputStream = context.contentResolver.openInputStream(sourceUri)!!
 
-            val destinationFile = File("$destinationParentPath$fileName")
+            val destinationFile = File("$destinationParentPath/$safeName")
             if (destinationFile.exists()) {
                 destinationFile.delete()
             }
@@ -286,11 +288,15 @@ object FileUtil {
                 inputStream.use { it.copyTo(fos) }
             }
             destinationFile
-        } catch (e: IOException) {
-            null
-        } catch (e: NullPointerException) {
+        } catch (e: Exception) {
+            // IOException, a revoked grant (SecurityException) or a missing provider
+            Log.error("[FileUtil]: Cannot copy $sourceUri: ${e.message}")
             null
         }
+
+    /** Last path component of [name], or null when nothing usable is left. */
+    fun safeFileName(name: String): String? =
+        name.substringAfterLast('/').takeIf { it.isNotEmpty() && it != "." && it != ".." }
 
     /**
      * Copies a file from internal appdata storage to an external Uri.
