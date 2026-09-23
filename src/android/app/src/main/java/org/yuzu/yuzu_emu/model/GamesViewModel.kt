@@ -32,6 +32,8 @@ class GamesViewModel : ViewModel() {
     private val _isReloading = MutableStateFlow(false)
 
     private val reloading = AtomicBoolean(false)
+    private val pendingReload = AtomicBoolean(false)
+    private val pendingDirectoriesChanged = AtomicBoolean(false)
 
     val shouldSwapData: StateFlow<Boolean> get() = _shouldSwapData
     private val _shouldSwapData = MutableStateFlow(false)
@@ -92,10 +94,12 @@ class GamesViewModel : ViewModel() {
     }
 
     fun reloadGames(directoriesChanged: Boolean, firstStartup: Boolean = false) {
-        if (reloading.get()) {
+        if (!reloading.compareAndSet(false, true)) {
+            // A scan is running; its folder list may predate this request, so run once more.
+            pendingReload.set(true)
+            pendingDirectoriesChanged.compareAndSet(false, directoriesChanged)
             return
         }
-        reloading.set(true)
         _isReloading.value = true
 
         viewModelScope.launch {
@@ -139,6 +143,9 @@ class GamesViewModel : ViewModel() {
                 } finally {
                     reloading.set(false)
                     _isReloading.value = false
+                    if (pendingReload.getAndSet(false)) {
+                        reloadGames(pendingDirectoriesChanged.getAndSet(false))
+                    }
                 }
             }
         }

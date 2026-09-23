@@ -38,7 +38,7 @@ object GameHelper {
         val gameDirs = mutableListOf<GameDir>()
         val oldGamesDir = preferences.getString(KEY_OLD_GAME_PATH, "") ?: ""
         if (oldGamesDir.isNotEmpty()) {
-            gameDirs.add(GameDir(oldGamesDir, true))
+            NativeConfig.addGameDir(GameDir(oldGamesDir, true))
             preferences.edit() { remove(KEY_OLD_GAME_PATH) }
         }
         gameDirs.addAll(NativeConfig.getGameDirs())
@@ -74,15 +74,14 @@ object GameHelper {
             }
         }
 
-        // Remove all game dirs with insufficient permissions from config
+        // Remove all game dirs with insufficient permissions from config. Filter the current
+        // list, not the snapshot taken before the scan: a folder added meanwhile must stay.
         if (badDirs.isNotEmpty()) {
-            var offset = 0
-            badDirs.forEach {
-                gameDirs.removeAt(it - offset)
-                offset++
-            }
+            val badUris = badDirs.map { gameDirs[it].uriString }.toSet()
+            NativeConfig.setGameDirs(
+                NativeConfig.getGameDirs().filterNot { it.uriString in badUris }.toTypedArray()
+            )
         }
-        NativeConfig.setGameDirs(gameDirs.toTypedArray())
 
         // Cache list of games found on disk
         val serializedGames = mutableSetOf<String>()
