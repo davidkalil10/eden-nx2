@@ -366,6 +366,9 @@ void EmulationSession::ShutdownEmulation() {
     }
 
     m_is_running = false;
+    // A session stopped while paused must not start the next one paused. Cleared here and
+    // not at load, so a pause requested while the next game loads is kept.
+    m_is_paused = false;
 
     // Unload user input.
     m_system.HIDCore().UnloadInputDevices();
@@ -420,6 +423,14 @@ void EmulationSession::RunEmulation() {
     }
 
     void(m_system.Run());
+
+    // Honor a pause requested while the game was loading.
+    {
+        std::scoped_lock lock(m_mutex);
+        if (m_is_paused) {
+            m_system.Pause();
+        }
+    }
 
     if (m_system.DebuggerEnabled()) {
         m_system.InitializeDebugger();
