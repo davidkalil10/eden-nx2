@@ -36,7 +36,6 @@ import org.yuzu.yuzu_emu.utils.ViewUtils.updateMargins
 import org.yuzu.yuzu_emu.utils.collect
 import java.io.BufferedOutputStream
 import java.io.File
-import java.math.BigInteger
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -286,8 +285,12 @@ class InstallableFragment : Fragment() {
                     if (files != null) {
                         for (file in files) {
                             if (file.isDirectory) {
-                                val baseSaveDir =
-                                    NativeLibrary.getSavePath(BigInteger(file.name, 16).toString())
+                                val titleId = titleIdFromSaveFolder(file.name)
+                                if (titleId == null) {
+                                    failedImports++
+                                    continue
+                                }
+                                val baseSaveDir = NativeLibrary.getSavePath(titleId)
                                 if (baseSaveDir.isEmpty()) {
                                     failedImports++
                                     continue
@@ -344,13 +347,17 @@ class InstallableFragment : Fragment() {
                         ).show(parentFragmentManager, MessageDialogFragment.TAG)
                     }
 
-                    cacheSaveDir.deleteRecursively()
                 } catch (e: Exception) {
-                    Toast.makeText(
-                        YuzuApplication.appContext,
-                        getString(R.string.fatal_error),
-                        Toast.LENGTH_LONG
-                    ).show()
+                    // Runs on the IO dispatcher; a toast needs the main thread.
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            YuzuApplication.appContext,
+                            YuzuApplication.appContext.getString(R.string.fatal_error),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                } finally {
+                    cacheSaveDir.deleteRecursively()
                 }
             }.show(parentFragmentManager, ProgressDialogFragment.TAG)
         }
@@ -404,5 +411,11 @@ class InstallableFragment : Fragment() {
                 TaskState.Cancelled, TaskState.Failed -> getString(R.string.export_failed)
             }
         }.show(parentFragmentManager, ProgressDialogFragment.TAG)
+    }
+
+    companion object {
+        // Save zips hold one folder per title ID in hex; the native side wants it in decimal.
+        fun titleIdFromSaveFolder(name: String): String? =
+            name.toBigIntegerOrNull(16)?.takeIf { it.signum() >= 0 }?.toString()
     }
 }
