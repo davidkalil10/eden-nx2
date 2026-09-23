@@ -152,9 +152,8 @@ class GamesFragment : Fragment() {
             )
         }
         gamesViewModel.games.collect(viewLifecycleOwner) {
-            if (it.isNotEmpty()) {
-                setAdapter(it)
-            }
+            // An empty result must clear the list too, e.g. after removing the last folder.
+            setAdapter(it)
         }
         gamesViewModel.shouldSwapData.collect(
             viewLifecycleOwner,
@@ -255,25 +254,8 @@ class GamesFragment : Fragment() {
         }
     }
 
-    private var lastSearchText: String = ""
-    private var lastFilter: Int = preferences.getInt(PREF_SORT_TYPE, View.NO_ID)
-
-    private fun setAdapter(games: List<Game>) {
-        val currentSearchText = binding.searchText.text.toString()
-        val currentFilter = binding.filterButton.id
-
-        val searchChanged = currentSearchText != lastSearchText
-        val filterChanged = currentFilter != lastFilter
-
-        if (searchChanged || filterChanged) {
-            filterAndSearch(games)
-            lastSearchText = currentSearchText
-            lastFilter = currentFilter
-        } else {
-            submitGameList(games)
-            gamesViewModel.setFilteredGames(games)
-        }
-    }
+    // Every new list goes through the active sort and search.
+    private fun setAdapter(games: List<Game>) = filterAndSearch(games)
 
     private fun submitGameList(games: List<Game>) {
         val adapter = (binding.gridGames as? RecyclerView)?.adapter as? GameAdapter
