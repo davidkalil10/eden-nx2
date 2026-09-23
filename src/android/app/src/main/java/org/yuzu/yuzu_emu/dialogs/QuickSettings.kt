@@ -177,14 +177,18 @@ class QuickSettings(val emulationFragment: EmulationFragment) {
         switchContainer.visibility = View.VISIBLE
 
         switchView.isChecked = isChecked
+        switchView.isEnabled = isEnabled
 
         switchView.setOnCheckedChangeListener { _, checked ->
             callback(checked)
             saveSettings()
         }
 
+        // toggle() ignores isEnabled, so the row has to check it.
         switchContainer.setOnClickListener {
-            switchView.toggle()
+            if (switchView.isEnabled) {
+                switchView.toggle()
+            }
         }
         container.addView(itemView)
 
