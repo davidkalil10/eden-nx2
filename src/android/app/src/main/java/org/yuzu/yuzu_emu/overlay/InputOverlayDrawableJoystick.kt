@@ -181,19 +181,12 @@ class InputOverlayDrawableJoystick(
             maxY -= virtBounds.centerY().toFloat()
             val axisX = touchX / maxX
             val axisY = touchY / maxY
-            val oldXAxis = xAxis
-            val oldYAxis = yAxis
-
-            // Clamp the circle pad input to a circle
-            val angle = atan2(axisY.toDouble(), axisX.toDouble()).toFloat()
-            var radius = sqrt((axisX * axisX + axisY * axisY).toDouble()).toFloat()
-            if (radius > 1.0f) {
-                radius = 1.0f
-            }
-            xAxis = cos(angle.toDouble()).toFloat() * radius
-            yAxis = sin(angle.toDouble()).toFloat() * radius
+            val (newX, newY) = clampToCircle(axisX, axisY)
+            val changed = axesChanged(xAxis, yAxis, newX, newY)
+            xAxis = newX
+            yAxis = newY
             setInnerBounds()
-            return oldXAxis != xAxis && oldYAxis != yAxis
+            return changed
         }
         return false
     }
@@ -308,5 +301,23 @@ class InputOverlayDrawableJoystick(
             outerBitmap.alpha = 0
             boundsBoxBitmap.alpha = value
         }
+    }
+
+    companion object {
+        fun clampToCircle(axisX: Float, axisY: Float): Pair<Float, Float> {
+            val angle = atan2(axisY.toDouble(), axisX.toDouble()).toFloat()
+            var radius = sqrt((axisX * axisX + axisY * axisY).toDouble()).toFloat()
+            if (radius > 1.0f) {
+                radius = 1.0f
+            }
+            return Pair(
+                cos(angle.toDouble()).toFloat() * radius,
+                sin(angle.toDouble()).toFloat() * radius
+            )
+        }
+
+        // Either axis moving is an update; a move along one axis leaves the other unchanged.
+        fun axesChanged(oldX: Float, oldY: Float, newX: Float, newY: Float): Boolean =
+            oldX != newX || oldY != newY
     }
 }
