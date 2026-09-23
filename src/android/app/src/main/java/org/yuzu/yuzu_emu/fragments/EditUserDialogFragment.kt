@@ -82,7 +82,10 @@ class EditUserDialogFragment : Fragment() {
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             result.data?.data?.let { uri ->
+                // The latest pick wins over an earlier avatar or revert.
                 selectedImageUri = uri
+                selectedFirmwareAvatar = null
+                revertedToDefault = false
                 loadImage(uri)
                 hasCustomImage = true
                 binding.buttonRevertImage.visibility = View.VISIBLE
@@ -210,6 +213,8 @@ class EditUserDialogFragment : Fragment() {
                     val scaledBitmap = selectedAvatar.scale(256, 256)
                     binding.imageUserAvatar.setImageBitmap(scaledBitmap)
                     selectedFirmwareAvatar = scaledBitmap
+                    selectedImageUri = null
+                    revertedToDefault = false
                     hasCustomImage = true
                     binding.buttonRevertImage.visibility = View.VISIBLE
                     dialog.dismiss()
