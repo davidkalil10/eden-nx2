@@ -22,5 +22,5 @@ enum class FloatSetting(override val key: String) : AbstractFloatSetting {
 
     override fun getValueAsString(needsGlobal: Boolean): String = getFloat(needsGlobal).toString()
 
-    override fun reset() = NativeConfig.setFloat(key, defaultValue)
+    override fun reset() = setFloat(defaultValue)
 }

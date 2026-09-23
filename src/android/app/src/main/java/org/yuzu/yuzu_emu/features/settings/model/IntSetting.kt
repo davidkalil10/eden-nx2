@@ -89,5 +89,5 @@ enum class IntSetting(override val key: String) : AbstractIntSetting {
 
     override fun getValueAsString(needsGlobal: Boolean): String = getInt(needsGlobal).toString()
 
-    override fun reset() = NativeConfig.setInt(key, defaultValue)
+    override fun reset() = setInt(defaultValue)
 }

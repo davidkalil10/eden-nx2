@@ -21,5 +21,5 @@ enum class LongSetting(override val key: String) : AbstractLongSetting {
 
     override fun getValueAsString(needsGlobal: Boolean): String = getLong(needsGlobal).toString()
 
-    override fun reset() = NativeConfig.setLong(key, defaultValue)
+    override fun reset() = setLong(defaultValue)
 }

@@ -111,5 +111,5 @@ enum class BooleanSetting(override val key: String) : AbstractBooleanSetting {
 
     override fun getValueAsString(needsGlobal: Boolean): String = getBoolean(needsGlobal).toString()
 
-    override fun reset() = NativeConfig.setBoolean(key, defaultValue)
+    override fun reset() = setBoolean(defaultValue)
 }

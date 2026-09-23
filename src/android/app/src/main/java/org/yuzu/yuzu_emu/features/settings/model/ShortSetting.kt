@@ -27,5 +27,5 @@ enum class ShortSetting(override val key: String) : AbstractShortSetting {
 
     override fun getValueAsString(needsGlobal: Boolean): String = getShort(needsGlobal).toString()
 
-    override fun reset() = NativeConfig.setShort(key, defaultValue)
+    override fun reset() = setShort(defaultValue)
 }

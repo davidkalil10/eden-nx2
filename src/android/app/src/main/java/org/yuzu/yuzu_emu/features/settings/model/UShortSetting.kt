@@ -23,5 +23,5 @@ enum class UShortSetting(override val key: String) : AbstractIntSetting {
 
     override fun getValueAsString(needsGlobal: Boolean): String = getInt(needsGlobal).toString()
 
-    override fun reset() = NativeConfig.setUnsignedShort(key, defaultValue)
+    override fun reset() = setInt(defaultValue)
 }

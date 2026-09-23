@@ -32,5 +32,5 @@ enum class StringSetting(override val key: String) : AbstractStringSetting {
 
     override fun getValueAsString(needsGlobal: Boolean): String = getString(needsGlobal)
 
-    override fun reset() = NativeConfig.setString(key, defaultValue)
+    override fun reset() = setString(defaultValue)
 }
