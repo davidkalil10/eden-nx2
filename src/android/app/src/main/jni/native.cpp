@@ -921,8 +921,12 @@ jobjectArray Java_org_yuzu_yuzu_1emu_utils_GpuDriverHelper_getSystemDriverInfo(
                                              nullptr, nullptr, file_redirect_dir_, nullptr);
     auto driver_library = std::make_shared<Common::DynamicLibrary>(handle);
     InputCommon::InputSubsystem input_subsystem;
-    auto window =
-        std::make_unique<EmuWindow_Android>(ANativeWindow_fromSurface(env, j_surf), driver_library);
+    // fromSurface takes a reference; drop it after the Vulkan objects below are gone.
+    ANativeWindow* const native_window = ANativeWindow_fromSurface(env, j_surf);
+    SCOPE_EXIT {
+        ANativeWindow_release(native_window);
+    };
+    auto window = std::make_unique<EmuWindow_Android>(native_window, driver_library);
 
     Vulkan::vk::InstanceDispatch dld;
     Vulkan::vk::Instance vk_instance = Vulkan::CreateInstance(
@@ -956,8 +960,12 @@ jstring Java_org_yuzu_yuzu_1emu_utils_GpuDriverHelper_getGpuModel(JNIEnv *env, j
                                              nullptr, nullptr, file_redirect_dir_, nullptr);
     auto driver_library = std::make_shared<Common::DynamicLibrary>(handle);
     InputCommon::InputSubsystem input_subsystem;
-    auto window =
-            std::make_unique<EmuWindow_Android>(ANativeWindow_fromSurface(env, j_surf), driver_library);
+    // fromSurface takes a reference; drop it after the Vulkan objects below are gone.
+    ANativeWindow* const native_window = ANativeWindow_fromSurface(env, j_surf);
+    SCOPE_EXIT {
+        ANativeWindow_release(native_window);
+    };
+    auto window = std::make_unique<EmuWindow_Android>(native_window, driver_library);
 
     Vulkan::vk::InstanceDispatch dld;
     Vulkan::vk::Instance vk_instance = Vulkan::CreateInstance(
@@ -968,8 +976,6 @@ jstring Java_org_yuzu_yuzu_1emu_utils_GpuDriverHelper_getGpuModel(JNIEnv *env, j
     auto device = Vulkan::CreateDevice(vk_instance, dld, *surface);
 
     const std::string model_name{device.GetModelName()};
-
-    window.release();
 
     return Common::Android::ToJString(env, model_name);
 #else
