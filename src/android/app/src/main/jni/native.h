@@ -107,6 +107,9 @@ private:
     // Synchronization
     std::condition_variable_any m_cv;
     mutable std::mutex m_mutex;
+    // What the run loop waits on: a halt and a shader cache reload. Apart from m_mutex because
+    // both come from emulated threads, which ShutdownEmulation waits for while holding m_mutex.
+    std::mutex m_wake_mutex;
 
     // Program index for next boot
     std::atomic<s32> m_next_program_index = -1;

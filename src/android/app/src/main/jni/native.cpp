@@ -434,7 +434,7 @@ void EmulationSession::UnPauseEmulation() {
 }
 
 void EmulationSession::HaltEmulation() {
-    std::scoped_lock lock(m_mutex);
+    std::scoped_lock lock(m_wake_mutex);
     m_is_running = false;
     m_cv.notify_one();
 }
@@ -473,7 +473,7 @@ void EmulationSession::RunEmulation() {
     while (true) {
         std::optional<u64> reload_title;
         {
-            [[maybe_unused]] std::unique_lock lock(m_mutex);
+            [[maybe_unused]] std::unique_lock lock(m_wake_mutex);
             if (m_cv.wait_for(lock, std::chrono::milliseconds(800), [&]() {
                     return !m_is_running || m_pending_shader_cache_title.has_value();
                 })) {
@@ -494,7 +494,7 @@ void EmulationSession::RunEmulation() {
 
 void EmulationSession::RequestDiskShaderCacheReload(u64 program_id) {
     {
-        std::scoped_lock lock(m_mutex);
+        std::scoped_lock lock(m_wake_mutex);
         m_pending_shader_cache_title = program_id;
     }
     m_cv.notify_one();
