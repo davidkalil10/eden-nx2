@@ -65,7 +65,8 @@ object ThemeHelper {
             R.style.Theme_Yuzu_Main_Pink,
             R.style.Theme_Yuzu_Main_Gray
         )
-        return themes[themeIndex]
+        // An out-of-range value in the ini would otherwise crash every activity at start.
+        return themes.getOrElse(themeIndex) { themes[0] }
     }
 
     @ColorInt
