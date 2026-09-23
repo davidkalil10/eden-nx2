@@ -9,7 +9,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
-import org.yuzu.yuzu_emu.features.settings.model.view.SettingsItem
 
 /**
  * The settings dialogs pair a names array with a values array by position, and the values are
@@ -86,13 +85,28 @@ class SettingsArraysTest {
         arrays.getValue("appLanguageValues").forEachIndexed { i, v -> assertEquals(i, v.toInt()) }
     }
 
+    // The warnChoices the resolution setting is built with, read from the source: the
+    // constants are inlined at compile time, so reading them would miss a changed call site.
+    private fun resolutionWarnChoices(): List<Int> {
+        val source = File(
+            "src/main/java/org/yuzu/yuzu_emu/features/settings/model/view/SettingsItem.kt"
+        ).readText()
+        val block = source.substringAfter("IntSetting.RENDERER_RESOLUTION,")
+            .substringBefore("\n            )")
+        val range = Regex("""warnChoices\s*=\s*\((\w+)\.\.(\w+)\)\.toList\(\)""")
+            .find(block) ?: error("warnChoices of the resolution setting not found")
+        fun value(token: String): Int = token.toIntOrNull()
+            ?: Regex("""const val $token = (\d+)""").find(source)?.groupValues?.get(1)?.toInt()
+            ?: error("$token not found")
+        return (value(range.groupValues[1])..value(range.groupValues[2])).toList()
+    }
+
     @Test
     fun resolutionWarningStartsAtTwoTimesAndCoversTheHighestChoice() {
         val members = enumMembers("ResolutionSetup")
-        assertEquals(members.indexOf("Res2X"), SettingsItem.RESOLUTION_WARN_FROM)
-        assertEquals(
-            arrays.getValue("rendererResolutionValues").last().toInt(),
-            SettingsItem.RESOLUTION_WARN_TO
-        )
+        val offered = arrays.getValue("rendererResolutionValues").map { it.toInt() }
+        val expected = offered.filter { it >= members.indexOf("Res2X") }
+        assertEquals(expected, resolutionWarnChoices().filter { it in offered })
+        assertEquals(offered.last(), resolutionWarnChoices().last())
     }
 }

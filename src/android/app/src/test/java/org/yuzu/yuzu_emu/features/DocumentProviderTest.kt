@@ -106,4 +106,17 @@ class DocumentProviderTest {
             )
         }
     }
+
+    @Test
+    fun providerCallsGoThroughTheTestedHelpers() {
+        val source = File("src/main/java/org/yuzu/yuzu_emu/features/DocumentProvider.kt")
+            .readText()
+        fun body(name: String) = source.substringAfter(name).substringBefore("\n    }\n")
+        assertTrue(body("private fun getFile(").contains("resolveDocumentFile(baseDirectory"))
+        assertTrue(body("override fun isChildDocument(").contains("isChildDocumentId("))
+        val resolve = body("private fun File.resolveWithoutConflict(")
+        assertTrue(resolve.contains("sanitizeDisplayName("))
+        assertTrue(resolve.contains("conflictFreeName("))
+        assertTrue(body("override fun renameDocument(").contains("sanitizeDisplayName("))
+    }
 }

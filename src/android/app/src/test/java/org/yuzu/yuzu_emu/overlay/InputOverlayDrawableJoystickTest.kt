@@ -3,6 +3,7 @@
 
 package org.yuzu.yuzu_emu.overlay
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -40,5 +41,14 @@ class InputOverlayDrawableJoystickTest {
         val (x, y) = InputOverlayDrawableJoystick.clampToCircle(3f, 4f)
         assertEquals(0.6f, x, 1e-5f)
         assertEquals(0.8f, y, 1e-5f)
+    }
+
+    @Test
+    fun touchUpdatesReportThroughTheTestedHelpers() {
+        val source = File("src/main/java/org/yuzu/yuzu_emu/overlay/InputOverlayDrawableJoystick.kt")
+            .readText()
+        assertTrue(source.contains("clampToCircle(axisX, axisY)"))
+        assertTrue(source.contains("axesChanged(xAxis, yAxis, newX, newY)"))
+        assertTrue(source.contains("return changed"))
     }
 }
