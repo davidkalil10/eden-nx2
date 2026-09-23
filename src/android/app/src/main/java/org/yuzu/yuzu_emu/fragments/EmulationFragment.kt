@@ -918,8 +918,9 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
 
         setInsets()
 
+        // Scoped to the view, so a swapped-out fragment is not kept alive.
         requireActivity().onBackPressedDispatcher.addCallback(
-            requireActivity(),
+            viewLifecycleOwner,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
                     if (!NativeLibrary.isRunning()) {
