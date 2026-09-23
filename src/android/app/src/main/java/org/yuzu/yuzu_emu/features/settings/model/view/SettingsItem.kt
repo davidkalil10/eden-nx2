@@ -492,7 +492,7 @@ abstract class SettingsItem(
                     titleId = R.string.overlay_position,
                     descriptionId = R.string.overlay_position_description,
                     choicesId = R.array.statsPosition,
-                    valuesId = R.array.staticThemeValues
+                    valuesId = R.array.statsPositionValues
                 )
             )
 
@@ -574,7 +574,7 @@ abstract class SettingsItem(
                     titleId = R.string.overlay_position,
                     descriptionId = 0,
                     choicesId = R.array.statsPosition,
-                    valuesId = R.array.staticThemeValues
+                    valuesId = R.array.statsPositionValues
                 )
             )
             put(
