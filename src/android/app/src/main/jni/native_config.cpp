@@ -106,6 +106,12 @@ void Java_org_yuzu_yuzu_1emu_utils_NativeConfig_setBoolean(JNIEnv* env, jobject 
     if (setting == nullptr) {
         return;
     }
+    // Some keys Kotlin treats as switches are enums (use_docked_mode is a u32 ConsoleMode);
+    // SetValue through the wrong Setting<T> would read 4 bytes from a 1-byte bool.
+    if (setting->TypeId() != "bool") {
+        setting->LoadString(value ? "1" : "0");
+        return;
+    }
     setting->SetValue(static_cast<bool>(value));
 }
 
@@ -122,6 +128,11 @@ void Java_org_yuzu_yuzu_1emu_utils_NativeConfig_setByte(JNIEnv* env, jobject obj
                                                         jbyte value) {
     auto setting = getSetting<u8>(env, jkey);
     if (setting == nullptr) {
+        return;
+    }
+    // Enums are u32 (gpu_log_level); let the setting parse the value instead.
+    if (setting->IsEnum()) {
+        setting->LoadString(std::to_string(static_cast<u8>(value)));
         return;
     }
     setting->SetValue(value);
