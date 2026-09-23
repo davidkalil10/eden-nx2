@@ -50,7 +50,6 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.findNavController
-import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.fragment.navArgs
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
@@ -1536,10 +1535,17 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
             }
         }
 
-    override fun onPause() {
-        // The overlays poll JNI, /proc and the battery; nothing shows them in the background.
+    // The overlays poll JNI, /proc and the battery; nothing shows them in the background.
+    private fun stopStatsOverlays() {
         perfStatsRunnable?.let { perfStatsUpdateHandler.removeCallbacks(it) }
         socRunnable?.let { socUpdateHandler.removeCallbacks(it) }
+    }
+
+    override fun onPause() {
+        // Picture-in-picture pauses the activity but keeps the overlays on screen.
+        if (emulationActivity?.isInPictureInPictureMode != true) {
+            stopStatsOverlays()
+        }
         if (this::emulationState.isInitialized) {
             if (emulationState.isRunning && emulationActivity?.isInPictureInPictureMode != true) {
                 pauseEmulationAndCaptureFrame()
@@ -1548,6 +1554,11 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
             }
         }
         super.onPause()
+    }
+
+    override fun onStop() {
+        stopStatsOverlays()
+        super.onStop()
     }
 
     override fun onDestroyView() {
@@ -2043,19 +2054,10 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         emulationStarted = false
     }
 
+    // The first listed fragment is the oldest; during a swap the live one is the newest.
     private fun hasNewerEmulationFragment(): Boolean {
-        val activity = emulationActivity ?: return false
-        return try {
-            val navHostFragment =
-                activity.supportFragmentManager.findFragmentById(R.id.fragment_container) as? NavHostFragment
-                    ?: return false
-            val currentFragment = navHostFragment.childFragmentManager.fragments
-                .filterIsInstance<EmulationFragment>()
-                .firstOrNull()
-            currentFragment != null && currentFragment !== this
-        } catch (_: Exception) {
-            false
-        }
+        val current = emulationActivity?.currentEmulationFragment() ?: return false
+        return current !== this
     }
 
     // xbzk: called from EmulationActivity when a new game is loaded while this fragment is still active,

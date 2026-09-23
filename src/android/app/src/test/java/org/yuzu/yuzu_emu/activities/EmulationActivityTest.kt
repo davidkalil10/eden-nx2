@@ -197,4 +197,52 @@ class EmulationActivityTest {
             assertTrue(args, args.contains("RECEIVER_NOT_EXPORTED"))
         }
     }
+
+    private fun body(source: String, declaration: String): String =
+        source.substringAfter(declaration).substringBefore("\n    }\n")
+
+    @Test
+    fun pictureInPictureActionsReachTheLiveFragmentDuringASwap() {
+        val receiver = body(activitySource, "private var pictureInPictureReceiver")
+        assertTrue(receiver.contains("currentEmulationFragment()"))
+        assertFalse(receiver.contains("firstOrNull()"))
+        val pick = body(activitySource, "internal fun currentEmulationFragment()")
+        assertTrue(pick.contains("asReversed()") && pick.contains("!it.isRemoving"))
+    }
+
+    @Test
+    fun statsOverlaysKeepRunningInPictureInPictureAndStopWhenHidden() {
+        val fragment = File("src/main/java/org/yuzu/yuzu_emu/fragments/EmulationFragment.kt")
+            .readText()
+        val onPause = body(fragment, "override fun onPause()")
+        val gate = onPause.indexOf("isInPictureInPictureMode != true")
+        assertTrue("onPause stops the overlays in picture-in-picture", gate >= 0)
+        assertTrue(onPause.indexOf("stopStatsOverlays()") > gate)
+        assertTrue(body(fragment, "override fun onStop()").contains("stopStatsOverlays()"))
+    }
+
+    @Test
+    fun surfaceTeardownComparesWithTheLiveFragment() {
+        val fragment = File("src/main/java/org/yuzu/yuzu_emu/fragments/EmulationFragment.kt")
+            .readText()
+        val lines = body(fragment, "private fun hasNewerEmulationFragment()").lines()
+            .map { it.trim() }
+        assertTrue(
+            "val current = emulationActivity?.currentEmulationFragment() ?: return false" in lines
+        )
+        assertTrue("return current !== this" in lines)
+    }
+
+    @Test
+    fun touchAndControllerCallbacksReachTheLiveFragment() {
+        assertFalse(activitySource.contains("fragments?.firstOrNull()"))
+        listOf(
+            "override fun dispatchTouchEvent(",
+            "private fun notifyControllerInput(",
+            "private fun notifyPhysicalControllerState("
+        ).forEach {
+            val lines = body(activitySource, it).lines().map { line -> line.trim() }
+            assertTrue(it, "val emulationFragment = currentEmulationFragment()" in lines)
+        }
+    }
 }

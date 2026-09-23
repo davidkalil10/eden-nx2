@@ -314,20 +314,7 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
                 val thisSwapGeneration = romSwapGeneration
                 emulationViewModel.setIsEmulationStopping(true)
                 emulationViewModel.setEmulationStopped(false)
-                val navHostFragment =
-                    supportFragmentManager.findFragmentById(R.id.fragment_container) as? NavHostFragment
-                val childFragmentManager = navHostFragment?.childFragmentManager
-                val stoppingFragmentForSwap =
-                    (childFragmentManager?.primaryNavigationFragment as? EmulationFragment) ?:
-                    childFragmentManager
-                        ?.fragments
-                        ?.asReversed()
-                        ?.firstOrNull {
-                            it is EmulationFragment &&
-                                it.isAdded &&
-                            it.view != null &&
-                            !it.isRemoving
-                        } as? EmulationFragment
+                val stoppingFragmentForSwap = currentEmulationFragment()
 
                 val hasSessionForSwap = hasEmulationSession || stoppingFragmentForSwap != null
 
@@ -454,10 +441,7 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
     }
 
     private fun notifyControllerInput() {
-        val navHostFragment =
-            supportFragmentManager.findFragmentById(R.id.fragment_container) as? NavHostFragment
-        val emulationFragment =
-            navHostFragment?.childFragmentManager?.fragments?.firstOrNull() as? org.yuzu.yuzu_emu.fragments.EmulationFragment
+        val emulationFragment = currentEmulationFragment()
         emulationFragment?.onControllerInputDetected()
     }
 
@@ -485,10 +469,7 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
     }
 
     private fun notifyPhysicalControllerState() {
-        val navHostFragment =
-            supportFragmentManager.findFragmentById(R.id.fragment_container) as? NavHostFragment
-        val emulationFragment =
-            navHostFragment?.childFragmentManager?.fragments?.firstOrNull() as? org.yuzu.yuzu_emu.fragments.EmulationFragment
+        val emulationFragment = currentEmulationFragment()
         emulationFragment?.onPhysicalControllerStateChanged(InputHandler.androidControllers.isNotEmpty())
     }
 
@@ -685,12 +666,21 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
         NetPlayManager.addNetPlayMessage(type, msg)
     }
 
+    // The live fragment; during a ROM swap the stopping one is still listed first.
+    internal fun currentEmulationFragment(): EmulationFragment? {
+        val manager = (
+            supportFragmentManager.findFragmentById(R.id.fragment_container) as? NavHostFragment
+            )?.childFragmentManager ?: return null
+        return (manager.primaryNavigationFragment as? EmulationFragment)
+            ?: manager.fragments.asReversed().firstOrNull {
+                it is EmulationFragment && it.isAdded && it.view != null && !it.isRemoving
+            } as? EmulationFragment
+    }
+
     private var pictureInPictureReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
             // Through the fragment so its pause state, menu and paused frame follow.
-            val fragment = (
-                supportFragmentManager.findFragmentById(R.id.fragment_container) as? NavHostFragment
-                )?.childFragmentManager?.fragments?.firstOrNull() as? EmulationFragment
+            val fragment = currentEmulationFragment()
             if (intent.action == actionPlay || intent.action == actionPause) {
                 val pause = intent.action == actionPause
                 if (fragment != null) {
@@ -746,8 +736,7 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        val navHostFragment = supportFragmentManager.findFragmentById(R.id.fragment_container) as? NavHostFragment
-        val emulationFragment = navHostFragment?.childFragmentManager?.fragments?.firstOrNull() as? org.yuzu.yuzu_emu.fragments.EmulationFragment
+        val emulationFragment = currentEmulationFragment()
 
         emulationFragment?.let { fragment ->
             when (event.action) {
