@@ -4,6 +4,8 @@
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <mutex>
+
 #include "common/android/android_common.h"
 #include "core/core.h"
 #include "core/file_sys/fs_filesystem.h"
@@ -20,7 +22,9 @@ struct RomMetadata {
     std::vector<u8> icon;
     bool isHomebrew;
 };
+// Read from the game scan, icon loads and properties screens on different threads.
 static ::Common::unordered_map<std::string, RomMetadata> m_rom_metadata_cache;
+static std::mutex m_rom_metadata_mutex;
 
 static RomMetadata CacheRomMetadata(const std::string& path) {
     auto& instance = EmulationSession::GetInstance();
@@ -54,17 +58,21 @@ static RomMetadata CacheRomMetadata(const std::string& path) {
         } else {
             entry.isHomebrew = false;
         }
-        m_rom_metadata_cache[path] = entry;
+        {
+            std::scoped_lock lock{m_rom_metadata_mutex};
+            m_rom_metadata_cache[path] = entry;
+        }
         return entry;
     }
     return {};
 }
 
 static RomMetadata GetRomMetadata(const std::string& path, bool reload = false) {
-    if (reload)
-        return CacheRomMetadata(path);
-    if (auto it = m_rom_metadata_cache.find(path); it != m_rom_metadata_cache.end())
-        return it->second;
+    if (!reload) {
+        std::scoped_lock lock{m_rom_metadata_mutex};
+        if (auto it = m_rom_metadata_cache.find(path); it != m_rom_metadata_cache.end())
+            return it->second;
+    }
     return CacheRomMetadata(path);
 }
 
@@ -115,6 +123,7 @@ jboolean Java_org_yuzu_yuzu_1emu_utils_GameMetadata_getIsHomebrew(JNIEnv* env, j
 }
 
 void Java_org_yuzu_yuzu_1emu_utils_GameMetadata_resetMetadata(JNIEnv* env, jobject obj) {
+    std::scoped_lock lock{m_rom_metadata_mutex};
     m_rom_metadata_cache.clear();
 }
 
