@@ -9,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
+import org.yuzu.yuzu_emu.features.settings.model.view.SettingsItem
 
 /**
  * The settings dialogs pair a names array with a values array by position, and the values are
@@ -81,5 +82,15 @@ class SettingsArraysTest {
             YuzuApplication.LANGUAGE_CODES.size
         )
         arrays.getValue("appLanguageValues").forEachIndexed { i, v -> assertEquals(i, v.toInt()) }
+    }
+
+    @Test
+    fun resolutionWarningStartsAtTwoTimesAndCoversTheHighestChoice() {
+        val members = enumMembers("ResolutionSetup")
+        assertEquals(members.indexOf("Res2X"), SettingsItem.RESOLUTION_WARN_FROM)
+        assertEquals(
+            arrays.getValue("rendererResolutionValues").last().toInt(),
+            SettingsItem.RESOLUTION_WARN_TO
+        )
     }
 }

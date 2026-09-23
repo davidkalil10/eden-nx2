@@ -126,6 +126,10 @@ abstract class SettingsItem(
             IntSetting.RENDERER_FRAME_GEN_FLOW_SCALE.key
         )
 
+        // ResolutionSetup values the warning covers: Res2X up to the highest offered, Res4X.
+        const val RESOLUTION_WARN_FROM = 6
+        const val RESOLUTION_WARN_TO = 8
+
         const val TYPE_HEADER = 0
         const val TYPE_SWITCH = 1
         const val TYPE_SINGLE_CHOICE = 2
@@ -413,7 +417,7 @@ abstract class SettingsItem(
                     titleId = R.string.renderer_resolution,
                     choicesId = R.array.rendererResolutionNames,
                     valuesId = R.array.rendererResolutionValues,
-                    warnChoices = (5..7).toList(),
+                    warnChoices = (RESOLUTION_WARN_FROM..RESOLUTION_WARN_TO).toList(),
                     warningMessage = R.string.warning_resolution
                 )
             )
