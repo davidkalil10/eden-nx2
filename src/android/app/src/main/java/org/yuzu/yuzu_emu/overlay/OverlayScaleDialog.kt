@@ -118,9 +118,7 @@ class OverlayScaleDialog(
 
             window.attributes = layoutParams
         }
-
     }
-
 
     companion object {
         // Must match the slider in dialog_overlay_scale.xml.

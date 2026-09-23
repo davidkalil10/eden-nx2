@@ -88,8 +88,8 @@ class YuzuApplication : Application() {
         // Indexed by the appLanguageValues array.
         internal val LANGUAGE_CODES = arrayOf(
             "system", "en", "es", "fr", "de", "it", "pt", "pt-BR", "ru", "ja", "ko",
-            "zh-CN", "zh-TW", "pl", "cs", "nb", "hu", "uk", "vi", "id", "ar", "ckb", "fa", "he", "sr",
-            "th"
+            "zh-CN", "zh-TW", "pl", "cs", "nb", "hu", "uk", "vi", "id", "ar", "ckb", "fa", "he",
+            "sr", "th"
         )
 
         fun applyLanguage(context: Context): Context {

@@ -47,7 +47,9 @@ class SettingsArraysTest {
             """R\.array\.(\w+)\s*,\s*(?:valuesId\s*=\s*)?R\.array\.(\w+)"""
         )
         return File("src/main/java").walk().filter { it.extension == "kt" }
-            .flatMap { f -> pair.findAll(f.readText()).map { it.groupValues[1] to it.groupValues[2] } }
+            .flatMap { f ->
+                pair.findAll(f.readText()).map { it.groupValues[1] to it.groupValues[2] }
+            }
             .toSet()
     }
 

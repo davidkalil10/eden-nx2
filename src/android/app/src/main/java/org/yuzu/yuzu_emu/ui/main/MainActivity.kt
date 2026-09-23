@@ -166,7 +166,8 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
 
         // Once per launch, not again on every rotation.
         if (savedInstanceState == null && !firstTimeSetup &&
-            NativeLibrary.isUpdateCheckerEnabled() && BooleanSetting.ENABLE_UPDATE_CHECKS.getBoolean()
+            NativeLibrary.isUpdateCheckerEnabled() &&
+            BooleanSetting.ENABLE_UPDATE_CHECKS.getBoolean()
         ) {
             checkForUpdates()
         }
