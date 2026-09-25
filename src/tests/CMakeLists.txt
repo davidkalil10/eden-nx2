@@ -22,9 +22,9 @@ add_executable(tests
     input_common/calibration_configuration_job.cpp
 )
 
-# Only built with the OpenGL renderer, which is what carries the header it includes.
+# Only built with the OpenGL renderer, which is what carries the headers they include.
 if (ENABLE_OPENGL)
-    target_sources(tests PRIVATE video_core/gl_staging_buffer_pool.cpp)
+    target_sources(tests PRIVATE video_core/gl_format_table.cpp video_core/gl_staging_buffer_pool.cpp)
 endif()
 
 create_target_directory_groups(tests)
