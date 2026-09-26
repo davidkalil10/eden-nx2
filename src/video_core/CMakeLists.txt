@@ -221,6 +221,8 @@ add_library(video_core STATIC
 
     shader_cache.cpp
     shader_cache.h
+    shader_dump.cpp
+    shader_dump.h
     shader_environment.cpp
     shader_environment.h
     shader_notify.cpp
