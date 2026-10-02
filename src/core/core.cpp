@@ -429,6 +429,14 @@ struct System::Impl {
         perf_stats.reset();
         cpu_manager.Shutdown();
         debugger.reset();
+        // The general channel's event lives in this session's kernel. Kept, it handed the next
+        // Home Menu a destroyed event, and qlaunch's wait on it failed with InvalidHandle (02/10).
+        {
+            std::scoped_lock lk{general_channel_mutex};
+            general_channel.clear();
+            general_channel_event.reset();
+            general_channel_context.reset();
+        }
         kernel.Shutdown();
         stop_event = {};
         Network::RestartSocketOperations();
