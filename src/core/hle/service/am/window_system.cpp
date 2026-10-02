@@ -74,7 +74,7 @@ void WindowSystem::TrackApplet(std::shared_ptr<Applet> applet, bool is_applicati
 
         this->UpdateCurrentApplicationLocked();
 
-        m_event_observer->TrackAppletProcess(*applet);
+        m_event_observer->TrackAppletProcess(applet);
         m_applets.emplace(applet->aruid.pid, std::move(applet));
     }
 
@@ -305,7 +305,7 @@ void WindowSystem::PruneTerminatedAppletsLocked() {
             applet->is_winding = false;
             applet->unwind_after_reserved = false;
 
-            if (unwind && this->RestartAppletProcessLocked(applet.get())) {
+            if (unwind && this->RestartAppletProcessLocked(applet)) {
                 const u64 new_aruid = applet->aruid.pid;
                 const auto next = std::next(it);
 
@@ -387,7 +387,7 @@ void WindowSystem::PruneTerminatedAppletsLocked() {
     }
 }
 
-bool WindowSystem::RestartAppletProcessLocked(Applet* applet) {
+bool WindowSystem::RestartAppletProcessLocked(const std::shared_ptr<Applet>& applet) {
     if (!ReinitializeProcess(m_system, *applet->process, applet->program_id)) {
         LOG_ERROR(Service_AM, "Failed to restart winding applet_id={}",
                   static_cast<u32>(applet->applet_id));
@@ -405,7 +405,7 @@ bool WindowSystem::RestartAppletProcessLocked(Applet* applet) {
 
     applet->launch_reason.flag = 1;
 
-    m_event_observer->TrackAppletProcess(*applet);
+    m_event_observer->TrackAppletProcess(applet);
     return true;
 }
 

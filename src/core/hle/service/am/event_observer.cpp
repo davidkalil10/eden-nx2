@@ -60,14 +60,15 @@ EventObserver::~EventObserver() {
     }
 }
 
-void EventObserver::TrackAppletProcess(Applet& applet) {
+void EventObserver::TrackAppletProcess(std::shared_ptr<Applet> applet) {
     // Don't observe dummy processes.
-    if (!applet.process->IsInitialized()) {
+    if (!applet->process->IsInitialized()) {
         return;
     }
 
-    // Allocate new holder.
-    auto* holder = new ProcessHolder(applet, *applet.process);
+    // Allocate new holder, on the process the applet runs now.
+    auto* const watched = applet->process->GetHandle();
+    auto* holder = new ProcessHolder(m_system.Kernel(), watched, std::move(applet));
     holder->SetUserData(static_cast<uintptr_t>(UserDataTag::AppletProcess));
 
     // Insert into list.
@@ -130,12 +131,15 @@ void EventObserver::OnWakeupEvent(MultiWaitHolder* holder) {
 }
 
 void EventObserver::OnProcessEvent(ProcessHolder* holder) {
-    // Check process state.
-    auto& applet = holder->GetApplet();
-    auto& process = holder->GetProcess();
+    // A copy, so the applet outlives its lock below when the holder is destroyed under it.
+    const std::shared_ptr<Applet> applet = holder->GetApplet();
+    auto& process = *applet->process;
     {
-        std::scoped_lock lk{m_lock, applet.lock};
-        if (process.IsTerminated()) {
+        std::scoped_lock lk{m_lock, applet->lock};
+        // An applet restarted by winding runs in a new process with a holder of its own; this
+        // one waits on the old process, which nobody runs any more.
+        const bool stale = holder->GetWatchedProcess() != process.GetHandle();
+        if (stale || process.IsTerminated()) {
             // Destroy the holder.
             this->DestroyAppletProcessHolderLocked(holder);
         } else {
@@ -147,7 +151,7 @@ void EventObserver::OnProcessEvent(ProcessHolder* holder) {
         }
 
         // Set running.
-        applet.is_process_running = process.IsRunning();
+        applet->is_process_running = process.IsRunning();
     }
 
     // Perform recalculation.

@@ -64,7 +64,7 @@ private:
     void UpdateCurrentApplicationLocked();
     void NotifyApplicationChangedIfNeeded();
     void PruneTerminatedAppletsLocked();
-    bool RestartAppletProcessLocked(Applet* applet);
+    bool RestartAppletProcessLocked(const std::shared_ptr<Applet>& applet);
     bool LockHomeMenuIntoForegroundLocked();
     void TerminateChildAppletsLocked(Applet* applet);
     bool IsOverlayOpenLocked(const Applet& overlay) const;

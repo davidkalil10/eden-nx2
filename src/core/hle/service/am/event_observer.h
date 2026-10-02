@@ -27,7 +27,7 @@ public:
     explicit EventObserver(Core::System& system, WindowSystem& window_system);
     ~EventObserver();
 
-    void TrackAppletProcess(Applet& applet);
+    void TrackAppletProcess(std::shared_ptr<Applet> applet);
     void RequestUpdate();
 
 private:
