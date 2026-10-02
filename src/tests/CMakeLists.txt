@@ -27,6 +27,7 @@ add_executable(tests
     core/hle_harness.cpp
     core/general_channel.cpp
     core/internal_network/network.cpp
+    core/hid_npad_unbound.cpp
     core/kernel_thread_termination.cpp
     core/ssl_service.cpp
     video_core/memory_tracker.cpp
