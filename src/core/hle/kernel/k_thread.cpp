@@ -436,14 +436,15 @@ namespace Kernel {
             }
         }
 
-        // Acquire the scheduler lock.
-        KScopedSchedulerLock sl{kernel};
+        // Signal, under the scheduler lock.
+        {
+            KScopedSchedulerLock sl{kernel};
+            m_signaled = true;
+            KSynchronizationObject::NotifyAvailable(kernel);
+        }
 
-        // Signal.
-        m_signaled = true;
-        KSynchronizationObject::NotifyAvailable(kernel);
-
-        // Close the thread.
+        // Close outside it: the last reference finalizes the thread here, and Finalize takes the
+        // parent's list lock, which cannot be waited for under the scheduler lock.
         this->Close(kernel);
     }
 
