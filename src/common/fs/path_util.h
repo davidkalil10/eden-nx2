@@ -309,7 +309,7 @@ void SetEdenPath(EdenPath eden_path, const Path& new_path) {
 
 /**
  * Gets the path of the directory specified by the #HOME environment variable.
- * If $HOME is not defined, it will attempt to query the user database in passwd instead.
+ * If $HOME is not an absolute path, it will attempt to query the user database in passwd instead.
  *
  * @returns The path of the current user's home directory.
  */
