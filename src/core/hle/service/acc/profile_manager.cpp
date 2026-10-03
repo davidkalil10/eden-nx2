@@ -92,6 +92,7 @@ bool ProfileManager::RemoveProfileAtIndex(std::size_t index) {
     profiles[index] = ProfileInfo{};
     std::stable_partition(profiles.begin(), profiles.end(),
                           [](const ProfileInfo& profile) { return profile.user_uuid.IsValid(); });
+    --user_count;
 
     is_save_needed = true;
     WriteUserSaveFile();
