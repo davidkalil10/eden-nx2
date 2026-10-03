@@ -255,7 +255,12 @@ bool IsPathSandboxed(const fs::path& base, const fs::path& path) {
         return false;
     }
 
-    return base_string.compare(0, base_string.size(), path_string, 0, base_string.size()) == 0;
+    if (base_string.compare(0, base_string.size(), path_string, 0, base_string.size()) != 0) {
+        return false;
+    }
+    // Whole names only: "/a/b" does not hold "/a/bc".
+    return path_string.size() == base_string.size() ||
+           IsDirSeparator(path_string[base_string.size()]);
 }
 
 bool IsDirSeparator(char character) {

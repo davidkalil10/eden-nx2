@@ -15,6 +15,19 @@
 #include <unistd.h>
 #endif
 
+// A sibling whose name starts with the base's is outside it, so ConcatPathSafe keeps "../nandx"
+// in the NAND.
+TEST_CASE("Common::FS::IsPathSandboxed compares whole names", "[common]") {
+    using Common::FS::ConcatPathSafe;
+    using Common::FS::IsPathSandboxed;
+    CHECK(IsPathSandboxed("/eden/nand", "/eden/nand"));
+    CHECK(IsPathSandboxed("/eden/nand", "/eden/nand/user/save"));
+    CHECK(IsPathSandboxed("/eden/nand/", "/eden/nand/user"));
+    CHECK_FALSE(IsPathSandboxed("/eden/nand", "/eden/nandx"));
+    CHECK_FALSE(IsPathSandboxed("/eden/nand", "/eden/nandx/user"));
+    CHECK(ConcatPathSafe("/eden/nand", "../nandx/user") == std::filesystem::path{"/eden/nand"});
+}
+
 #ifndef _WIN32
 namespace {
 /// Sets an environment variable for the test and puts the old value back after.
@@ -43,7 +56,8 @@ private:
 };
 } // Anonymous namespace
 
-// An empty or relative HOME would put every Eden directory under the working directory.
+// An empty HOME made every Eden directory relative, so the data went wherever the emulator was
+// started from.
 TEST_CASE("Common::FS::GetHomeDirectory ignores a HOME that is not absolute", "[common]") {
     const passwd* const entry = getpwuid(getuid());
     REQUIRE(entry != nullptr);
@@ -54,7 +68,8 @@ TEST_CASE("Common::FS::GetHomeDirectory ignores a HOME that is not absolute", "[
     }
 }
 
-// The XDG Base Directory spec: an empty or relative value is ignored for the default under HOME.
+// XDG_DATA_HOME set but empty put the data in "eden" under the working directory. The spec says
+// to ignore an empty or relative value and use the default under HOME.
 TEST_CASE("Common::FS::GetDataDirectory ignores an XDG value that is not absolute", "[common]") {
     const auto home = Common::FS::GetHomeDirectory();
     for (const char* value : {"", "relative/data"}) {
