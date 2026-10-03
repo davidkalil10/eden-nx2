@@ -4,6 +4,12 @@
 #include <array>
 #include <filesystem>
 #include <random>
+#include <string>
+
+#ifdef __linux__
+#include <sys/inotify.h>
+#include <unistd.h>
+#endif
 
 #include <catch2/catch_test_macros.hpp>
 #include <format>
@@ -70,3 +76,49 @@ TEST_CASE("Service::Account::ProfileManager a removed user gives its place back"
     CHECK(manager.GetUserCount() == start + 2);
     CHECK(manager.CanSystemRegisterUser());
 }
+
+#ifdef __linux__
+namespace {
+/// The names @p fd reported deleted so far. The kernel queues an event before the call that
+/// caused it returns, so nothing here waits.
+std::vector<std::string> DeletedNames(int fd) {
+    std::vector<std::string> out;
+    alignas(inotify_event) char buffer[4096];
+    for (ssize_t size; (size = read(fd, buffer, sizeof(buffer))) > 0;) {
+        for (char* at = buffer; at < buffer + size;) {
+            const auto* const event = reinterpret_cast<const inotify_event*>(at);
+            if ((event->mask & IN_DELETE) != 0 && event->len > 0) {
+                out.emplace_back(event->name);
+            }
+            at += sizeof(inotify_event) + event->len;
+        }
+    }
+    return out;
+}
+} // namespace
+
+// A manager constructed while another saves must still find profiles.dat, or it makes a default
+// user and saves it over everyone.
+TEST_CASE("Service::Account::ProfileManager profiles.dat is never missing while it is saved",
+          "[core][acc]") {
+    ScratchNand nand;
+    Service::Account::ProfileManager manager; // a fresh NAND: saves its default user
+    const auto dir = Common::FS::GetEdenPath(Common::FS::EdenPath::NANDDir) /
+                     "system/save/8000000000000010/su/avators";
+    REQUIRE(std::filesystem::is_regular_file(dir / "profiles.dat"));
+
+    const int fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    REQUIRE(fd >= 0);
+    REQUIRE(inotify_add_watch(fd, dir.c_str(), IN_DELETE) >= 0);
+    REQUIRE(manager.CreateNewUser(User(1), "One").IsSuccess());
+    manager.WriteUserSaveFile();
+    const auto deleted = DeletedNames(fd);
+    close(fd);
+
+    for (const auto& name : deleted) {
+        CHECK(name != "profiles.dat");
+    }
+    Service::Account::ProfileManager reader;
+    CHECK(reader.UserExists(User(1)));
+}
+#endif

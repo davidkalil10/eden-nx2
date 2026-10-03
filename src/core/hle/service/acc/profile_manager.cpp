@@ -456,13 +456,7 @@ void ProfileManager::WriteUserSaveFile() {
     const auto save_path(FS::GetEdenPath(FS::EdenPath::NANDDir) / ACC_SAVE_AVATORS_BASE_PATH /
                          "profiles.dat");
 
-    if (FS::IsFile(save_path) && !FS::RemoveFile(save_path)) {
-        LOG_WARNING(Service_ACC, "Could not remove existing profiles.dat");
-        return;
-    } else {
-        LOG_INFO(Service_ACC, "Writing profiles.dat to {}",
-                 Common::FS::PathToUTF8String(save_path));
-    }
+    LOG_INFO(Service_ACC, "Writing profiles.dat to {}", Common::FS::PathToUTF8String(save_path));
 
     if (!FS::CreateParentDirs(save_path)) {
         LOG_WARNING(Service_ACC, "Failed to create full path of profiles.dat. Create the directory "
@@ -471,11 +465,21 @@ void ProfileManager::WriteUserSaveFile() {
         return;
     }
 
-    FS::IOFile save(save_path, FS::FileAccessMode::Write, FS::FileType::BinaryFile);
-
-    if (!save.IsOpen() || !save.SetSize(sizeof(ProfileDataRaw)) || !save.WriteObject(raw)) {
-        LOG_WARNING(Service_ACC, "Failed to write save data to file... No changes to user data "
-                                 "made in current session will be saved.");
+    // Renamed over, so the file is never missing for a manager constructed meanwhile.
+    auto temporary = save_path;
+    temporary += ".tmp";
+    {
+        FS::IOFile save(temporary, FS::FileAccessMode::Write, FS::FileType::BinaryFile);
+        if (!save.IsOpen() || !save.SetSize(sizeof(ProfileDataRaw)) || !save.WriteObject(raw)) {
+            LOG_WARNING(Service_ACC, "Failed to write save data to file... No changes to user "
+                                     "data made in current session will be saved.");
+            return;
+        }
+    }
+    std::error_code error;
+    std::filesystem::rename(temporary, save_path, error);
+    if (error) {
+        LOG_WARNING(Service_ACC, "Could not replace profiles.dat: {}", error.message());
         return;
     }
 
