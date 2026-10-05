@@ -6,6 +6,9 @@
 
 #pragma once
 
+#include <cstddef>
+
+#include "common/common_funcs.h"
 #include "common/uuid.h"
 #include "core/hle/service/am/am_types.h"
 #include "core/hle/service/cmif_types.h"
@@ -24,6 +27,15 @@ namespace Service::AM {
 struct Applet;
 class IStorage;
 
+/// The user id is 8-aligned in the request: it follows the type after seven bytes of padding.
+struct SaveDataSizeTarget {
+    FileSys::SaveDataType type;
+    INSERT_PADDING_BYTES_NOINIT(7);
+    Common::UUID user_id;
+};
+static_assert(sizeof(SaveDataSizeTarget) == 0x18, "SaveDataSizeTarget has wrong size");
+static_assert(offsetof(SaveDataSizeTarget, user_id) == 0x8, "user_id is not 8-aligned");
+
 class IApplicationFunctions final : public ServiceFramework<IApplicationFunctions> {
 public:
     explicit IApplicationFunctions(Core::System& system_, std::shared_ptr<Applet> applet);
@@ -36,10 +48,10 @@ private:
     Result GetDesiredLanguage(Out<u64> out_language_code);
     Result SetTerminateResult(Result terminate_result);
     Result GetDisplayVersion(Out<DisplayVersion> out_display_version);
-    Result ExtendSaveData(Out<u64> out_required_size, FileSys::SaveDataType type,
-                          Common::UUID user_id, u64 normal_size, u64 journal_size);
+    Result ExtendSaveData(Out<u64> out_required_size, SaveDataSizeTarget target, u64 normal_size,
+                          u64 journal_size);
     Result GetSaveDataSize(Out<u64> out_normal_size, Out<u64> out_journal_size,
-                           FileSys::SaveDataType type, Common::UUID user_id);
+                           SaveDataSizeTarget target);
     Result CreateCacheStorage(Out<u32> out_target_media, Out<u64> out_required_size, u16 index,
                               u64 normal_size, u64 journal_size);
     Result GetSaveDataSizeMax(Out<u64> out_max_normal_size, Out<u64> out_max_journal_size);

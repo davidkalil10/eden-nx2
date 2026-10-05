@@ -231,14 +231,14 @@ Result IApplicationFunctions::GetDisplayVersion(Out<DisplayVersion> out_display_
     R_SUCCEED();
 }
 
-Result IApplicationFunctions::ExtendSaveData(Out<u64> out_required_size, FileSys::SaveDataType type,
-                                             Common::UUID user_id, u64 normal_size,
-                                             u64 journal_size) {
+Result IApplicationFunctions::ExtendSaveData(Out<u64> out_required_size, SaveDataSizeTarget target,
+                                             u64 normal_size, u64 journal_size) {
     LOG_DEBUG(Service_AM, "called with type={} user_id={} normal={:#x} journal={:#x}",
-              static_cast<u8>(type), user_id.FormattedString(), normal_size, journal_size);
+              static_cast<u8>(target.type), target.user_id.FormattedString(), normal_size,
+              journal_size);
 
     system.GetFileSystemController().OpenSaveDataController()->WriteSaveDataSize(
-        type, m_applet->program_id, user_id.AsU128(), {normal_size, journal_size});
+        target.type, m_applet->program_id, target.user_id.AsU128(), {normal_size, journal_size});
 
     // The following value is used to indicate the amount of space remaining on failure
     // due to running out of space. Since we always succeed, this should be 0.
@@ -248,11 +248,12 @@ Result IApplicationFunctions::ExtendSaveData(Out<u64> out_required_size, FileSys
 }
 
 Result IApplicationFunctions::GetSaveDataSize(Out<u64> out_normal_size, Out<u64> out_journal_size,
-                                              FileSys::SaveDataType type, Common::UUID user_id) {
-    LOG_DEBUG(Service_AM, "called with type={} user_id={}", type, user_id.FormattedString());
+                                              SaveDataSizeTarget target) {
+    LOG_DEBUG(Service_AM, "called with type={} user_id={}", target.type,
+              target.user_id.FormattedString());
 
     const auto size = system.GetFileSystemController().OpenSaveDataController()->ReadSaveDataSize(
-        type, m_applet->program_id, user_id.AsU128());
+        target.type, m_applet->program_id, target.user_id.AsU128());
 
     *out_normal_size = size.normal;
     *out_journal_size = size.journal;

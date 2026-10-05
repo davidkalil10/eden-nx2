@@ -17,6 +17,7 @@ add_executable(tests
     common/undefined_fix.cpp
     common/unique_function.cpp
     core/core_timing.cpp
+    core/am_save_data_size.cpp
     core/kernel_fixture.cpp
     core/kernel_fixture.h
     core/ipc_request.cpp
