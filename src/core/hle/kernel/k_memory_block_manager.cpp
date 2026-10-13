@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: Copyright 2020 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -34,7 +37,11 @@ void KMemoryBlockManager::Finalize(KMemoryBlockSlabManager* slab_manager,
     while (it != m_memory_block_tree.end()) {
         KMemoryBlock* block = std::addressof(*it);
         it = m_memory_block_tree.erase(it);
-        block_callback(block->GetAddress(), block->GetSize());
+        // A free block holds no pages and no host mapping. With NCE the last one runs to the end
+        // of the 39-bit space, past the host reservation, and unmapping it asserts.
+        if (block->GetState() != KMemoryState::Free) {
+            block_callback(block->GetAddress(), block->GetSize());
+        }
         slab_manager->Free(block);
     }
 

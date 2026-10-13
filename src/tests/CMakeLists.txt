@@ -29,6 +29,7 @@ add_executable(tests
     core/general_channel.cpp
     core/internal_network/network.cpp
     core/hid_npad_unbound.cpp
+    core/kernel_memory_block_finalize.cpp
     core/kernel_thread_termination.cpp
     core/service_stop.cpp
     core/ssl_service.cpp
