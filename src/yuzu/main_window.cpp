@@ -1912,13 +1912,55 @@ void MainWindow::ConnectWidgetEvents() {
             &MultiplayerState::UpdateThemedIcons);
 }
 
+namespace {
+
+/// Cheat enabled states are remembered per game and per cheat path (its groups and name): paths
+/// are the stable identity across sessions (the runtime ids are per-session indices).
+QString CheatStateFile() {
+    return QString::fromStdString(Common::FS::PathToUTF8String(
+        Common::FS::GetEdenPath(Common::FS::EdenPath::ConfigDir) / "cheat_state.ini"));
+}
+
+} // Anonymous namespace
+
 void MainWindow::RefreshRuntimeCheats() {
     ClearRuntimeCheats();
 
     auto cheats = QtCommon::system->GetRuntimeCheats();
     if (!cheats.empty()) {
+        using Core::Memory::CheatMenuEntryType;
+        using Core::Memory::RuntimeCheatInfo;
+        const QString title_group =
+            QStringLiteral("cheats_%1")
+                .arg(QtCommon::system->GetApplicationProcessProgramID(), 16, 16, QChar(u'0'));
+        // The remembered states go to the runtime first, so the menu opens with them
+        QSettings cheat_state{CheatStateFile(), QSettings::IniFormat};
+        cheat_state.beginGroup(title_group);
+        bool restored = false;
+        for (const auto& cheat : cheats) {
+            const QString key = CheatPath(cheats, cheat.id);
+            if (cheat.type == CheatMenuEntryType::Cheat && !cheat.is_master &&
+                cheat_state.contains(key)) {
+                restored |=
+                    QtCommon::system->SetCheatEnabled(cheat.id, cheat_state.value(key).toBool());
+            }
+        }
+        cheat_state.endGroup();
+        if (restored) {
+            cheats = QtCommon::system->GetRuntimeCheats();
+        }
+        // Every change is saved at once, so Enable All, Disable All and groups persist too
+        const auto save = [title_group](const std::vector<RuntimeCheatInfo>& now) {
+            QSettings state{CheatStateFile(), QSettings::IniFormat};
+            state.beginGroup(title_group);
+            for (const auto& cheat : now) {
+                if (cheat.type == CheatMenuEntryType::Cheat && !cheat.is_master) {
+                    state.setValue(CheatPath(now, cheat.id), cheat.enabled);
+                }
+            }
+        };
         runtime_cheat_menu = std::make_unique<RuntimeCheatMenu>(*ui->menu_Cheats, *QtCommon::system,
-                                                                std::move(cheats));
+                                                                std::move(cheats), save);
     }
     ui->menu_Cheats->menuAction()->setVisible(runtime_cheat_menu != nullptr);
 }

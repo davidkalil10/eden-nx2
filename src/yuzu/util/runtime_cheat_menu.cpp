@@ -20,8 +20,18 @@ QString CheatName(const RuntimeCheatInfo& cheat) {
 }
 }
 
-RuntimeCheatMenu::RuntimeCheatMenu(QMenu& menu_, Core::System& system_, std::vector<RuntimeCheatInfo> cheats_)
-    : menu{menu_}, system{system_}, cheats{std::move(cheats_)} {
+QString CheatPath(const std::vector<RuntimeCheatInfo>& cheats, u32 id) {
+    QString path = CheatName(cheats[id]);
+    for (auto parent = cheats[id].parent_id; parent != CHEAT_MENU_ROOT;
+         parent = cheats[parent].parent_id) {
+        path = CheatName(cheats[parent]) + QStringLiteral(" \u203a ") + path;
+    }
+    return path;
+}
+
+RuntimeCheatMenu::RuntimeCheatMenu(QMenu& menu_, Core::System& system_,
+                                   std::vector<RuntimeCheatInfo> cheats_, Changed changed_)
+    : menu{menu_}, system{system_}, cheats{std::move(cheats_)}, changed{std::move(changed_)} {
     menu.installEventFilter(this);
     auto* disable_all = menu.addAction(QCoreApplication::translate("MainWindow", "Disable All Cheats"));
     connect(disable_all, &QAction::triggered, this, [this] { SetEnabled(CHEAT_MENU_ROOT, false); });
@@ -65,6 +75,9 @@ void RuntimeCheatMenu::SetEnabled(u32 id, bool enabled) {
         }
     }
     UpdateChecks();
+    if (changed) {
+        changed(cheats);
+    }
 }
 
 void RuntimeCheatMenu::UpdateChecks() {

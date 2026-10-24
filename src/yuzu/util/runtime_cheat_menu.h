@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include <functional>
 #include <vector>
 #include <QObject>
+#include <QString>
 #include "core/memory/dmnt_cheat_types.h"
 
 class QAction;
@@ -14,9 +16,16 @@ namespace Core {
 class System;
 }
 
+/// The cheat's name after the names of the groups it is in ("Group \u203a Cheat")
+QString CheatPath(const std::vector<Core::Memory::RuntimeCheatInfo>& cheats, u32 id);
+
 class RuntimeCheatMenu final : public QObject {
 public:
-    RuntimeCheatMenu(QMenu& menu, Core::System& system, std::vector<Core::Memory::RuntimeCheatInfo> cheats);
+    /// Called with every cheat's state after the user changed any
+    using Changed = std::function<void(const std::vector<Core::Memory::RuntimeCheatInfo>&)>;
+
+    RuntimeCheatMenu(QMenu& menu, Core::System& system,
+                     std::vector<Core::Memory::RuntimeCheatInfo> cheats, Changed changed = {});
     ~RuntimeCheatMenu() override;
 
 protected:
@@ -31,4 +40,5 @@ private:
     std::vector<Core::Memory::RuntimeCheatInfo> cheats;
     std::vector<QAction*> actions; // indexed by menu id
     std::vector<QMenu*> submenus;
+    Changed changed;
 };
