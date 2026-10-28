@@ -53,6 +53,9 @@ public:
     Result LoopProcess();
     void StartAdditionalHostThreads(const char* name, size_t num_threads);
 
+    /// Makes every loop return, and a LoopProcess called afterwards return at once.
+    void RequestStop();
+
     static void RunServer(std::unique_ptr<ServerManager>&& server);
 
 private:

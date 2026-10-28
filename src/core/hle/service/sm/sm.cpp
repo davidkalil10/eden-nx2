@@ -13,6 +13,7 @@
 #include "core/hle/kernel/k_port.h"
 #include "core/hle/kernel/k_scoped_resource_reservation.h"
 #include "core/hle/kernel/k_server_port.h"
+#include "core/hle/kernel/k_thread.h"
 #include "core/hle/result.h"
 #include "core/hle/service/cmif_types.h"
 #include "core/hle/service/ipc_helpers.h"
@@ -27,11 +28,20 @@ constexpr Result ResultAlreadyRegistered(ErrorModule::SM, 4);
 constexpr Result ResultInvalidServiceName(ErrorModule::SM, 6);
 constexpr Result ResultNotRegistered(ErrorModule::SM, 7);
 
-ServiceManager::ServiceManager(Kernel::KernelCore& kernel_) : kernel{kernel_} {
+ServiceManager::ServiceManager(Kernel::KernelCore& kernel_, std::stop_token stop_token_)
+    : stop_token{std::move(stop_token_)}, kernel{kernel_} {
     controller_interface = std::make_unique<Controller>(kernel.System());
 }
 
 ServiceManager::~ServiceManager() {
+    {
+        // A host thread still waiting would wake into a destroyed map.
+        std::unique_lock l{lock};
+        closing = true;
+        registration.notify_all();
+        registration.wait(l, [this] { return host_waiters == 0; });
+    }
+
     for (auto& [name, port] : service_ports) {
         port->Close(kernel);
     }
@@ -70,6 +80,7 @@ Result ServiceManager::RegisterService(Kernel::KServerPort** out_server_port, st
 
     service_ports.emplace(name, std::addressof(port->GetClientPort()));
     registered_services.emplace(name, handler);
+    registration.notify_all();
     if (deferral_event) {
         deferral_event->Signal(kernel);
     }
@@ -110,6 +121,41 @@ Result ServiceManager::GetServicePort(Kernel::KClientPort** out_client_port,
 
     *out_client_port = it->second;
     return ResultSuccess;
+}
+
+bool ServiceManager::WaitForService(const std::string& name) const {
+    std::unique_lock l{lock};
+    return WaitForRegistration(l, name);
+}
+
+bool ServiceManager::WaitForRegistration(std::unique_lock<std::mutex>& l,
+                                         const std::string& name) const {
+    const auto registered = [&] { return registered_services.contains(name); };
+    if (registered()) {
+        return true;
+    }
+
+    if (!Kernel::GetCurrentThread(kernel).IsDummyThread()) {
+        // A guest service thread shares its core with the services it waits for, so it sleeps
+        // in the kernel rather than block the host thread under them.
+        using namespace std::literals::chrono_literals;
+        while (!registered() && !stop_token.stop_requested()) {
+            l.unlock();
+            Kernel::Svc::SleepThread(
+                kernel.System(), std::chrono::duration_cast<std::chrono::nanoseconds>(100ms).count());
+            l.lock();
+        }
+        return registered();
+    }
+
+    // A host thread blocks on the host instead: a kernel sleep never ends while core timing is
+    // paused, which it is from boot until the game starts running.
+    ++host_waiters;
+    registration.wait(l, stop_token, [&] { return closing || registered(); });
+    if (--host_waiters == 0) {
+        registration.notify_all();
+    }
+    return registered();
 }
 
 /**

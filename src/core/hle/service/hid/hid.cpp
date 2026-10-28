@@ -14,6 +14,7 @@
 #include "core/hle/service/hid/irs.h"
 #include "core/hle/service/hid/xcd.h"
 #include "core/hle/service/server_manager.h"
+#include "core/hle/service/sm/sm.h"
 #include "hid_core/resource_manager.h"
 #include "hid_core/resources/hid_firmware_settings.h"
 
@@ -71,6 +72,10 @@ public:
 };
 
 void LoopProcess(Core::System& system) {
+    if (!system.ServiceManager().WaitForService("set:sys")) {
+        return;
+    }
+
     auto server_manager = std::make_unique<ServerManager>(system);
     auto firmware_settings = std::make_shared<HidFirmwareSettings>(system);
     auto resource_manager = std::make_shared<ResourceManager>(system, firmware_settings);

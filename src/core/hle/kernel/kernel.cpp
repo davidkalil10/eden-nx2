@@ -113,6 +113,8 @@ struct KernelCore::Impl {
     }
 
     void Initialize(KernelCore& kernel) {
+        services_closed = false;
+
         hardware_timer.emplace(kernel);
         hardware_timer->Initialize();
 
@@ -230,9 +232,15 @@ struct KernelCore::Impl {
     }
 
     void CloseServices() {
-        // Ensures all servers gracefully shutdown.
-        std::scoped_lock lk{server_lock};
-        server_managers.clear();
+        // Retired outside the lock. A guest service thread that blocks on it in RunServer blocks
+        // its whole core, and a loop retired here may be waiting for that core to run.
+        std::vector<std::unique_ptr<Service::ServerManager>> closing;
+        {
+            std::scoped_lock lk{server_lock};
+            services_closed = true;
+            closing.swap(server_managers);
+        }
+        closing.clear();
     }
 
     void InitializePhysicalCores() {
@@ -822,6 +830,8 @@ struct KernelCore::Impl {
 
     std::mutex server_lock;
     std::vector<std::unique_ptr<Service::ServerManager>> server_managers;
+    /// Set by CloseServices, under server_lock, until the next Initialize.
+    bool services_closed{};
 
     std::array<std::optional<Kernel::PhysicalCore>, Core::Hardware::NUM_CPU_CORES> cores;
 
@@ -1026,15 +1036,20 @@ void KernelCore::UnregisterInUseObject(KAutoObject* object) {
 void KernelCore::RunServer(std::unique_ptr<Service::ServerManager>&& server_manager) {
     auto* manager = server_manager.get();
 
+    bool refused;
     {
         std::scoped_lock lk{impl->server_lock};
-        if (impl->is_shutting_down) {
-            return;
+        refused = impl->services_closed;
+        if (!refused) {
+            impl->server_managers.emplace_back(std::move(server_manager));
         }
-
-        impl->server_managers.emplace_back(std::move(server_manager));
     }
 
+    // Nothing would retire a server taken once the services are closed, least of all one on a
+    // core that has stopped. Its owner keeps it, and the loop returns at once for the destructor.
+    if (refused) {
+        manager->RequestStop();
+    }
     manager->LoopProcess();
 }
 

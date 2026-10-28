@@ -18,6 +18,7 @@ add_executable(tests
     common/unique_function.cpp
     core/core_timing.cpp
     core/am_process_holder.cpp
+    core/applet_manager_shutdown.cpp
     core/kernel_fixture.cpp
     core/kernel_fixture.h
     core/ipc_request.cpp
@@ -29,6 +30,7 @@ add_executable(tests
     core/internal_network/network.cpp
     core/hid_npad_unbound.cpp
     core/kernel_thread_termination.cpp
+    core/service_stop.cpp
     core/ssl_service.cpp
     video_core/memory_tracker.cpp
     input_common/calibration_configuration_job.cpp

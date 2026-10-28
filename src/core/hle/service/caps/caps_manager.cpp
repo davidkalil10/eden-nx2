@@ -236,6 +236,7 @@ Result AlbumManager::SaveScreenShot(ApplicationAlbumEntry& out_entry,
 
     auto static_service =
         system.ServiceManager().GetService<Service::Glue::Time::StaticService>("time:u", true);
+    R_UNLESS(static_service != nullptr, ResultUnknown);
 
     std::shared_ptr<Service::PSC::Time::SystemClock> user_clock{};
     static_service->GetStandardUserSystemClock(&user_clock);
@@ -256,6 +257,7 @@ Result AlbumManager::SaveEditedScreenShot(ApplicationAlbumEntry& out_entry, cons
 
     auto static_service =
         system.ServiceManager().GetService<Service::Glue::Time::StaticService>("time:u", true);
+    R_UNLESS(static_service != nullptr, ResultUnknown);
 
     std::shared_ptr<Service::PSC::Time::SystemClock> user_clock{};
     static_service->GetStandardUserSystemClock(&user_clock);
@@ -457,6 +459,9 @@ Result AlbumManager::SaveImage(ApplicationAlbumEntry& out_entry, std::span<const
 AlbumFileDateTime AlbumManager::ConvertToAlbumDateTime(u64 posix_time) const {
     auto static_service =
         system.ServiceManager().GetService<Service::Glue::Time::StaticService>("time:u", true);
+    if (!static_service) {
+        return {};
+    }
 
     std::shared_ptr<Service::Glue::Time::TimeZoneService> timezone_service{};
     static_service->GetTimeZoneService(&timezone_service);

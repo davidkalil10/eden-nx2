@@ -6,6 +6,7 @@
 
 #include "core/core.h"
 #include "core/hle/service/server_manager.h"
+#include "core/hle/service/sm/sm.h"
 #include "core/hle/service/vi/application_root_service.h"
 #include "core/hle/service/vi/container.h"
 #include "core/hle/service/vi/manager_root_service.h"
@@ -15,6 +16,11 @@
 namespace Service::VI {
 
 void LoopProcess(Core::System& system, std::stop_token token) {
+    auto& service_manager = system.ServiceManager();
+    if (!service_manager.WaitForService("dispdrv") || !service_manager.WaitForService("nvdrv:s")) {
+        return;
+    }
+
     const auto container = std::make_shared<Container>(system);
 
     auto server_manager = std::make_unique<ServerManager>(system);

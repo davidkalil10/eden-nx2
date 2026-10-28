@@ -1421,20 +1421,23 @@ void NfcDevice::SetAmiiboName(NFP::AmiiboSettings& settings,
 }
 
 NFP::AmiiboDate NfcDevice::GetAmiiboDate(s64 posix_time) const {
+    NFP::AmiiboDate amiibo_date{};
+
+    amiibo_date.SetYear(2000);
+    amiibo_date.SetMonth(1);
+    amiibo_date.SetDay(1);
+
     auto static_service =
         system.ServiceManager().GetService<Service::Glue::Time::StaticService>("time:u", true);
+    if (!static_service) {
+        return amiibo_date;
+    }
 
     std::shared_ptr<Service::Glue::Time::TimeZoneService> timezone_service{};
     static_service->GetTimeZoneService(&timezone_service);
 
     Service::PSC::Time::CalendarTime calendar_time{};
     Service::PSC::Time::CalendarAdditionalInfo additional_info{};
-
-    NFP::AmiiboDate amiibo_date{};
-
-    amiibo_date.SetYear(2000);
-    amiibo_date.SetMonth(1);
-    amiibo_date.SetDay(1);
 
     if (timezone_service->ToCalendarTimeWithMyRule(&calendar_time, &additional_info, posix_time) ==
         ResultSuccess) {
@@ -1449,6 +1452,9 @@ NFP::AmiiboDate NfcDevice::GetAmiiboDate(s64 posix_time) const {
 s64 NfcDevice::GetCurrentPosixTime() const {
     auto static_service =
         system.ServiceManager().GetService<Service::Glue::Time::StaticService>("time:u", true);
+    if (!static_service) {
+        return 0;
+    }
 
     std::shared_ptr<Service::PSC::Time::SteadyClock> steady_clock{};
     static_service->GetStandardSteadyClock(&steady_clock);

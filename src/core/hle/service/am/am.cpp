@@ -4,6 +4,7 @@
 // SPDX-FileCopyrightText: Copyright 2018 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "core/core.h"
 #include "core/hle/service/am/am.h"
 #include "core/hle/service/am/button_poller.h"
 #include "core/hle/service/am/event_observer.h"
@@ -11,10 +12,16 @@
 #include "core/hle/service/am/service/application_proxy_service.h"
 #include "core/hle/service/am/window_system.h"
 #include "core/hle/service/server_manager.h"
+#include "core/hle/service/sm/sm.h"
 
 namespace Service::AM {
 
 void LoopProcess(Core::System& system) {
+    // The applets made below register with it as they are constructed.
+    if (!system.ServiceManager().WaitForService("hid")) {
+        return;
+    }
+
     WindowSystem window_system(system);
     ButtonPoller button_poller(system, window_system);
     EventObserver event_observer(system, window_system);

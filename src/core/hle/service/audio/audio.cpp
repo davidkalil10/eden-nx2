@@ -15,6 +15,7 @@
 #include "core/hle/service/audio/hardware_opus_decoder_manager.h"
 #include "core/hle/service/server_manager.h"
 #include "core/hle/service/service.h"
+#include "core/hle/service/sm/sm.h"
 
 namespace Service::Audio {
 
@@ -183,6 +184,10 @@ public:
 };
 
 void LoopProcess(Core::System& system) {
+    if (!system.ServiceManager().WaitForService("set:sys")) {
+        return;
+    }
+
     auto server_manager = std::make_unique<ServerManager>(system);
 
     server_manager->RegisterNamedService("aud:a", std::make_shared<IAudioSystemManagerForApplet>(system), 30);

@@ -174,6 +174,9 @@ struct System::Impl {
 
         auto static_service_s =
             system.ServiceManager().GetService<Service::PSC::Time::StaticService>("time:s", true);
+        if (!settings_service || !static_service_a || !static_service_s) {
+            return;
+        }
 
         std::shared_ptr<Service::PSC::Time::SystemClock> user_clock;
         static_service_a->GetStandardUserSystemClock(&user_clock);
@@ -270,7 +273,8 @@ struct System::Impl {
 
     void InitializeServiceManager() {
         if (!service_manager) {
-            service_manager = std::make_shared<Service::SM::ServiceManager>(kernel);
+            service_manager =
+                std::make_shared<Service::SM::ServiceManager>(kernel, stop_event.get_token());
         }
     }
 
@@ -350,6 +354,8 @@ struct System::Impl {
         SystemResultStatus init_result{SetupForApplicationProcess(system, emu_window)};
         if (init_result != SystemResultStatus::Success) {
             LOG_CRITICAL(Core, "Failed to initialize system (Error {})!", int(init_result));
+            // Before the kernel it lives in goes, not at the return.
+            process.reset();
             ShutdownMainProcess();
             return init_result;
         }
@@ -429,8 +435,9 @@ struct System::Impl {
         perf_stats.reset();
         cpu_manager.Shutdown();
         debugger.reset();
-        // The general channel's event lives in this session's kernel. Kept, it handed the next
-        // Home Menu a destroyed event, and qlaunch's wait on it failed with InvalidHandle (02/10).
+        // A Stop before AM took its process leaves it here; no core runs AM any more.
+        applet_manager.Reset();
+        // The general channel's event lives in this session's kernel.
         {
             std::scoped_lock lk{general_channel_mutex};
             general_channel.clear();

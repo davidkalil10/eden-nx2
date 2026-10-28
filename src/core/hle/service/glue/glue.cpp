@@ -15,10 +15,16 @@
 #include "core/hle/service/glue/time/static.h"
 #include "core/hle/service/psc/time/common.h"
 #include "core/hle/service/server_manager.h"
+#include "core/hle/service/sm/sm.h"
 
 namespace Service::Glue {
 
 void LoopProcess(Core::System& system) {
+    auto& service_manager = system.ServiceManager();
+    if (!service_manager.WaitForService("time:m") || !service_manager.WaitForService("set:sys")) {
+        return;
+    }
+
     auto server_manager = std::make_unique<ServerManager>(system);
 
     // ARP

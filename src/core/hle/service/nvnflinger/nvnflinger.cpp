@@ -15,6 +15,10 @@
 namespace Service::Nvnflinger {
 
 void LoopProcess(Core::System& system) {
+    if (!system.ServiceManager().WaitForService("nvdrv:s")) {
+        return;
+    }
+
     const auto binder_server = std::make_shared<HosBinderDriverServer>();
     const auto surface_flinger = std::make_shared<SurfaceFlinger>(system, *binder_server);
 

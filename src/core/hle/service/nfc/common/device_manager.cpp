@@ -759,14 +759,15 @@ Result DeviceManager::VerifyDeviceResult(std::shared_ptr<NfcDevice> device,
         operation_result == ResultUnknown115) {
         auto static_service =
             system.ServiceManager().GetService<Service::Glue::Time::StaticService>("time:u", true);
+        if (static_service) {
+            std::shared_ptr<Service::PSC::Time::SteadyClock> steady_clock{};
+            static_service->GetStandardSteadyClock(&steady_clock);
 
-        std::shared_ptr<Service::PSC::Time::SteadyClock> steady_clock{};
-        static_service->GetStandardSteadyClock(&steady_clock);
+            Service::PSC::Time::SteadyClockTimePoint time_point{};
+            R_ASSERT(steady_clock->GetCurrentTimePoint(&time_point));
 
-        Service::PSC::Time::SteadyClockTimePoint time_point{};
-        R_ASSERT(steady_clock->GetCurrentTimePoint(&time_point));
-
-        time_since_last_error = time_point.time_point;
+            time_since_last_error = time_point.time_point;
+        }
     }
 
     return operation_result;

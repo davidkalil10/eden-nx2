@@ -7,10 +7,12 @@
 #pragma once
 
 #include <chrono>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <string>
 #include "common/container/unordered_map.h"
+#include "common/polyfill_thread.h"
 #include <concepts>
 
 #include "core/hle/kernel/k_port.h"
@@ -59,7 +61,8 @@ private:
 
 class ServiceManager {
 public:
-    explicit ServiceManager(Kernel::KernelCore& kernel_);
+    /// @p stop_token_ is the services' own: once it is requested, nothing waits for a service.
+    explicit ServiceManager(Kernel::KernelCore& kernel_, std::stop_token stop_token_ = {});
     ~ServiceManager();
 
     Result RegisterService(Kernel::KServerPort** out_server_port, std::string name,
@@ -67,25 +70,30 @@ public:
     Result UnregisterService(const std::string& name);
     Result GetServicePort(Kernel::KClientPort** out_client_port, const std::string& name);
 
+    /// With @p block, waits for @p name, and still answers null if the services stop first.
     template <std::derived_from<SessionRequestHandler> T>
     std::shared_ptr<T> GetService(const std::string& name, bool block = false) const {
         std::unique_lock l{lock};
-        auto it = registered_services.find(name);
-        if (it == registered_services.end() && !block) {
+        if (block) {
+            WaitForRegistration(l, name);
+        }
+        const auto it = registered_services.find(name);
+        if (it == registered_services.end()) {
             LOG_DEBUG(Service, "Can't find service: {}", name);
             return nullptr;
-        } else if (block) {
-            using namespace std::literals::chrono_literals;
-            while (it == registered_services.end()) {
-                l.unlock();
-                Kernel::Svc::SleepThread(
-                    kernel.System(),
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(100ms).count());
-                l.lock();
-                it = registered_services.find(name);
-            }
         }
         return std::static_pointer_cast<T>(it->second());
+    }
+
+    /// Waits until @p name is registered. False if the services stopped first: what has not
+    /// registered by then never will, so a LoopProcess that needs it should return.
+    bool WaitForService(const std::string& name) const;
+
+    /// Host threads blocked waiting for a registration now: a test stops the services once a
+    /// service waits, instead of guessing when it got there.
+    u32 HostWaiters() const {
+        std::scoped_lock l{lock};
+        return host_waiters;
     }
 
     void InvokeControlRequest(HLERequestContext& context);
@@ -95,6 +103,8 @@ public:
     }
 
 private:
+    bool WaitForRegistration(std::unique_lock<std::mutex>& l, const std::string& name) const;
+
     std::shared_ptr<SM> sm_interface;
     std::unique_ptr<Controller> controller_interface;
 
@@ -102,6 +112,12 @@ private:
     mutable std::mutex lock;
     ::Common::unordered_map<std::string, SessionRequestHandlerFactory> registered_services;
     ::Common::unordered_map<std::string, Kernel::KClientPort*> service_ports;
+
+    /// Wakes host threads waiting for a registration; guarded by lock, as are the two below.
+    mutable std::condition_variable_any registration;
+    mutable u32 host_waiters{};
+    bool closing{};
+    std::stop_token stop_token;
 
     /// Kernel context
     Kernel::KernelCore& kernel;

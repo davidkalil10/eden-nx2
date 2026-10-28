@@ -47,6 +47,11 @@ public:
     void RequestExit();
     void OperationModeChanged();
 
+    /// Drops what a session left here while its kernel is still up: a process AM never took, and
+    /// a window system whose thread did not get to clear it. Called once no core runs.
+    void Reset();
+    [[nodiscard]] bool HasPendingProcess() const;
+
 public:
     void SetWindowSystem(WindowSystem* window_system);
     [[nodiscard]] WindowSystem* GetWindowSystem() const { return m_window_system; }
@@ -54,7 +59,7 @@ public:
 private:
     Core::System& m_system;
 
-    std::mutex m_lock;
+    mutable std::mutex m_lock;
     std::condition_variable m_cv;
 
     WindowSystem* m_window_system{};

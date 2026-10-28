@@ -25,9 +25,12 @@ DisplayLayerManager::~DisplayLayerManager() {
 
 void DisplayLayerManager::Initialize(Core::System& system, Kernel::KProcess* process,
                                      AppletId applet_id, LibraryAppletMode mode) {
-    R_ASSERT(system.ServiceManager()
-                 .GetService<VI::IManagerRootService>("vi:m", true)
-                 ->GetDisplayService(&m_display_service, VI::Policy::Compositor));
+    // Null only once the services have stopped. Every use checks for the services set below.
+    const auto vi_m = system.ServiceManager().GetService<VI::IManagerRootService>("vi:m", true);
+    if (!vi_m) {
+        return;
+    }
+    R_ASSERT(vi_m->GetDisplayService(&m_display_service, VI::Policy::Compositor));
     R_ASSERT(m_display_service->GetManagerDisplayService(&m_manager_display_service));
 
     m_process = process;
