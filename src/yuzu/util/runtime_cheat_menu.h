@@ -28,6 +28,13 @@ public:
                      std::vector<Core::Memory::RuntimeCheatInfo> cheats, Changed changed = {});
     ~RuntimeCheatMenu() override;
 
+    /// Every entry, indexed by menu id, with the current states
+    const std::vector<Core::Memory::RuntimeCheatInfo>& Cheats() const {
+        return cheats;
+    }
+    /// Turns a cheat on or off as a click on it would
+    void Toggle(u32 id);
+
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 

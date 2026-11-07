@@ -67,6 +67,12 @@ RuntimeCheatMenu::~RuntimeCheatMenu() {
     }
 }
 
+void RuntimeCheatMenu::Toggle(u32 id) {
+    if (id < cheats.size() && !cheats[id].is_master) {
+        SetEnabled(id, !cheats[id].enabled);
+    }
+}
+
 void RuntimeCheatMenu::SetEnabled(u32 id, bool enabled) {
     system.SetCheatEnabled(id, enabled);
     for (const auto& cheat : system.GetRuntimeCheats()) {
