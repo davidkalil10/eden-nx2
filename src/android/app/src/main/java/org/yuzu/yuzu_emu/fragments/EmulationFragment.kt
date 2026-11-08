@@ -983,6 +983,8 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
             }
         )
 
+        game?.let { loadBootAssets(it.path) }
+
         game?.let {
             GameIconUtils.loadGameIcon(it, binding.loadingImage)
             binding.loadingTitle.text = it.title
@@ -1087,6 +1089,7 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         emulationViewModel.programChanged.collect(viewLifecycleOwner) {
             if (it != 0) {
                 emulationViewModel.setEmulationStarted(false)
+                emulationViewModel.setAreShadersBuilt(false)
                 binding.drawerLayout.close()
                 binding.drawerLayout
                     .setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
@@ -1128,8 +1131,6 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
         }
 
         driverViewModel.onLaunchGame()
-
-        game?.let { loadBootAssets(it.path) }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
