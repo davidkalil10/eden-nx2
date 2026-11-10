@@ -5,7 +5,6 @@ package org.yuzu.yuzu_emu.overlay
 
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
@@ -98,16 +97,14 @@ class OverlayColorConfigTransfer(
         return choices
     }
 
-    private fun reservedNameKeys(): Set<String> {
-        val labels = OverlayColors.palettes(activity).map { activity.getString(it.labelRes) }
-        return OverlayColors.reservedPresetNameKeys(labels, activity)
-    }
-
     private fun finishImport(preset: OverlayPresetLibrary.Preset) {
         val body = preset.body or 0xFF000000.toInt()
         OverlayColors.write(body, preset.overrides, preset.face)
         val matchesBuiltin = OverlayColors.matchingPalette(body, preset.overrides, preset.face) != null
-        val reservedName = OverlayPresetLibrary.isReservedName(preset.name, reservedNameKeys())
+        val reservedName = OverlayPresetLibrary.isReservedName(
+            preset.name,
+            OverlayColors.reservedNameKeys(activity)
+        )
         val persistToLibrary = {
             OverlayPresetLibrary.importSelected(preset)
             onImportApplied()
@@ -186,26 +183,30 @@ class OverlayColorConfigTransfer(
         class Holder(val binding: ListItemOverlayPresetBinding) : RecyclerView.ViewHolder(binding.root)
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            val inflater = LayoutInflater.from(parent.context)
+            val inflater = android.view.LayoutInflater.from(parent.context)
             return Holder(ListItemOverlayPresetBinding.inflate(inflater, parent, false))
         }
 
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val preset = presets[position]
-            holder.binding.presetTitle.text = if (
-                preset.name == OverlayPresetLibrary.LIVE_COLORS_EXPORT_BASENAME
-            ) {
+            val title = if (preset.name == OverlayPresetLibrary.LIVE_COLORS_EXPORT_BASENAME) {
                 holder.binding.root.context.getString(R.string.overlay_export_current)
             } else {
                 preset.name
             }
-            holder.binding.presetPreview.setPreset(preset.body, preset.face, preset.overrides)
             val pick = {
                 onDismissDialog()
                 onPick(preset)
             }
-            holder.binding.root.setOnClickListener { pick() }
-            holder.binding.presetPreview.setOnClickListener { pick() }
+            bindOverlayPresetRow(
+                holder.binding,
+                title,
+                preset.body,
+                preset.face,
+                preset.overrides,
+                pick,
+                onLongClick = null
+            )
         }
 
         override fun getItemCount(): Int = presets.size

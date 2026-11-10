@@ -105,16 +105,8 @@ object ThemeHelper {
         resolveThemeColor(context, MaterialR.attr.colorPrimary)
 
     @ColorInt
-    fun resolveColorPrimaryContainer(context: Context = YuzuApplication.appContext): Int =
-        resolveThemeColor(context, MaterialR.attr.colorPrimaryContainer)
-
-    @ColorInt
     fun resolveColorSecondary(context: Context = YuzuApplication.appContext): Int =
         resolveThemeColor(context, MaterialR.attr.colorSecondary)
-
-    @ColorInt
-    fun resolveColorTertiary(context: Context = YuzuApplication.appContext): Int =
-        resolveThemeColor(context, MaterialR.attr.colorTertiary)
 
     @ColorInt
     private fun resolveThemeColor(context: Context, attr: Int): Int {

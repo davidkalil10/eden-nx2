@@ -5,7 +5,6 @@ package org.yuzu.yuzu_emu.overlay
 
 import android.content.Context
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import java.util.Locale
 import org.yuzu.yuzu_emu.R
 import org.yuzu.yuzu_emu.YuzuApplication
@@ -71,24 +70,11 @@ object OverlayColors {
     private const val NES_DARK = 0xFF555555.toInt()
     private const val NES_DPAD = 0xFFD10000.toInt()
 
-    enum class PreviewKind {
-        SOLID,
-        GRADIENT,
-        BANDS
-    }
-
-    data class Preview(
-        val kind: PreviewKind,
-        val colors: IntArray,
-        val orientation: GradientDrawable.Orientation = GradientDrawable.Orientation.TOP_BOTTOM
-    )
-
     data class Palette(
         val key: String,
         val labelRes: Int,
         val body: Int,
         val overrides: Map<String, Int>,
-        val preview: Preview,
         val face: String = FACE_LETTERS
     )
 
@@ -116,65 +102,32 @@ object OverlayColors {
 
     private val staticPalettes: List<Palette> by lazy {
         listOf(
+            Palette("original", R.string.overlay_color_default, ORIGINAL_COLOR, emptyMap()),
+            Palette("eden", R.string.overlay_preset_eden, EDEN_PURPLE, byHeight(::edenColor)),
+            Palette("joycon", R.string.overlay_preset_joycon, JOY_BLUE, sideSplit(JOY_RED, JOY_BLUE)),
             Palette(
-                key = "original",
-                labelRes = R.string.overlay_color_default,
-                body = ORIGINAL_COLOR,
-                overrides = emptyMap(),
-                preview = Preview(PreviewKind.SOLID, intArrayOf(ORIGINAL_COLOR))
+                "super_famicom",
+                R.string.overlay_preset_super_famicom,
+                SFC_BODY,
+                face(SFC_BODY, RAL_3020, RAL_1003, RAL_6029, SFC_LOGO_BLUE)
             ),
             Palette(
-                key = "eden",
-                labelRes = R.string.overlay_preset_eden,
-                body = EDEN_PURPLE,
-                overrides = byHeight(::edenColor),
-                preview = Preview(
-                    PreviewKind.GRADIENT,
-                    intArrayOf(EDEN_PINK, EDEN_PURPLE, EDEN_BLUE)
-                )
-            ),
-            Palette(
-                key = "joycon",
-                labelRes = R.string.overlay_preset_joycon,
-                body = JOY_BLUE,
-                overrides = sideSplit(JOY_RED, JOY_BLUE),
-                preview = Preview(
-                    PreviewKind.GRADIENT,
-                    intArrayOf(JOY_RED, JOY_BLUE),
-                    GradientDrawable.Orientation.LEFT_RIGHT
-                )
-            ),
-            Palette(
-                key = "super_famicom",
-                labelRes = R.string.overlay_preset_super_famicom,
-                body = SFC_BODY,
-                overrides = face(SFC_BODY, RAL_3020, RAL_1003, RAL_6029, SFC_LOGO_BLUE),
-                preview = Preview(
-                    PreviewKind.BANDS,
-                    intArrayOf(SFC_BODY, RAL_3020, RAL_1003, RAL_6029, SFC_LOGO_BLUE)
-                )
-            ),
-            Palette(
-                key = "snes",
-                labelRes = R.string.overlay_preset_snes,
-                body = SNES_BODY,
-                overrides = mapOf(
+                "snes",
+                R.string.overlay_preset_snes,
+                SNES_BODY,
+                mapOf(
                     OverlayControl.BUTTON_A.id to SNES_BTN_AB,
                     OverlayControl.BUTTON_B.id to SNES_BTN_AB,
                     OverlayControl.BUTTON_X.id to SNES_BTN_XY,
                     OverlayControl.BUTTON_Y.id to SNES_BTN_XY,
                     OverlayControl.COMBINED_DPAD.id to SNES_BTN_AB
-                ),
-                preview = Preview(
-                    PreviewKind.BANDS,
-                    intArrayOf(SNES_BODY, SNES_BTN_XY, SNES_BTN_AB)
                 )
             ),
             Palette(
-                key = "gamecube",
-                labelRes = R.string.overlay_preset_gamecube,
-                body = GC_BODY,
-                overrides = mapOf(
+                "gamecube",
+                R.string.overlay_preset_gamecube,
+                GC_BODY,
+                mapOf(
                     OverlayControl.BUTTON_A.id to GC_GREEN,
                     OverlayControl.BUTTON_B.id to GC_RED,
                     OverlayControl.BUTTON_X.id to GC_FACE_GRAY,
@@ -184,17 +137,13 @@ object OverlayColors {
                     OverlayControl.STICK_L.id to GC_FACE_GRAY,
                     OverlayControl.STICK_R.id to GC_C_STICK,
                     OverlayControl.COMBINED_DPAD.id to GC_FACE_GRAY
-                ),
-                preview = Preview(
-                    PreviewKind.BANDS,
-                    intArrayOf(GC_BODY, GC_GREEN, GC_RED, GC_FACE_GRAY, GC_C_STICK)
                 )
             ),
             Palette(
-                key = "nes",
-                labelRes = R.string.overlay_preset_nes,
-                body = NES_BODY,
-                overrides = mapOf(
+                "nes",
+                R.string.overlay_preset_nes,
+                NES_BODY,
+                mapOf(
                     OverlayControl.BUTTON_PLUS.id to NES_GRAY,
                     OverlayControl.BUTTON_MINUS.id to NES_GRAY,
                     OverlayControl.BUTTON_HOME.id to NES_GRAY,
@@ -206,17 +155,13 @@ object OverlayColors {
                     OverlayControl.STICK_L.id to NES_GRAY,
                     OverlayControl.STICK_R.id to NES_GRAY,
                     OverlayControl.COMBINED_DPAD.id to NES_DPAD
-                ),
-                preview = Preview(
-                    PreviewKind.BANDS,
-                    intArrayOf(NES_BODY, NES_DPAD, NES_GRAY, NES_DARK)
                 )
             ),
             Palette(
-                key = "famicom",
-                labelRes = R.string.overlay_preset_famicom,
-                body = FAMICOM_BODY,
-                overrides = face(
+                "famicom",
+                R.string.overlay_preset_famicom,
+                FAMICOM_BODY,
+                face(
                     FAMICOM_BODY,
                     FAMICOM_RED,
                     FAMICOM_RED,
@@ -227,10 +172,6 @@ object OverlayColors {
                         OverlayControl.BUTTON_STICK_L to FAMICOM_DARK,
                         OverlayControl.BUTTON_STICK_R to FAMICOM_DARK
                     )
-                ),
-                preview = Preview(
-                    PreviewKind.BANDS,
-                    intArrayOf(FAMICOM_BODY, FAMICOM_RED, FAMICOM_DARK)
                 )
             )
         )
@@ -240,35 +181,26 @@ object OverlayColors {
         listOf(appThemePalette(context)) + staticPalettes
 
     fun appThemePalette(context: Context = YuzuApplication.appContext): Palette {
-        val resolved = resolveAppThemeOverlay(context)
+        val (body, overrides) = resolveAppThemeOverlay(context)
         return Palette(
-            key = PRESET_APP_THEME,
-            labelRes = R.string.overlay_color_app_theme,
-            body = resolved.body,
-            overrides = resolved.overrides,
-            preview = resolved.preview,
-            face = FACE_LETTERS
+            PRESET_APP_THEME,
+            R.string.overlay_color_app_theme,
+            body,
+            overrides
         )
     }
 
     fun isFollowingAppTheme(): Boolean =
         IntSetting.OVERLAY_COLOR.getInt() == FOLLOW_APP_THEME
 
-    private data class ResolvedAppTheme(
-        val body: Int,
-        val overrides: Map<String, Int>,
-        val preview: Preview
-    )
-
-    private fun resolveAppThemeOverlay(context: Context): ResolvedAppTheme {
+    private fun resolveAppThemeOverlay(context: Context): Pair<Int, Map<String, Int>> {
         if (ThemeHelper.activeThemeStyleRes() == R.style.Theme_Eden_Main) {
             val eden = staticPalettes.first { it.key == "eden" }
-            return ResolvedAppTheme(eden.body, eden.overrides, eden.preview)
+            return eden.body to eden.overrides
         }
 
         val themeContext = ThemeHelper.themedContext(context)
         val primary = ThemeHelper.resolveColorPrimary(themeContext)
-        val container = ThemeHelper.resolveColorPrimaryContainer(themeContext)
         val secondary = ThemeHelper.resolveColorSecondary(themeContext)
 
         val overrides = linkedMapOf<String, Int>()
@@ -277,22 +209,7 @@ object OverlayColors {
             overrides[OverlayControl.STICK_L.id] = secondary
             overrides[OverlayControl.STICK_R.id] = secondary
         }
-
-        val previewColors = when {
-            (container and 0xFFFFFF) != primaryRgb ->
-                intArrayOf(primary, container)
-            (secondary and 0xFFFFFF) != primaryRgb ->
-                intArrayOf(primary, secondary)
-            else ->
-                intArrayOf(primary)
-        }
-        val previewKind = if (previewColors.size > 1) PreviewKind.GRADIENT else PreviewKind.SOLID
-
-        return ResolvedAppTheme(
-            body = primary,
-            overrides = overrides,
-            preview = Preview(previewKind, previewColors)
-        )
+        return primary to overrides
     }
 
     private var cachedRaw: String? = null
@@ -338,7 +255,7 @@ object OverlayColors {
             body or 0xFF000000.toInt()
         }
         IntSetting.OVERLAY_COLOR.setInt(stored)
-        StringSetting.OVERLAY_CONTROL_COLORS.setString(serialize(overrides, face))
+        StringSetting.OVERLAY_CONTROL_COLORS.setString(serialize(overrides))
         cachedRaw = null
         NativeConfig.saveGlobalConfig()
     }
@@ -391,29 +308,19 @@ object OverlayColors {
     }
 
     /** Built-in preset keys plus localized titles (blocks names like GCN / GameCube). */
-    fun reservedPresetNameKeys(displayLabels: Collection<String>, context: Context): Set<String> {
+    fun reservedNameKeys(context: Context): Set<String> {
         val keys = mutableSetOf<String>()
         palettes(context).forEach { palette ->
             keys.add(OverlayPresetLibrary.nameKey(palette.key))
-        }
-        displayLabels.forEach { label ->
-            keys.add(OverlayPresetLibrary.nameKey(label))
+            keys.add(OverlayPresetLibrary.nameKey(context.getString(palette.labelRes)))
         }
         return keys
     }
 
-    fun presetFromPalette(palette: Palette, displayName: String): OverlayPresetLibrary.Preset =
-        OverlayPresetLibrary.Preset(
-            displayName,
-            palette.body,
-            palette.face,
-            palette.overrides
-        )
-
-    fun labelFor(controlId: String, @Suppress("UNUSED_PARAMETER") face: String = FACE_LETTERS): Int =
+    fun labelFor(controlId: String): Int =
         targets.firstOrNull { it.id == controlId }?.labelRes ?: R.string.overlay_color
 
-    fun serialize(overrides: Map<String, Int>, face: String = FACE_LETTERS): String {
+    fun serialize(overrides: Map<String, Int>): String {
         val parts = mutableListOf<String>()
         OverlayControl.entries.forEach { control ->
             val color = overrides[control.id] ?: return@forEach
@@ -520,26 +427,4 @@ object OverlayColors {
         )
     }
 
-    fun previewDrawable(preview: Preview): GradientDrawable {
-        val strokePx = 1
-        val strokeColor = 0x33000000
-        return when (preview.kind) {
-            PreviewKind.SOLID -> GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(preview.colors.first())
-                setStroke(strokePx, strokeColor)
-            }
-            PreviewKind.GRADIENT -> GradientDrawable(preview.orientation, preview.colors).apply {
-                shape = GradientDrawable.OVAL
-                setStroke(strokePx, strokeColor)
-            }
-            PreviewKind.BANDS -> GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                preview.colors
-            ).apply {
-                shape = GradientDrawable.OVAL
-                setStroke(strokePx, strokeColor)
-            }
-        }
-    }
 }

@@ -10,6 +10,10 @@ import android.os.Handler
 import android.os.Looper
 import android.util.LruCache
 import android.view.View.MeasureSpec
+import org.yuzu.yuzu_emu.features.settings.model.IntSetting
+import org.yuzu.yuzu_emu.overlay.model.OverlayControl
+import org.yuzu.yuzu_emu.overlay.model.OverlayControlData
+import org.yuzu.yuzu_emu.utils.NativeConfig
 
 /**
  * Renders and caches static overlay preset thumbnails so list scrolling does not rebuild controls.
@@ -23,9 +27,42 @@ object OverlayPresetThumbnailCache {
     private val inflight = mutableSetOf<String>()
     private val pendingCallbacks = linkedMapOf<String, MutableList<(Bitmap) -> Unit>>()
 
+    fun snapshotControlData(): List<OverlayControlData> {
+        val stored = NativeConfig.getOverlayControlData()
+        if (stored.isEmpty()) {
+            return OverlayControl.entries.map { it.toOverlayControlData() }
+        }
+        val byId = stored.associateBy { it.id }.toMutableMap()
+        OverlayControl.entries.forEach { entry ->
+            if (!byId.containsKey(entry.id)) {
+                byId[entry.id] = entry.toOverlayControlData()
+            }
+        }
+        return byId.values.toList()
+    }
+
+    fun layoutSignature(): String {
+        val scale = IntSetting.OVERLAY_SCALE.getInt()
+        val opacity = IntSetting.OVERLAY_OPACITY.getInt()
+        val controls = snapshotControlData().sortedBy { it.id }
+        val layoutBody = controls.joinToString(";") { data ->
+            buildString {
+                append(data.id)
+                append(':')
+                append(if (data.enabled) 1 else 0)
+                append(':')
+                append(data.landscapePosition.first)
+                append(',')
+                append(data.landscapePosition.second)
+                append(':')
+                append(data.individualScale)
+            }
+        }
+        return "L|$scale|$opacity|$layoutBody"
+    }
+
     fun signature(body: Int, face: String, overrides: Map<String, Int>): String =
-        OverlayPresetLibrary.contentSignature(body, face, overrides) +
-            "|" + OverlayPreviewLayout.layoutSignature()
+        OverlayPresetLibrary.contentSignature(body, face, overrides) + "|" + layoutSignature()
 
     fun evictAll() {
         cache.evictAll()
@@ -76,8 +113,10 @@ object OverlayPresetThumbnailCache {
                 if (cache.get(key) == null) {
                     cache.put(key, renderBitmap(context, body, face, overrides))
                 }
-                val bitmap = cache.get(key)!!
+                val bitmap = cache.get(key) ?: return@post
                 pendingCallbacks.remove(key)?.forEach { callback -> callback(bitmap) }
+            } catch (_: RuntimeException) {
+                pendingCallbacks.remove(key)
             } finally {
                 inflight.remove(key)
             }

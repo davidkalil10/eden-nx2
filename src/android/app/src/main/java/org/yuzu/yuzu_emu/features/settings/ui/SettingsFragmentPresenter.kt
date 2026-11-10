@@ -38,7 +38,6 @@ import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import org.yuzu.yuzu_emu.fragments.MessageDialogFragment
 import org.yuzu.yuzu_emu.overlay.OverlayColorActivity
-import org.yuzu.yuzu_emu.overlay.OverlayColors
 
 class SettingsFragmentPresenter(
     private val settingsViewModel: SettingsViewModel,
@@ -57,9 +56,6 @@ class SettingsFragmentPresenter(
     private var postProcessingSynced = false
 
     private val context get() = YuzuApplication.appContext
-
-    var launchOverlayColorImport: (() -> Unit)? = null
-    var launchOverlayColorExport: (() -> Unit)? = null
 
     // Extension for altering settings list based on each setting's properties
     fun ArrayList<SettingsItem>.add(key: String) {
@@ -181,7 +177,6 @@ class SettingsFragmentPresenter(
             MenuTag.SECTION_PERFORMANCE_STATS -> addPerformanceOverlaySettings(sl)
             MenuTag.SECTION_SOC_OVERLAY -> addSocOverlaySettings(sl)
             MenuTag.SECTION_INPUT_OVERLAY -> addInputOverlaySettings(sl)
-            MenuTag.SECTION_OVERLAY_COLOR -> addOverlayColorSettings(sl)
             MenuTag.SECTION_AUDIO -> addAudioSettings(sl)
             MenuTag.SECTION_INPUT -> addInputSettings(sl)
             MenuTag.SECTION_INPUT_PLAYER_ONE -> addInputPlayer(sl, 0)
@@ -608,11 +603,10 @@ class SettingsFragmentPresenter(
             add(BooleanSetting.OVERLAY_SNAP_TO_GRID.key)
             add(IntSetting.OVERLAY_GRID_SIZE.key)
             add(
-                SubmenuSetting(
+                LaunchableSetting(
                     titleId = R.string.overlay_color_customize,
                     descriptionId = R.string.overlay_color_customize_summary,
-                    showChevron = true,
-                    menuKey = MenuTag.SECTION_OVERLAY_COLOR
+                    launchIntent = { host -> OverlayColorActivity.createIntent(host) }
                 )
             )
             add(
@@ -628,47 +622,6 @@ class SettingsFragmentPresenter(
             add(BooleanSetting.ENABLE_INPUT_OVERLAY_AUTO_HIDE.key)
             add(IntSetting.INPUT_OVERLAY_AUTO_HIDE.key)
             add(BooleanSetting.HIDE_OVERLAY_ON_CONTROLLER_INPUT.key)
-        }
-    }
-
-    private fun addOverlayColorSettings(sl: ArrayList<SettingsItem>) {
-        sl.apply {
-            add(HeaderSetting(R.string.overlay_color_section_create_use))
-            add(
-                LaunchableSetting(
-                    titleId = R.string.overlay_color_presets,
-                    descriptionId = R.string.overlay_color_presets_summary,
-                    launchIntent = { host -> OverlayColorActivity.createPresetsIntent(host) }
-                )
-            )
-            add(
-                LaunchableSetting(
-                    titleId = R.string.overlay_color_create_template,
-                    descriptionId = R.string.overlay_color_create_template_summary,
-                    launchIntent = { host -> OverlayColorActivity.createTemplateIntent(host) }
-                )
-            )
-            add(HeaderSetting(R.string.overlay_color_section_manage_files))
-            add(
-                RunnableSetting(
-                    titleId = R.string.overlay_import_color_config,
-                    descriptionId = R.string.overlay_import_color_config_summary,
-                    isRunnable = true,
-                    iconId = R.drawable.ic_import
-                ) {
-                    launchOverlayColorImport?.invoke()
-                }
-            )
-            add(
-                RunnableSetting(
-                    titleId = R.string.overlay_export_color_config,
-                    descriptionId = R.string.overlay_export_color_config_summary,
-                    isRunnable = true,
-                    iconId = R.drawable.ic_export
-                ) {
-                    launchOverlayColorExport?.invoke()
-                }
-            )
         }
     }
 

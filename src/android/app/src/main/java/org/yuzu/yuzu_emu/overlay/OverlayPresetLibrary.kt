@@ -25,6 +25,15 @@ object OverlayPresetLibrary {
 
     private const val STORAGE_FILE_NAME = "presets.edenovl"
     private const val LEGACY_JSON_FILE_NAME = "overlay_color_presets.json"
+
+    private fun userDataDirectory(): String? =
+        runCatching {
+            if (DirectoryInitialization.areDirectoriesReady) {
+                DirectoryInitialization.userDirectory
+            } else {
+                null
+            }
+        }.getOrNull()
     private const val JSON_KEY_BASE_COLOR = "base_color"
     private const val JSON_KEY_SHELL_LEGACY = "shell"
 
@@ -121,13 +130,7 @@ object OverlayPresetLibrary {
 
     /** Call after user data zip import; picks up presets from standard or legacy zip layouts. */
     fun onUserDataImportRestored() {
-        val userDir = runCatching {
-            if (DirectoryInitialization.areDirectoriesReady) {
-                DirectoryInitialization.userDirectory
-            } else {
-                null
-            }
-        }.getOrNull() ?: return
+        val userDir = userDataDirectory() ?: return
         val target = File(userDir, USER_DATA_RELATIVE_PATH)
         val legacyAtUserRoot = File(userDir, LEGACY_JSON_FILE_NAME)
         val legacyInConfig = File(userDir, "config/$LEGACY_JSON_FILE_NAME")
@@ -281,13 +284,7 @@ object OverlayPresetLibrary {
 
     /** Same tree as [org.yuzu.yuzu_emu.features.settings.utils.SettingsFile] (survives app updates). */
     private fun storageFile(): File {
-        val userDir = runCatching {
-            if (DirectoryInitialization.areDirectoriesReady) {
-                DirectoryInitialization.userDirectory
-            } else {
-                null
-            }
-        }.getOrNull()
+        val userDir = userDataDirectory()
         if (!userDir.isNullOrBlank()) {
             return File(userDir, USER_DATA_RELATIVE_PATH)
         }
@@ -314,16 +311,7 @@ object OverlayPresetLibrary {
             legacyInternal.renameTo(File(legacyInternal.parent, "$LEGACY_JSON_FILE_NAME.legacy"))
         }
 
-        val userDir = runCatching {
-            if (DirectoryInitialization.areDirectoriesReady) {
-                DirectoryInitialization.userDirectory
-            } else {
-                null
-            }
-        }.getOrNull()
-        if (userDir.isNullOrBlank()) {
-            return
-        }
+        val userDir = userDataDirectory() ?: return
         val legacyConfig = File(userDir, "config/$LEGACY_JSON_FILE_NAME")
         if (!legacyConfig.exists()) {
             return

@@ -7,16 +7,12 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
-import android.content.res.Configuration
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
-import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -25,31 +21,28 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
-import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.yield
+import androidx.transition.Transition
+import androidx.transition.TransitionManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.Slider
 import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.transition.MaterialSharedAxis
 import java.util.Locale
 import org.yuzu.yuzu_emu.R
 import org.yuzu.yuzu_emu.YuzuApplication
 import org.yuzu.yuzu_emu.databinding.ActivityOverlayColorBinding
 import org.yuzu.yuzu_emu.databinding.DialogEditTextBinding
-import org.yuzu.yuzu_emu.databinding.ListItemOverlayPresetBinding
-import org.yuzu.yuzu_emu.databinding.ListItemSettingBinding
-import org.yuzu.yuzu_emu.databinding.ListItemSettingsHeaderBinding
 import org.yuzu.yuzu_emu.utils.ThemeHelper
-import org.yuzu.yuzu_emu.utils.ViewUtils.setVisible
 import org.yuzu.yuzu_emu.utils.ViewUtils.updateMargins
 
 class OverlayColorActivity : AppCompatActivity() {
     private lateinit var binding: ActivityOverlayColorBinding
     private val overrides = linkedMapOf<String, Int>()
-    private val adapter = ColorAdapter()
+    private val adapter = OverlayColorListAdapter {
+        OverlayColorState(body, face, overrides)
+    }
 
     private var body = OverlayColors.ORIGINAL_COLOR
     private var face = OverlayColors.FACE_LETTERS
@@ -61,10 +54,7 @@ class OverlayColorActivity : AppCompatActivity() {
     private var lastPreviewLayoutSignature: String? = null
     /** Opened from settings straight to template/presets; back leaves the activity instead of the hub. */
     private var entrySkipsHub = false
-    /** Ignores stale [View.post] grid relayout callbacks after leaving the presets screen. */
-    private var listLayoutGeneration = 0
-    private var presetGridLayoutRunnable: Runnable? = null
-
+    private var skipScreenTransition = false
     private enum class Destination {
         HUB,
         PRESETS,
@@ -91,7 +81,7 @@ class OverlayColorActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        val layoutSignature = OverlayPreviewLayout.layoutSignature()
+        val layoutSignature = OverlayPresetThumbnailCache.layoutSignature()
         if (lastPreviewLayoutSignature != null && lastPreviewLayoutSignature != layoutSignature) {
             OverlayPresetThumbnailCache.evictAll()
             if (destination == Destination.PRESETS) {
@@ -152,11 +142,13 @@ class OverlayColorActivity : AppCompatActivity() {
         binding.colorPreview.setImageDrawable(null)
         wireEditor()
         applyInsets()
+        skipScreenTransition = savedInstanceState == null
         if (editingId != null) {
             showEditor(editingId!!)
         } else {
             navigateTo(destination)
         }
+        skipScreenTransition = false
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -203,144 +195,92 @@ class OverlayColorActivity : AppCompatActivity() {
     }
 
     private fun navigateTo(target: Destination) {
-        destination = target
-        when (target) {
-            Destination.HUB -> showHub()
-            Destination.PRESETS -> showPresets()
-            Destination.TEMPLATE -> showTemplate()
+        runSharedAxisTransition(backward = false) {
+            destination = target
+            when (target) {
+                Destination.HUB -> showHub()
+                Destination.PRESETS -> showPresets()
+                Destination.TEMPLATE -> showTemplate()
+            }
         }
     }
 
-    private fun showListScreen(titleRes: Int, rows: List<Row>) {
+    /** Same axis/direction as [SettingsFragment] enter and return transitions. */
+    private fun sharedAxisTransition(backward: Boolean): Transition =
+        MaterialSharedAxis(MaterialSharedAxis.X, !backward).apply {
+            addTarget(binding.appbarOverlayColor)
+            addTarget(binding.listOverlayColor)
+            addTarget(binding.editorScroll)
+        }
+
+    private fun runSharedAxisTransition(backward: Boolean, update: () -> Unit) {
+        if (skipScreenTransition || isFinishing || isDestroyed) {
+            update()
+            return
+        }
+        fun applyTransition() {
+            if (isFinishing || isDestroyed) {
+                update()
+                return
+            }
+            binding.listOverlayColor.suppressLayout(true)
+            TransitionManager.beginDelayedTransition(
+                binding.overlayColorRoot,
+                sharedAxisTransition(backward)
+            )
+            update()
+            binding.listOverlayColor.post {
+                binding.listOverlayColor.suppressLayout(false)
+            }
+        }
+        if (binding.overlayColorRoot.isLaidOut) {
+            applyTransition()
+        } else {
+            binding.overlayColorRoot.post { applyTransition() }
+        }
+    }
+
+    private fun showListScreen(titleRes: Int, rows: List<OverlayColorRow>) {
         dismissColorEditorIme()
         editingId = null
-        val layoutGeneration = ++listLayoutGeneration
-        cancelPendingPresetGridLayout()
         binding.editorScroll.visibility = View.GONE
         binding.listOverlayColor.visibility = View.VISIBLE
         binding.toolbarOverlayColor.setTitle(titleRes)
-        configureListLayout(rows)
+        binding.listOverlayColor.layoutManager =
+            LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
         adapter.submit(rows)
-        if (destination == Destination.PRESETS && rows.any { it is Row.PresetDesign }) {
-            preloadPresetThumbnails(rows)
-            val runnable = Runnable {
-                presetGridLayoutRunnable = null
-                if (layoutGeneration != listLayoutGeneration) {
-                    return@Runnable
-                }
-                if (destination != Destination.PRESETS) {
-                    return@Runnable
-                }
-                val currentRows = adapter.currentRows()
-                refreshPresetGridLayout(currentRows)
-            }
-            presetGridLayoutRunnable = runnable
-            binding.listOverlayColor.post(runnable)
-        }
     }
-
-    private fun cancelPendingPresetGridLayout() {
-        presetGridLayoutRunnable?.let { binding.listOverlayColor.removeCallbacks(it) }
-        presetGridLayoutRunnable = null
-    }
-
-    private fun effectivePresetListWidthPx(): Int {
-        val listWidth = binding.listOverlayColor.width
-        if (listWidth > 0) {
-            return listWidth
-        }
-        return resources.displayMetrics.widthPixels
-    }
-
-    private fun presetColumnCount(): Int {
-        if (resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) {
-            return 1
-        }
-        val minColumnPx = resources.getDimensionPixelSize(R.dimen.overlay_preset_grid_min_column_width)
-        val widthPx = effectivePresetListWidthPx()
-        return if (widthPx >= minColumnPx * 2) 2 else 1
-    }
-
-    private fun refreshPresetGridLayout(rows: List<Row>) {
-        if (destination != Destination.PRESETS || !rows.any { it is Row.PresetDesign }) {
-            return
-        }
-        val beforeColumns = adapter.presetGridColumns
-        val beforeGrid = binding.listOverlayColor.layoutManager is GridLayoutManager
-        configureListLayout(rows)
-        val afterGrid = binding.listOverlayColor.layoutManager is GridLayoutManager
-        if (beforeColumns != adapter.presetGridColumns || beforeGrid != afterGrid) {
-            adapter.notifyDataSetChanged()
-        }
-    }
-
-    private fun configureListLayout(rows: List<Row>) {
-        val presetGrid = destination == Destination.PRESETS && rows.any { it is Row.PresetDesign }
-        if (!presetGrid) {
-            adapter.presetGridColumns = 0
-            binding.listOverlayColor.layoutManager =
-                LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
-            adapter.spanSizeLookup.invalidateSpanIndexCache()
-            return
-        }
-        val columns = presetColumnCount()
-        adapter.presetGridColumns = columns
-        if (columns == 1) {
-            binding.listOverlayColor.layoutManager =
-                LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
-            adapter.spanSizeLookup.invalidateSpanIndexCache()
-            return
-        }
-        val existing = binding.listOverlayColor.layoutManager
-        if (existing is GridLayoutManager && existing.spanCount == columns) {
-            existing.spanSizeLookup = adapter.spanSizeLookup
-            adapter.spanSizeLookup.invalidateSpanIndexCache()
-            return
-        }
-        val grid = GridLayoutManager(this, columns)
-        grid.spanSizeLookup = adapter.spanSizeLookup
-        binding.listOverlayColor.layoutManager = grid
-        adapter.spanSizeLookup.invalidateSpanIndexCache()
-    }
-
-    private fun preloadPresetThumbnails(rows: List<Row>) {
-        lifecycleScope.launch {
-            for (row in rows) {
-                if (row is Row.PresetDesign) {
-                    OverlayPresetThumbnailCache.preload(
-                        this@OverlayColorActivity,
-                        row.body,
-                        row.face,
-                        row.controlOverrides
-                    )
-                    yield()
-                }
-            }
-        }
-    }
-
-    private fun builtInLabels(): List<String> =
-        OverlayColors.palettes(this).map { getString(it.labelRes) }
-
-    private fun reservedNameKeys(): Set<String> =
-        OverlayColors.reservedPresetNameKeys(builtInLabels(), this)
 
     private fun showHub() {
         destination = Destination.HUB
         showListScreen(
             R.string.overlay_color,
             listOf(
-                Row.Setting(
+                OverlayColorRow.Header(R.string.overlay_color_section_create_use),
+                OverlayColorRow.Setting(
                     title = getString(R.string.overlay_color_presets),
                     description = getString(R.string.overlay_color_presets_summary),
                     showChevron = true,
                     onClick = { navigateTo(Destination.PRESETS) }
                 ),
-                Row.Setting(
+                OverlayColorRow.Setting(
                     title = getString(R.string.overlay_color_create_template),
                     description = getString(R.string.overlay_color_create_template_summary),
                     showChevron = true,
                     onClick = { navigateTo(Destination.TEMPLATE) }
+                ),
+                OverlayColorRow.Header(R.string.overlay_color_section_manage_files),
+                OverlayColorRow.Setting(
+                    title = getString(R.string.overlay_import_color_config),
+                    description = getString(R.string.overlay_import_color_config_summary),
+                    iconRes = R.drawable.ic_import,
+                    onClick = { colorConfigTransfer.launchImport { importLauncher.launch(it) } }
+                ),
+                OverlayColorRow.Setting(
+                    title = getString(R.string.overlay_export_color_config),
+                    description = getString(R.string.overlay_export_color_config_summary),
+                    iconRes = R.drawable.ic_export,
+                    onClick = { colorConfigTransfer.launchExport { exportLauncher.launch(it) } }
                 )
             )
         )
@@ -349,11 +289,11 @@ class OverlayColorActivity : AppCompatActivity() {
     private fun showPresets() {
         destination = Destination.PRESETS
         savedPresets = OverlayPresetLibrary.load()
-        val rows = mutableListOf<Row>()
-        rows += Row.Header(R.string.overlay_color_builtin_header)
+        val rows = mutableListOf<OverlayColorRow>()
+        rows += OverlayColorRow.Header(R.string.overlay_color_builtin_header)
         OverlayColors.palettes(this).forEach { palette ->
             val title = getString(palette.labelRes)
-            rows += Row.PresetDesign(
+            rows += OverlayColorRow.PresetDesign(
                 title = title,
                 body = palette.body,
                 face = palette.face,
@@ -373,9 +313,9 @@ class OverlayColorActivity : AppCompatActivity() {
             OverlayColors.matchingPalette(preset.body, preset.overrides, preset.face) == null
         }
         if (savedRows.isNotEmpty()) {
-            rows += Row.Header(R.string.overlay_preset_saved_header)
+            rows += OverlayColorRow.Header(R.string.overlay_preset_saved_header)
             savedRows.forEach { preset ->
-                rows += Row.PresetDesign(
+                rows += OverlayColorRow.PresetDesign(
                     title = preset.name,
                     body = preset.body,
                     face = preset.face,
@@ -392,14 +332,14 @@ class OverlayColorActivity : AppCompatActivity() {
 
     private fun showTemplate() {
         destination = Destination.TEMPLATE
-        val rows = mutableListOf<Row>()
-        rows += Row.Setting(
+        val rows = mutableListOf<OverlayColorRow>()
+        rows += OverlayColorRow.Setting(
             title = getString(R.string.overlay_preset_save),
             description = getString(R.string.overlay_color_save_preset_hint),
             showChevron = true,
             onClick = { promptSavePreset() }
         )
-        rows += Row.Header(R.string.overlay_color_buttons)
+        rows += OverlayColorRow.Header(R.string.overlay_color_buttons)
         rows += controlRow(OverlayColors.BASE, R.string.overlay_color_base, body, usingBaseColor = false)
         OverlayColors.targets.forEach { target ->
             val custom = overrides.containsKey(target.id)
@@ -410,20 +350,28 @@ class OverlayColorActivity : AppCompatActivity() {
     }
 
     private fun showEditor(id: String) {
-        editingId = id
-        binding.listOverlayColor.visibility = View.GONE
-        binding.editorScroll.visibility = View.VISIBLE
-        binding.toolbarOverlayColor.setTitle(
-            if (id == OverlayColors.BASE) {
-                R.string.overlay_color_base
-            } else {
-                OverlayColors.labelFor(id)
-            }
-        )
-        renderEditor(pushSliders = true, updateHex = true)
+        val enteringEditor = editingId == null
+        val run = {
+            editingId = id
+            binding.listOverlayColor.visibility = View.GONE
+            binding.editorScroll.visibility = View.VISIBLE
+            binding.toolbarOverlayColor.setTitle(
+                if (id == OverlayColors.BASE) {
+                    R.string.overlay_color_base
+                } else {
+                    OverlayColors.labelFor(id)
+                }
+            )
+            renderEditor(pushSliders = true, updateHex = true)
+        }
+        if (enteringEditor) {
+            runSharedAxisTransition(backward = false, run)
+        } else {
+            run()
+        }
     }
 
-    private fun controlRow(id: String, labelRes: Int, color: Int, usingBaseColor: Boolean): Row.Control {
+    private fun controlRow(id: String, labelRes: Int, color: Int, usingBaseColor: Boolean): OverlayColorRow.Control {
         val subtitle = if (id == OverlayColors.BASE) {
             OverlayColors.hexString(color)
         } else if (usingBaseColor) {
@@ -431,7 +379,7 @@ class OverlayColorActivity : AppCompatActivity() {
         } else {
             OverlayColors.hexString(color)
         }
-        return Row.Control(
+        return OverlayColorRow.Control(
             controlId = id,
             title = getString(labelRes),
             subtitle = subtitle,
@@ -607,7 +555,7 @@ class OverlayColorActivity : AppCompatActivity() {
                     ).show()
                     return@setPositiveButton
                 }
-                if (OverlayPresetLibrary.isReservedName(name, reservedNameKeys())) {
+                if (OverlayPresetLibrary.isReservedName(name, OverlayColors.reservedNameKeys(this))) {
                     Toast.makeText(this, R.string.overlay_preset_name_taken, Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
@@ -687,7 +635,9 @@ class OverlayColorActivity : AppCompatActivity() {
     private fun onNavigateBack() {
         dismissColorEditorIme()
         if (editingId != null) {
-            showTemplate()
+            runSharedAxisTransition(backward = true) {
+                showTemplate()
+            }
             return
         }
         when (destination) {
@@ -695,210 +645,13 @@ class OverlayColorActivity : AppCompatActivity() {
                 if (entrySkipsHub) {
                     finish()
                 } else {
-                    showHub()
+                    runSharedAxisTransition(backward = true) {
+                        showHub()
+                    }
                 }
             }
             Destination.HUB -> finish()
         }
-    }
-
-    private sealed class Row {
-        data class Header(val titleRes: Int) : Row()
-        data class PresetDesign(
-            val title: String,
-            val body: Int,
-            val face: String,
-            val controlOverrides: Map<String, Int>,
-            val onClick: () -> Unit,
-            val onLongClick: (() -> Unit)? = null
-        ) : Row()
-        data class Setting(
-            val title: String,
-            val description: String,
-            val swatch: GradientDrawable? = null,
-            val showChevron: Boolean = false,
-            val onClick: () -> Unit,
-            val onLongClick: (() -> Unit)? = null
-        ) : Row()
-        data class Control(
-            val controlId: String,
-            val title: String,
-            val subtitle: String,
-            val color: Int,
-            val onClick: () -> Unit
-        ) : Row()
-    }
-
-    private inner class ColorAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-        private val rows = mutableListOf<Row>()
-        /** 0 = hub/template (linear); 1–2 = presets grid width in landscape. */
-        var presetGridColumns = 0
-
-        val spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-            override fun getSpanSize(position: Int): Int {
-                val row = rows.getOrNull(position)
-                if (presetGridColumns > 1) {
-                    return when (row) {
-                        is Row.PresetDesign -> 1
-                        else -> presetGridColumns
-                    }
-                }
-                return when (row) {
-                    is Row.PresetDesign -> 1
-                    else -> {
-                        val grid = binding.listOverlayColor.layoutManager as? GridLayoutManager
-                        grid?.spanCount ?: 1
-                    }
-                }
-            }
-        }
-
-        fun currentRows(): List<Row> = rows.toList()
-
-        fun submit(next: List<Row>) {
-            rows.clear()
-            rows.addAll(next)
-            notifyDataSetChanged()
-        }
-
-        override fun getItemViewType(position: Int): Int = when (rows[position]) {
-            is Row.Header -> 0
-            is Row.PresetDesign -> 1
-            is Row.Setting -> 2
-            is Row.Control -> 3
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-            val inflater = LayoutInflater.from(parent.context)
-            return when (viewType) {
-                0 -> HeaderHolder(ListItemSettingsHeaderBinding.inflate(inflater, parent, false))
-                1 -> PresetDesignHolder(ListItemOverlayPresetBinding.inflate(inflater, parent, false))
-                2 -> SettingHolder(ListItemSettingBinding.inflate(inflater, parent, false))
-                else -> ControlHolder(ListItemSettingBinding.inflate(inflater, parent, false))
-            }
-        }
-
-        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            when (val row = rows[position]) {
-                is Row.Header -> (holder as HeaderHolder).bind(row)
-                is Row.PresetDesign -> (holder as PresetDesignHolder).bind(row)
-                is Row.Setting -> (holder as SettingHolder).bind(row)
-                is Row.Control -> (holder as ControlHolder).bind(row)
-            }
-        }
-
-        override fun getItemCount(): Int = rows.size
-    }
-
-    private class HeaderHolder(
-        private val binding: ListItemSettingsHeaderBinding
-    ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(row: Row.Header) {
-            binding.textHeaderName.setText(row.titleRes)
-        }
-    }
-
-    private inner class PresetDesignHolder(
-        private val binding: ListItemOverlayPresetBinding
-    ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(row: Row.PresetDesign) {
-            binding.presetTitle.text = row.title
-            binding.presetPreview.setPreset(row.body, row.face, row.controlOverrides)
-            val apply = { row.onClick() }
-            binding.root.setOnClickListener { apply() }
-            binding.presetPreview.setOnClickListener { apply() }
-            binding.root.setOnLongClickListener {
-                row.onLongClick?.invoke()
-                row.onLongClick != null
-            }
-            binding.presetPreview.setOnLongClickListener {
-                row.onLongClick?.invoke()
-                row.onLongClick != null
-            }
-        }
-    }
-
-    private inner class SettingHolder(
-        private val binding: ListItemSettingBinding
-    ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(row: Row.Setting) {
-            binding.textSettingName.text = row.title
-            binding.textSettingDescription.text = row.description
-            binding.textSettingDescription.setVisible(row.description.isNotEmpty())
-            if (row.showChevron) {
-                binding.textSettingValue.setVisible(true)
-                binding.textSettingValue.text = ""
-                binding.textSettingValue.setCompoundDrawablesRelativeWithIntrinsicBounds(
-                    0,
-                    0,
-                    R.drawable.ic_arrow_forward,
-                    0
-                )
-            } else {
-                binding.textSettingValue.setVisible(false)
-                binding.textSettingValue.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
-            }
-            binding.buttonClear.setVisible(false)
-            if (row.swatch != null) {
-                binding.icon.setVisible(true)
-                binding.icon.background = row.swatch
-            } else {
-                binding.icon.setVisible(false)
-            }
-            binding.root.setOnClickListener { row.onClick() }
-            binding.root.setOnLongClickListener {
-                row.onLongClick?.invoke()
-                row.onLongClick != null
-            }
-        }
-    }
-
-    private inner class ControlHolder(
-        private val binding: ListItemSettingBinding
-    ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(row: Row.Control) {
-            binding.textSettingName.text = row.title
-            binding.textSettingDescription.text = row.subtitle
-            binding.textSettingDescription.setVisible(true)
-            binding.textSettingValue.setVisible(true)
-            binding.textSettingValue.text = ""
-            binding.textSettingValue.setCompoundDrawablesRelativeWithIntrinsicBounds(
-                0,
-                0,
-                R.drawable.ic_arrow_forward,
-                0
-            )
-            binding.buttonClear.setVisible(false)
-            binding.icon.setVisible(true)
-            binding.icon.imageTintList = null
-            val tinted = OverlayControlIcons.tintedIcon(
-                binding.root.context,
-                row.controlId,
-                body,
-                face,
-                overrides,
-                OverlayControlIcons.DESIGN_PREVIEW_ICON_DP
-            )
-            if (tinted != null) {
-                binding.icon.background = null
-                binding.icon.setImageDrawable(tinted)
-            } else {
-                binding.icon.setImageDrawable(null)
-                binding.icon.background = swatch(row.color)
-            }
-            binding.root.setOnClickListener { row.onClick() }
-            binding.root.setOnLongClickListener(null)
-        }
-
-        private fun swatch(color: Int): GradientDrawable =
-            GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(color)
-                setStroke(
-                    (1f * resources.displayMetrics.density).toInt().coerceAtLeast(1),
-                    0x33000000
-                )
-            }
     }
 
     companion object {
@@ -911,12 +664,6 @@ class OverlayColorActivity : AppCompatActivity() {
         private const val EXTRA_DESTINATION = "overlay_color_start_destination"
 
         fun createIntent(context: Context): Intent = intentWithDestination(context, Destination.HUB)
-
-        fun createTemplateIntent(context: Context): Intent =
-            intentWithDestination(context, Destination.TEMPLATE)
-
-        fun createPresetsIntent(context: Context): Intent =
-            intentWithDestination(context, Destination.PRESETS)
 
         private fun intentWithDestination(context: Context, destination: Destination): Intent =
             Intent(context, OverlayColorActivity::class.java).apply {
