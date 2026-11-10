@@ -22,6 +22,7 @@ import org.yuzu.yuzu_emu.activities.EmulationActivity
 import org.yuzu.yuzu_emu.fragments.CoreErrorDialogFragment
 import org.yuzu.yuzu_emu.utils.DocumentsTree
 import org.yuzu.yuzu_emu.utils.FileUtil
+import org.yuzu.yuzu_emu.utils.PathUtil
 import org.yuzu.yuzu_emu.utils.Log
 import org.yuzu.yuzu_emu.model.InstallResult
 import org.yuzu.yuzu_emu.model.Patch
@@ -124,6 +125,15 @@ object NativeLibrary {
         } else {
             FileUtil.getFilename(Uri.parse(path))
         }
+
+    @Keep
+    @JvmStatic
+    fun getHostFilesystemPath(path: String?): String? {
+        if (path.isNullOrEmpty()) {
+            return null
+        }
+        return PathUtil.resolveHostFilesystemPath(path)
+    }
 
     @Keep
     @JvmStatic

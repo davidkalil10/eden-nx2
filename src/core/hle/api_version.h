@@ -6,8 +6,6 @@
 
 #pragma once
 
-#include <string_view>
-#include <format>
 #include "common/common_types.h"
 
 // This file contains yuzu's HLE API version constants.

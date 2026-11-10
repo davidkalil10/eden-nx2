@@ -37,6 +37,10 @@ void RomFSFactory::SetPackedUpdate(VirtualFile update_raw_file) {
     packed_update_raw = std::move(update_raw_file);
 }
 
+void RomFSFactory::SetEmbeddedRomFs(VirtualFile embedded_romfs) {
+    file = std::move(embedded_romfs);
+}
+
 VirtualFile RomFSFactory::OpenCurrentProcess(u64 current_process_title_id) const {
     if (!updatable) {
         return file;

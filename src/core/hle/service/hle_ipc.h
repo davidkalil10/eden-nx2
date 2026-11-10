@@ -414,6 +414,7 @@ private:
 
     mutable std::array<Common::ScratchBuffer<u8>, 3> read_buffer_data_a{};
     mutable std::array<Common::ScratchBuffer<u8>, 3> read_buffer_data_x{};
+    mutable std::array<Common::ScratchBuffer<u8>, 3> read_buffer_data_c{};
 
     std::optional<IPC::CommandHeader> command_header;
     std::optional<IPC::HandleDescriptorHeader> handle_descriptor_header;

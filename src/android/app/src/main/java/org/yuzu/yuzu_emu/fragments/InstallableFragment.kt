@@ -29,6 +29,7 @@ import org.yuzu.yuzu_emu.model.GamesViewModel
 import org.yuzu.yuzu_emu.model.HomeViewModel
 import org.yuzu.yuzu_emu.model.Installable
 import org.yuzu.yuzu_emu.model.TaskState
+import org.yuzu.yuzu_emu.utils.AtmosphereInstallActions
 import org.yuzu.yuzu_emu.utils.FileUtil
 import org.yuzu.yuzu_emu.utils.InstallableActions
 import org.yuzu.yuzu_emu.utils.NativeConfig
@@ -155,6 +156,17 @@ class InstallableFragment : Fragment() {
                 R.string.install_amiibo_keys,
                 R.string.install_amiibo_keys_description,
                 install = { getAmiiboKeyLauncher.launch(arrayOf("*/*")) }
+            ),
+            Installable(
+                R.string.install_atmosphere,
+                R.string.install_atmosphere_description,
+                iconId = R.drawable.ic_install,
+                install = {
+                    AtmosphereInstallActions.installLatestFromGitHub(
+                        requireActivity(),
+                        parentFragmentManager
+                    )
+                }
             )
         )
 

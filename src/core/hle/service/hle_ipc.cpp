@@ -314,6 +314,11 @@ Result HLERequestContext::WriteToOutgoingCommandBuffer() {
 std::vector<u8> HLERequestContext::ReadBufferCopy(std::size_t buffer_index) const {
     const bool is_buffer_a{BufferDescriptorA().size() > buffer_index &&
                            BufferDescriptorA()[buffer_index].Size()};
+    const bool is_buffer_x{BufferDescriptorX().size() > buffer_index &&
+                           BufferDescriptorX()[buffer_index].Size()};
+    const bool is_buffer_c{BufferDescriptorC().size() > buffer_index &&
+                           BufferDescriptorC()[buffer_index].Size()};
+
     if (is_buffer_a) {
         ASSERT_OR_EXECUTE_MSG(
             BufferDescriptorA().size() > buffer_index, { return {}; },
@@ -321,7 +326,8 @@ std::vector<u8> HLERequestContext::ReadBufferCopy(std::size_t buffer_index) cons
         std::vector<u8> buffer(BufferDescriptorA()[buffer_index].Size());
         memory.ReadBlock(BufferDescriptorA()[buffer_index].Address(), buffer.data(), buffer.size());
         return buffer;
-    } else {
+    }
+    if (is_buffer_x) {
         ASSERT_OR_EXECUTE_MSG(
             BufferDescriptorX().size() > buffer_index, { return {}; },
             "BufferDescriptorX invalid buffer_index {}", buffer_index);
@@ -329,6 +335,11 @@ std::vector<u8> HLERequestContext::ReadBufferCopy(std::size_t buffer_index) cons
         memory.ReadBlock(BufferDescriptorX()[buffer_index].Address(), buffer.data(), buffer.size());
         return buffer;
     }
+    ASSERT_OR_EXECUTE_MSG(
+        is_buffer_c, { return {}; }, "BufferDescriptorC invalid buffer_index {}", buffer_index);
+    std::vector<u8> buffer(BufferDescriptorC()[buffer_index].Size());
+    memory.ReadBlock(BufferDescriptorC()[buffer_index].Address(), buffer.data(), buffer.size());
+    return buffer;
 }
 
 std::span<const u8> HLERequestContext::ReadBufferA(std::size_t buffer_index) const {
@@ -365,19 +376,27 @@ std::span<const u8> HLERequestContext::ReadBuffer(std::size_t buffer_index) cons
                     BufferDescriptorX()[buffer_index].Size());
     }
 
+    const bool is_buffer_c{BufferDescriptorC().size() > buffer_index &&
+                           BufferDescriptorC()[buffer_index].Size()};
+
     if (is_buffer_a) {
         ASSERT_OR_EXECUTE_MSG(
             BufferDescriptorA().size() > buffer_index, { return {}; },
             "BufferDescriptorA invalid buffer_index {}", buffer_index);
         return gm.Read(BufferDescriptorA()[buffer_index].Address(),
                        BufferDescriptorA()[buffer_index].Size(), &read_buffer_data_a[buffer_index]);
-    } else {
+    }
+    if (is_buffer_x) {
         ASSERT_OR_EXECUTE_MSG(
             BufferDescriptorX().size() > buffer_index, { return {}; },
             "BufferDescriptorX invalid buffer_index {}", buffer_index);
         return gm.Read(BufferDescriptorX()[buffer_index].Address(),
                        BufferDescriptorX()[buffer_index].Size(), &read_buffer_data_x[buffer_index]);
     }
+    ASSERT_OR_EXECUTE_MSG(
+        is_buffer_c, { return {}; }, "BufferDescriptorC invalid buffer_index {}", buffer_index);
+    return gm.Read(BufferDescriptorC()[buffer_index].Address(),
+                   BufferDescriptorC()[buffer_index].Size(), &read_buffer_data_c[buffer_index]);
 }
 
 std::size_t HLERequestContext::WriteBuffer(const void* buffer, std::size_t size,
@@ -450,17 +469,26 @@ std::size_t HLERequestContext::WriteBufferC(const void* buffer, std::size_t size
 std::size_t HLERequestContext::GetReadBufferSize(std::size_t buffer_index) const {
     const bool is_buffer_a{BufferDescriptorA().size() > buffer_index &&
                            BufferDescriptorA()[buffer_index].Size()};
+    const bool is_buffer_x{BufferDescriptorX().size() > buffer_index &&
+                           BufferDescriptorX()[buffer_index].Size()};
+    const bool is_buffer_c{BufferDescriptorC().size() > buffer_index &&
+                           BufferDescriptorC()[buffer_index].Size()};
+
     if (is_buffer_a) {
         ASSERT_OR_EXECUTE_MSG(
             BufferDescriptorA().size() > buffer_index, { return 0; },
             "BufferDescriptorA invalid buffer_index {}", buffer_index);
         return BufferDescriptorA()[buffer_index].Size();
-    } else {
+    }
+    if (is_buffer_x) {
         ASSERT_OR_EXECUTE_MSG(
             BufferDescriptorX().size() > buffer_index, { return 0; },
             "BufferDescriptorX invalid buffer_index {}", buffer_index);
         return BufferDescriptorX()[buffer_index].Size();
     }
+    ASSERT_OR_EXECUTE_MSG(
+        is_buffer_c, { return 0; }, "BufferDescriptorC invalid buffer_index {}", buffer_index);
+    return BufferDescriptorC()[buffer_index].Size();
 }
 
 std::size_t HLERequestContext::GetWriteBufferSize(std::size_t buffer_index) const {
@@ -483,12 +511,12 @@ std::size_t HLERequestContext::GetWriteBufferSize(std::size_t buffer_index) cons
 bool HLERequestContext::CanReadBuffer(std::size_t buffer_index) const {
     const bool is_buffer_a{BufferDescriptorA().size() > buffer_index &&
                            BufferDescriptorA()[buffer_index].Size()};
+    const bool is_buffer_x{BufferDescriptorX().size() > buffer_index &&
+                           BufferDescriptorX()[buffer_index].Size()};
+    const bool is_buffer_c{BufferDescriptorC().size() > buffer_index &&
+                           BufferDescriptorC()[buffer_index].Size()};
 
-    if (is_buffer_a) {
-        return BufferDescriptorA().size() > buffer_index;
-    } else {
-        return BufferDescriptorX().size() > buffer_index;
-    }
+    return is_buffer_a || is_buffer_x || is_buffer_c;
 }
 
 bool HLERequestContext::CanWriteBuffer(std::size_t buffer_index) const {

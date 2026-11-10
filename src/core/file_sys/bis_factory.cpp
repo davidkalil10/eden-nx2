@@ -76,6 +76,7 @@ VirtualDir BISFactory::OpenPartition(BisPartitionId id) const {
     case BisPartitionId::System:
         return GetOrCreateDirectoryRelative(nand_root, "/system");
     case BisPartitionId::User:
+    case BisPartitionId::UserDataRoot:
         return GetOrCreateDirectoryRelative(nand_root, "/user");
     default:
         return nullptr;

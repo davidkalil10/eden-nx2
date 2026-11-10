@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include "common/common_types.h"
+#include "core/loader/homebrew_abi.h"
 #include "core/loader/loader.h"
 
 namespace Core {
@@ -53,9 +54,11 @@ public:
     ResultStatus ReadControlData(FileSys::NACP& control) override;
     bool IsRomFSUpdatable() const override;
 
-private:
-    bool LoadNro(Core::System& system, Kernel::KProcess& process, const FileSys::VfsFile& nro_file);
+    static bool LoadNro(Core::System& system, Kernel::KProcess& process,
+                        const FileSys::VfsFile& nro_file, const std::string& argv = {},
+                        HomebrewAbiOptions abi_options = {});
 
+private:
     std::vector<u8> icon_data;
     std::unique_ptr<FileSys::NACP> nacp;
     FileSys::VirtualFile romfs;

@@ -80,6 +80,20 @@ object PathUtil {
         }
     }
 
+    /**
+     * Maps a user-selected content URI or path to a host filesystem path for NRO argv / logging.
+     */
+    fun resolveHostFilesystemPath(path: String): String? {
+        if (path.isEmpty()) {
+            return null
+        }
+        if (path.startsWith("content://")) {
+            return getPathFromUri(Uri.parse(path))
+        }
+        val file = File(path)
+        return if (file.exists()) file.absolutePath else path
+    }
+
     fun getRemovableStoragePath(idString: String): String? {
         val possibleMountPaths = listOf("/mnt/media_rw/$idString", "/storage/$idString")
 

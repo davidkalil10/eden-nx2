@@ -167,6 +167,13 @@ object GameHelper {
                 }
 
                 if (Game.extensions.contains(extension)) {
+                    val displayName = FileUtil.getFilename(it.uri)
+                    if (displayName.contains('%') ||
+                        displayName.contains("primary:") ||
+                        displayName.startsWith("root/")
+                    ) {
+                        return@forEach
+                    }
                     val game = getGame(it.uri, true, false)
                     if (game != null) {
                         games.add(game)

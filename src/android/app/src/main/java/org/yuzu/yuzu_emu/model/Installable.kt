@@ -9,5 +9,6 @@ data class Installable(
     @StringRes val titleId: Int,
     @StringRes val descriptionId: Int,
     val install: (() -> Unit)? = null,
-    val export: (() -> Unit)? = null
+    val export: (() -> Unit)? = null,
+    @androidx.annotation.DrawableRes val iconId: Int = 0
 )

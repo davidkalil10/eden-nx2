@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -20,6 +17,8 @@ void RegisterCallbacks(JNIEnv* env, jclass clazz) {
                                                     "(Ljava/lang/String;)Ljava/lang/String;");
     s_get_filename = env->GetStaticMethodID(native_library, "getFilename",
                                             "(Ljava/lang/String;)Ljava/lang/String;");
+    s_get_host_filesystem_path = env->GetStaticMethodID(
+        native_library, "getHostFilesystemPath", "(Ljava/lang/String;)Ljava/lang/String;");
     s_get_size = env->GetStaticMethodID(native_library, "getSize", "(Ljava/lang/String;)J");
     s_is_directory = env->GetStaticMethodID(native_library, "isDirectory", "(Ljava/lang/String;)Z");
     s_file_exists = env->GetStaticMethodID(native_library, "exists", "(Ljava/lang/String;)Z");
@@ -30,6 +29,7 @@ void RegisterCallbacks(JNIEnv* env, jclass clazz) {
 void UnRegisterCallbacks() {
     s_get_parent_directory = nullptr;
     s_get_filename = nullptr;
+    s_get_host_filesystem_path = nullptr;
 
     s_get_size = nullptr;
     s_is_directory = nullptr;
@@ -98,7 +98,7 @@ bool Exists(const std::string& filepath) {
 
 std::string GetParentDirectory(const std::string& filepath) {
     if (s_get_parent_directory == nullptr) {
-        return "";
+        return {};
     }
     auto env = Common::Android::GetEnvForThread();
     jstring j_return = static_cast<jstring>(env->CallStaticObjectMethod(
@@ -111,11 +111,24 @@ std::string GetParentDirectory(const std::string& filepath) {
 
 std::string GetFilename(const std::string& filepath) {
     if (s_get_filename == nullptr) {
-        return "";
+        return {};
     }
     auto env = Common::Android::GetEnvForThread();
     jstring j_return = static_cast<jstring>(env->CallStaticObjectMethod(
         native_library, s_get_filename, Common::Android::ToJString(env, filepath)));
+    if (!j_return) {
+        return {};
+    }
+    return Common::Android::GetJString(env, j_return);
+}
+
+std::string GetHostFilesystemPath(const std::string& filepath) {
+    if (s_get_host_filesystem_path == nullptr) {
+        return {};
+    }
+    auto env = Common::Android::GetEnvForThread();
+    jstring j_return = static_cast<jstring>(env->CallStaticObjectMethod(
+        native_library, s_get_host_filesystem_path, Common::Android::ToJString(env, filepath)));
     if (!j_return) {
         return {};
     }

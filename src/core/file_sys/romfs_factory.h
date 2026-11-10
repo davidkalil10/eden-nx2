@@ -41,6 +41,7 @@ public:
     ~RomFSFactory();
 
     void SetPackedUpdate(VirtualFile packed_update_raw);
+    void SetEmbeddedRomFs(VirtualFile embedded_romfs);
     [[nodiscard]] VirtualFile OpenCurrentProcess(u64 current_process_title_id) const;
     [[nodiscard]] VirtualFile OpenPatchedRomFS(u64 title_id, ContentRecordType type) const;
     [[nodiscard]] VirtualFile OpenPatchedRomFSWithProgramIndex(u64 title_id, u8 program_index,

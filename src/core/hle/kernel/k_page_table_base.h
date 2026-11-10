@@ -660,6 +660,10 @@ public:
     KProcessAddress GetHeapRegionStart() const {
         return m_heap_region_start;
     }
+
+    KProcessAddress GetCurrentHeapEnd() const {
+        return m_current_heap_end;
+    }
     KProcessAddress GetAliasRegionStart() const {
         return m_alias_region_start;
     }

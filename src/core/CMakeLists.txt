@@ -1144,6 +1144,8 @@ add_library(core STATIC
     loader/nca.cpp
     loader/nca.h
     loader/nro.cpp
+    loader/nro_romfs.cpp
+    loader/nro_romfs.h
     loader/nro.h
     loader/nso.cpp
     loader/nso.h

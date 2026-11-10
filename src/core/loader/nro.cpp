@@ -7,12 +7,19 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "common/alignment.h"
+#include "common/fs/file.h"
+#include "common/fs/fs.h"
+#include "common/fs/path_util.h"
+#ifdef __ANDROID__
+#include "common/fs/fs_android.h"
+#endif
 #include "common/common_funcs.h"
 #include "common/common_types.h"
 #include "common/logging.h"
@@ -28,7 +35,11 @@
 #include "core/hle/kernel/k_process.h"
 #include "core/hle/kernel/k_thread.h"
 #include "core/hle/service/filesystem/filesystem.h"
+#include "core/hle/api_version.h"
+#include "core/hle/kernel/svc_common.h"
+#include "core/hle/service/acc/profile_manager.h"
 #include "core/loader/nro.h"
+#include "core/loader/nro_romfs.h"
 #include "core/memory.h"
 
 #ifdef HAS_NCE
@@ -36,6 +47,208 @@
 #endif
 
 namespace Loader {
+
+namespace {
+
+bool IsHostContentUri(const std::string& host_filepath) {
+#ifdef __ANDROID__
+    return Common::FS::Android::IsContentUri(host_filepath);
+#else
+    return false;
+#endif
+}
+
+bool LooksLikeSafDocumentArtifactName(const std::string& name) {
+    return name.find('%') != std::string::npos || name.find("primary:") != std::string::npos ||
+           name.starts_with("root/");
+}
+
+void RemoveSafArtifactIfPresent(const std::filesystem::path& path) {
+    const auto name = path.filename().string();
+    if (!LooksLikeSafDocumentArtifactName(name)) {
+        return;
+    }
+    std::error_code ec;
+    if (std::filesystem::exists(path, ec) && !ec) {
+        std::filesystem::remove(path, ec);
+        LOG_INFO(Loader, "Removed stale SAF homebrew sync artifact {}",
+                  Common::FS::PathToUTF8String(path));
+    }
+}
+
+void RemoveStaleSafSyncedHomebrewArtifacts() {
+    const auto sdmc_root = Common::FS::GetEdenPath(Common::FS::EdenPath::SDMCDir);
+    const auto switch_dir = sdmc_root / "switch";
+    std::error_code ec;
+    for (const auto& dir : {sdmc_root, switch_dir}) {
+        if (!std::filesystem::is_directory(dir, ec) || ec) {
+            continue;
+        }
+        for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+            if (ec) {
+                break;
+            }
+            RemoveSafArtifactIfPresent(entry.path());
+        }
+    }
+}
+
+std::filesystem::path ResolveHomebrewHostPath(const std::string& host_filepath) {
+#ifdef __ANDROID__
+    if (Common::FS::Android::IsContentUri(host_filepath)) {
+        const std::string resolved = Common::FS::Android::GetHostFilesystemPath(host_filepath);
+        if (!resolved.empty()) {
+            return std::filesystem::path{resolved};
+        }
+        const std::string display_name = Common::FS::Android::GetFilename(host_filepath);
+        if (!display_name.empty()) {
+            return std::filesystem::path{display_name};
+        }
+    }
+#endif
+    return std::filesystem::path{host_filepath};
+}
+
+std::string BuildHomebrewArgvString(const std::string& host_filepath,
+                                    const std::string& extra_program_args) {
+    std::filesystem::path canonical_path = ResolveHomebrewHostPath(host_filepath);
+    std::error_code ec;
+    if (!IsHostContentUri(host_filepath)) {
+        const auto resolved = std::filesystem::weakly_canonical(canonical_path, ec);
+        if (!ec) {
+            canonical_path = resolved;
+        }
+    } else {
+#ifdef __ANDROID__
+        const std::string resolved = Common::FS::Android::GetHostFilesystemPath(host_filepath);
+        if (!resolved.empty()) {
+            const auto resolved_canonical =
+                std::filesystem::weakly_canonical(std::filesystem::path{resolved}, ec);
+            if (!ec) {
+                canonical_path = resolved_canonical;
+            } else {
+                canonical_path = std::filesystem::path{resolved};
+            }
+        }
+#endif
+    }
+
+    const auto& sdmc_root = Common::FS::GetEdenPath(Common::FS::EdenPath::SDMCDir);
+    std::string sdmc_path;
+    const auto relative = std::filesystem::relative(canonical_path, sdmc_root, ec);
+    const std::string relative_utf8 = Common::FS::PathToUTF8String(relative);
+    if (!ec && !relative.empty() && relative_utf8.find("..") == std::string::npos) {
+        sdmc_path = "sdmc:/" + Common::FS::PathToUTF8String(relative);
+    } else {
+        std::string leaf = Common::FS::PathToUTF8String(canonical_path.filename());
+#ifdef __ANDROID__
+        if (IsHostContentUri(host_filepath)) {
+            const std::string display_name = Common::FS::Android::GetFilename(host_filepath);
+            if (!display_name.empty()) {
+                leaf = display_name;
+            }
+        }
+#endif
+        sdmc_path = "sdmc:/switch/" + leaf;
+    }
+    std::replace(sdmc_path.begin(), sdmc_path.end(), '\\', '/');
+
+    std::string argv_string = sdmc_path;
+    if (!extra_program_args.empty()) {
+        argv_string += ' ';
+        argv_string += extra_program_args;
+    }
+    argv_string.push_back('\0');
+    return argv_string;
+}
+
+std::optional<std::filesystem::path> HostPathForSdmcArgv(const std::string& argv_string) {
+    const auto end = argv_string.find('\0');
+    const std::string_view virtual_path{
+        argv_string.data(), end == std::string::npos ? argv_string.size() : end};
+    if (!virtual_path.starts_with("sdmc:/")) {
+        return std::nullopt;
+    }
+    const std::string relative = std::string(virtual_path.substr(std::strlen("sdmc:/")));
+    if (relative.empty()) {
+        return std::nullopt;
+    }
+    return Common::FS::GetEdenPath(Common::FS::EdenPath::SDMCDir) / relative;
+}
+
+void WriteHomebrewNroToHostPath(const FileSys::VirtualFile& nro_file,
+                                const std::filesystem::path& dest_path) {
+    if (nro_file == nullptr) {
+        return;
+    }
+
+    std::error_code ec;
+    if (std::filesystem::exists(dest_path, ec) && !ec) {
+        const auto dest_size = std::filesystem::file_size(dest_path, ec);
+        if (!ec && dest_size == nro_file->GetSize()) {
+            return;
+        }
+    }
+
+    if (!Common::FS::CreateParentDirs(dest_path)) {
+        LOG_WARNING(Loader, "Failed to create parent directories for {}",
+                      Common::FS::PathToUTF8String(dest_path));
+        return;
+    }
+
+    const auto bytes = nro_file->ReadAllBytes();
+    Common::FS::IOFile outfile{dest_path, Common::FS::FileAccessMode::Write,
+                               Common::FS::FileType::BinaryFile};
+    if (!outfile.IsOpen()) {
+        LOG_WARNING(Loader, "Failed to write homebrew NRO to {}",
+                      Common::FS::PathToUTF8String(dest_path));
+        return;
+    }
+    if (outfile.Write(bytes) != bytes.size()) {
+        LOG_WARNING(Loader, "Incomplete write for homebrew NRO at {}",
+                      Common::FS::PathToUTF8String(dest_path));
+        return;
+    }
+    LOG_INFO(Loader, "Synced homebrew NRO to {}", Common::FS::PathToUTF8String(dest_path));
+}
+
+void SyncHomebrewNroToSdmc(const FileSys::VirtualFile& nro_file,
+                           const std::string& host_filepath) {
+    RemoveStaleSafSyncedHomebrewArtifacts();
+
+    const std::string argv_string = BuildHomebrewArgvString(host_filepath, "");
+    const auto primary_dest = HostPathForSdmcArgv(argv_string);
+    if (!primary_dest) {
+        return;
+    }
+
+    const std::string dest_leaf = primary_dest->filename().string();
+    if (LooksLikeSafDocumentArtifactName(dest_leaf)) {
+        LOG_WARNING(Loader, "Refusing to sync homebrew to invalid SAF artifact path {}",
+                      Common::FS::PathToUTF8String(*primary_dest));
+        return;
+    }
+
+    std::filesystem::path source = ResolveHomebrewHostPath(host_filepath);
+    std::error_code ec;
+    const bool same_file =
+        !IsHostContentUri(host_filepath) && std::filesystem::equivalent(source, *primary_dest, ec) &&
+        !ec;
+    if (!same_file) {
+        WriteHomebrewNroToHostPath(nro_file, *primary_dest);
+    }
+
+    const std::string filename = Common::FS::PathToUTF8String(source.filename());
+    if (filename == "hbmenu.nro") {
+        const auto legacy_root =
+            Common::FS::GetEdenPath(Common::FS::EdenPath::SDMCDir) / "hbmenu.nro";
+        if (legacy_root != *primary_dest) {
+            WriteHomebrewNroToHostPath(nro_file, legacy_root);
+        }
+    }
+}
+
+} // namespace
 
 struct NroSegmentHeader {
     u32_le offset;
@@ -84,6 +297,11 @@ struct AssetHeader {
 };
 static_assert(sizeof(AssetHeader) == 0x38, "AssetHeader has incorrect size.");
 
+static bool IsHomebrewNroHeader(const NroHeader& nro_header) {
+    return nro_header.magic_ext1 == Common::MakeMagic('H', 'O', 'M', 'E') &&
+           nro_header.magic_ext2 == Common::MakeMagic('B', 'R', 'E', 'W');
+}
+
 AppLoader_NRO::AppLoader_NRO(FileSys::VirtualFile file_) : AppLoader(std::move(file_)) {
     NroHeader nro_header{};
     if (file->ReadObject(&nro_header) != sizeof(NroHeader)) {
@@ -114,8 +332,13 @@ AppLoader_NRO::AppLoader_NRO(FileSys::VirtualFile file_) : AppLoader(std::move(f
         }
 
         if (asset_header.romfs.size > 0) {
-            romfs = std::make_shared<FileSys::OffsetVfsFile>(
-                file, asset_header.romfs.size, offset + asset_header.romfs.offset, "game.romfs");
+            romfs = ExtractEmbeddedRomFsFromNro(file);
+            if (romfs != nullptr && !EmbeddedRomFsContainsPath(romfs, "assets.zip") &&
+                IsHomebrewNroHeader(nro_header)) {
+                LOG_WARNING(Loader,
+                            "NRO {} embedded RomFS is missing assets.zip (typical hbmenu failure)",
+                            file->GetName());
+            }
         }
 
         if (asset_header.icon.size > 0) {
@@ -153,7 +376,7 @@ static constexpr u32 PageAlignSize(u32 size) {
 }
 
 static bool LoadNroImpl(Core::System& system, Kernel::KProcess& process,
-                        const std::vector<u8>& data) {
+                        const std::vector<u8>& data, const std::string& host_filepath) {
     if (data.size() < sizeof(NroHeader)) {
         return {};
     }
@@ -195,25 +418,55 @@ static bool LoadNroImpl(Core::System& system, Kernel::KProcess& process,
 
     codeset.DataSegment().size += bss_size;
     program_image.resize(static_cast<u32>(program_image.size()) + bss_size);
+
     struct ConfigEntry {
         u32_le key;
         u32_le flags;
         u64_le value[2];
     };
     static_assert(sizeof(ConfigEntry) == 0x18);
+
+    // Homebrew ABI (https://switchbrew.org/wiki/Homebrew_ABI)
+    constexpr u32 kEntryEndOfList = 0;
+    constexpr u32 kEntryMainThreadHandle = 1;
+    constexpr u32 kEntryNextLoadPath = 2;
+    constexpr u32 kEntryArgv = 5;
+    constexpr u32 kEntryAppletType = 7;
+    constexpr u32 kAppletTypeApplication = 0;
+    constexpr u32 kAppletTypeLibraryApplet = 2;
+    constexpr u32 kAppletTypeOverlayApplet = 3;
+
+    // nx-hbloader / libnx expectations for envSetNextLoad / envHasNextLoad.
+    constexpr size_t kNextLoadPathBufferSize = 512;
+    constexpr size_t kNextLoadArgvBufferSize = 2048;
+
+    constexpr size_t kNumHomebrewEntries = 5; // MainThreadHandle, NextLoadPath, AppletType, Argv, EndOfList
+    constexpr size_t kNumProgramArgEntries = 4; // MainThreadHandle, AppletType, Argv, EndOfList
+    constexpr size_t kHomebrewConfigTableSize = kNumHomebrewEntries * sizeof(ConfigEntry);
+    constexpr size_t kProgramArgConfigTableSize = kNumProgramArgEntries * sizeof(ConfigEntry);
+
+    const bool is_homebrew = nro_header.magic_ext1 == Common::MakeMagic('H', 'O', 'M', 'E') &&
+                             nro_header.magic_ext2 == Common::MakeMagic('B', 'R', 'E', 'W');
+
     // AArch64 encoding for svc #0x7 (ExitProcess).
     constexpr u32 kSvcExitProcessInstruction = 0xD40000E1;
-    constexpr size_t kNumEntries = 4; // MainThreadHandle, AppletType, Argv, EndOfList
-    constexpr size_t kConfigTableSize = kNumEntries * sizeof(ConfigEntry);
     std::string argv_string;
-    size_t args_offset_in_image = 0;
+    size_t homebrew_abi_offset_in_image = 0;
     std::optional<size_t> exit_process_offset_in_image;
+
     const auto& program_args = Settings::values.program_args.GetValue();
-    if (!program_args.empty()) {
+    const std::string effective_host_path = host_filepath;
+    const u32 homebrew_applet_type = kAppletTypeApplication;
+
+    if (is_homebrew) {
+        argv_string = BuildHomebrewArgvString(effective_host_path, program_args);
+    } else if (!program_args.empty()) {
         argv_string = "homebrew ";
         argv_string += program_args;
         argv_string.push_back('\0');
+    }
 
+    if (is_homebrew || !argv_string.empty()) {
         const auto& code = codeset.CodeSegment();
         const size_t code_end = (std::min)(program_image.size(), code.offset + code.size);
         for (size_t offset = code.offset; offset + sizeof(u32) <= code_end; offset += sizeof(u32)) {
@@ -228,14 +481,26 @@ static bool LoadNroImpl(Core::System& system, Kernel::KProcess& process,
             LOG_WARNING(Loader,
                         "Unable to find svcExitProcess in NRO; returning from main may fault");
         }
-
-        const size_t entries_and_argv =
-            Common::AlignUp(kConfigTableSize + argv_string.size(), Core::Memory::YUZU_PAGESIZE);
-
-        args_offset_in_image = program_image.size();
-        codeset.DataSegment().size += static_cast<u32>(entries_and_argv);
-        program_image.resize(args_offset_in_image + entries_and_argv);
     }
+
+    if (is_homebrew) {
+        const size_t homebrew_abi_size = Common::AlignUp(
+            kHomebrewConfigTableSize + kNextLoadPathBufferSize + kNextLoadArgvBufferSize +
+                argv_string.size(),
+            Core::Memory::YUZU_PAGESIZE);
+
+        homebrew_abi_offset_in_image = program_image.size();
+        codeset.DataSegment().size += static_cast<u32>(homebrew_abi_size);
+        program_image.resize(homebrew_abi_offset_in_image + homebrew_abi_size);
+    } else if (!argv_string.empty()) {
+        const size_t entries_and_argv =
+            Common::AlignUp(kProgramArgConfigTableSize + argv_string.size(), Core::Memory::YUZU_PAGESIZE);
+
+        homebrew_abi_offset_in_image = program_image.size();
+        codeset.DataSegment().size += static_cast<u32>(entries_and_argv);
+        program_image.resize(homebrew_abi_offset_in_image + entries_and_argv);
+    }
+
     size_t image_size = program_image.size();
 
 #ifdef HAS_NCE
@@ -297,44 +562,83 @@ static bool LoadNroImpl(Core::System& system, Kernel::KProcess& process,
     // Load codeset for current process
     codeset.memory = std::move(program_image);
     process.LoadModule(system.Kernel(), std::move(codeset), process.GetEntryPoint());
-    if (!argv_string.empty()) {
-        constexpr u32 kEntryEndOfList = 0;
-        constexpr u32 kEntryMainThreadHandle = 1;
-        constexpr u32 kEntryArgv = 5;
-        constexpr u32 kEntryAppletType = 7;
-        constexpr u32 kAppletTypeApplication = 0;
 
+    if (is_homebrew) {
         const u64 base = GetInteger(process.GetEntryPoint());
-        const u64 config_addr = base + args_offset_in_image;
-        const u64 argv_addr = config_addr + kConfigTableSize;
+        const u64 config_addr = base + homebrew_abi_offset_in_image;
+        const u64 next_path_addr = config_addr + kHomebrewConfigTableSize;
+        const u64 next_argv_addr = next_path_addr + kNextLoadPathBufferSize;
+        const u64 host_argv_addr = next_argv_addr + kNextLoadArgvBufferSize;
 
-        const ConfigEntry entries[kNumEntries] = {
+        const ConfigEntry entries[kNumHomebrewEntries] = {
             {kEntryMainThreadHandle, 0, {0, 0}}, // Value[0] patched in Run()
-            {kEntryAppletType,       0, {kAppletTypeApplication, 0}},
-            {kEntryArgv,             0, {0, argv_addr}},
-            {kEntryEndOfList,        0, {0, 0}},
+            {kEntryNextLoadPath, 0, {next_path_addr, next_argv_addr}},
+            {kEntryAppletType, 0, {homebrew_applet_type, 0}},
+            {kEntryArgv, 0, {0, host_argv_addr}},
+            {kEntryEndOfList, 0, {0, 0}},
         };
         process.GetMemory().WriteBlock(Common::ProcessAddress{config_addr}, entries, sizeof(entries));
-        process.GetMemory().WriteBlock(Common::ProcessAddress{argv_addr}, argv_string.data(), argv_string.size());
+
+        // Next-load buffers must start empty; libnx envSetNextLoad fills them when chaining.
+        // Pre-filling with the current path made every exit look like a chain request (hbmenu
+        // relaunch loop).
+        const std::array<u8, 1> empty_string{0};
+        process.GetMemory().WriteBlock(Common::ProcessAddress{next_path_addr}, empty_string.data(),
+                                       empty_string.size());
+        process.GetMemory().WriteBlock(Common::ProcessAddress{next_argv_addr}, empty_string.data(),
+                                       empty_string.size());
+        process.GetMemory().WriteBlock(Common::ProcessAddress{host_argv_addr}, argv_string.data(),
+                                       argv_string.size());
+
         constexpr size_t kMainThreadHandleValueOffset = offsetof(ConfigEntry, value);
         process.SetArgPointer(Kernel::KProcessAddress{config_addr});
         if (exit_process_offset_in_image) {
             process.SetArgReturnAddress(Kernel::KProcessAddress{base + *exit_process_offset_in_image});
         }
-        process.SetMainThreadHandleAddr(Kernel::KProcessAddress{config_addr + kMainThreadHandleValueOffset});
+        process.SetMainThreadHandleAddr(
+            Kernel::KProcessAddress{config_addr + kMainThreadHandleValueOffset});
+    } else if (!argv_string.empty()) {
+        const u64 base = GetInteger(process.GetEntryPoint());
+        const u64 config_addr = base + homebrew_abi_offset_in_image;
+        const u64 argv_addr = config_addr + kProgramArgConfigTableSize;
+
+        const ConfigEntry entries[kNumProgramArgEntries] = {
+            {kEntryMainThreadHandle, 0, {0, 0}}, // Value[0] patched in Run()
+            {kEntryAppletType, 0, {kAppletTypeApplication, 0}},
+            {kEntryArgv, 0, {0, argv_addr}},
+            {kEntryEndOfList, 0, {0, 0}},
+        };
+        process.GetMemory().WriteBlock(Common::ProcessAddress{config_addr}, entries, sizeof(entries));
+        process.GetMemory().WriteBlock(Common::ProcessAddress{argv_addr}, argv_string.data(),
+                                       argv_string.size());
+        constexpr size_t kMainThreadHandleValueOffset = offsetof(ConfigEntry, value);
+        process.SetArgPointer(Kernel::KProcessAddress{config_addr});
+        if (exit_process_offset_in_image) {
+            process.SetArgReturnAddress(Kernel::KProcessAddress{base + *exit_process_offset_in_image});
+        }
+        process.SetMainThreadHandleAddr(
+            Kernel::KProcessAddress{config_addr + kMainThreadHandleValueOffset});
     }
 
     return true;
 }
 
 bool AppLoader_NRO::LoadNro(Core::System& system, Kernel::KProcess& process,
-                            const FileSys::VfsFile& nro_file) {
-    return LoadNroImpl(system, process, nro_file.ReadAllBytes());
+                            const FileSys::VfsFile& nro_file, const std::string& argv,
+                            HomebrewAbiOptions abi_options) {
+    const std::string& effective_argv =
+        !argv.empty() ? argv : system.GetCurrentApplicationFilePath();
+    static_cast<void>(abi_options);
+    return LoadNroImpl(system, process, nro_file.ReadAllBytes(), effective_argv);
 }
 
 AppLoader_NRO::LoadResult AppLoader_NRO::Load(Kernel::KProcess& process, Core::System& system) {
     if (is_loaded) {
         return {ResultStatus::ErrorAlreadyLoaded, {}};
+    }
+
+    if (IsHomebrew()) {
+        SyncHomebrewNroToSdmc(file, system.GetCurrentApplicationFilePath());
     }
 
     if (!LoadNro(system, process, *file)) {

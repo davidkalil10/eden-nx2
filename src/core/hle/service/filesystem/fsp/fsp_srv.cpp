@@ -18,6 +18,7 @@
 #include "common/settings.h"
 #include "common/string_util.h"
 #include "core/core.h"
+#include "core/file_sys/bis_factory.h"
 #include "core/file_sys/content_archive.h"
 #include "core/file_sys/errors.h"
 #include "core/file_sys/fs_directory.h"
@@ -47,6 +48,26 @@
 
 namespace Service::FileSystem {
 
+namespace {
+
+FileSys::StorageId StorageIdForBisPartition(FileSys::BisPartitionId partition_id) {
+    switch (partition_id) {
+    case FileSys::BisPartitionId::System:
+    case FileSys::BisPartitionId::SystemProperEncryption:
+    case FileSys::BisPartitionId::SystemProperPartition:
+    case FileSys::BisPartitionId::SafeMode:
+    case FileSys::BisPartitionId::CalibrationFile:
+        return FileSys::StorageId::NandSystem;
+    case FileSys::BisPartitionId::User:
+    case FileSys::BisPartitionId::UserDataRoot:
+        return FileSys::StorageId::NandUser;
+    default:
+        return FileSys::StorageId::NandUser;
+    }
+}
+
+} // namespace
+
 FSP_SRV::FSP_SRV(Core::System& system_)
     : ServiceFramework{system_, "fsp-srv"}, fsc{system.GetFileSystemController()},
       content_provider{system.GetContentProvider()}, reporter{system.GetReporter()} {
@@ -58,10 +79,10 @@ FSP_SRV::FSP_SRV(Core::System& system_)
         {7, D<&FSP_SRV::OpenFileSystemWithPatch>, "OpenFileSystemWithPatch"},
         {8, nullptr, "OpenFileSystemWithId"},
         {9, nullptr, "OpenDataFileSystemByApplicationId"},
-        {11, nullptr, "OpenBisFileSystem"},
-        {12, nullptr, "OpenBisStorage"},
+        {11, D<&FSP_SRV::OpenBisFileSystem>, "OpenBisFileSystem"},
+        {12, D<&FSP_SRV::OpenBisStorage>, "OpenBisStorage"},
         {13, nullptr, "InvalidateBisCache"},
-        {17, nullptr, "OpenHostFileSystem"},
+        {17, D<&FSP_SRV::OpenHostFileSystem>, "OpenHostFileSystem"},
         {18, D<&FSP_SRV::OpenSdCardFileSystem>, "OpenSdCardFileSystem"},
         {19, nullptr, "FormatSdCardFileSystem"},
         {21, nullptr, "DeleteSaveDataFileSystem"},
@@ -193,6 +214,7 @@ FSP_SRV::~FSP_SRV() = default;
 
 Result FSP_SRV::SetCurrentProcess(ClientProcessId pid) {
     current_process_id = *pid;
+    romfs = nullptr;
 
     LOG_DEBUG(Service_FS, "called. current_process_id={:#016x}", current_process_id);
 
@@ -229,6 +251,49 @@ Result FSP_SRV::OpenSdCardFileSystem(OutInterface<IFileSystem> out_interface) {
 
     *out_interface = std::make_shared<IFileSystem>(
         system, sdmc_dir, SizeGetter::FromStorageId(fsc, FileSys::StorageId::SdCard));
+
+    R_SUCCEED();
+}
+
+Result FSP_SRV::OpenBisFileSystem(OutInterface<IFileSystem> out_interface,
+                                  FileSys::BisPartitionId partition_id,
+                                  InBuffer<BufferAttr_HipcPointer> path) {
+    LOG_DEBUG(Service_FS, "called, partition_id={:08X}", static_cast<u32>(partition_id));
+    static_cast<void>(path);
+
+    FileSys::VirtualDir dir{};
+    R_TRY(fsc.OpenBISPartition(&dir, partition_id));
+
+    *out_interface = std::make_shared<IFileSystem>(
+        system, std::move(dir), SizeGetter::FromStorageId(fsc, StorageIdForBisPartition(partition_id)));
+
+    R_SUCCEED();
+}
+
+Result FSP_SRV::OpenBisStorage(OutInterface<IStorage> out_interface,
+                               FileSys::BisPartitionId partition_id) {
+    LOG_DEBUG(Service_FS, "called, partition_id={:08X}", static_cast<u32>(partition_id));
+
+    FileSys::VirtualFile storage{};
+    R_TRY(fsc.OpenBISPartitionStorage(&storage, partition_id));
+
+    *out_interface = std::make_shared<IStorage>(system, std::move(storage));
+
+    R_SUCCEED();
+}
+
+Result FSP_SRV::OpenHostFileSystem(OutInterface<IFileSystem> out_interface,
+                                   InBuffer<BufferAttr_HipcPointer> path) {
+    LOG_DEBUG(Service_FS, "called");
+
+    static_cast<void>(path);
+
+    // On emulator builds the "host" filesystem is the virtual SD card (writable user content).
+    FileSys::VirtualDir dir{};
+    R_TRY(fsc.OpenSDMC(&dir));
+
+    *out_interface = std::make_shared<IFileSystem>(
+        system, std::move(dir), SizeGetter::FromStorageId(fsc, FileSys::StorageId::Host));
 
     R_SUCCEED();
 }
@@ -467,17 +532,13 @@ Result FSP_SRV::OpenSaveDataTransferProhibiter(
 Result FSP_SRV::OpenDataFileSystemByCurrentProcess(OutInterface<IFileSystem> out_interface) {
     LOG_DEBUG(Service_FS, "called");
 
-    if (!romfs) {
-        auto current_romfs = romfs_controller->OpenRomFSCurrentProcess();
-        if (!current_romfs) {
-            LOG_CRITICAL(Service_FS, "No file system interface available!");
-            R_RETURN(ResultUnknown);
-        }
-
-        romfs = current_romfs;
+    auto current_romfs = romfs_controller->OpenRomFSCurrentProcess();
+    if (!current_romfs) {
+        LOG_CRITICAL(Service_FS, "No file system interface available!");
+        R_RETURN(ResultUnknown);
     }
 
-    auto extracted_romfs = FileSys::ExtractRomFS(romfs);
+    auto extracted_romfs = FileSys::ExtractRomFS(current_romfs);
     if (!extracted_romfs) {
         LOG_CRITICAL(Service_FS, "Failed to extract RomFS for the current process!");
         R_RETURN(ResultUnknown);
@@ -492,18 +553,14 @@ Result FSP_SRV::OpenDataFileSystemByCurrentProcess(OutInterface<IFileSystem> out
 Result FSP_SRV::OpenDataStorageByCurrentProcess(OutInterface<IStorage> out_interface) {
     LOG_DEBUG(Service_FS, "called");
 
-    if (!romfs) {
-        auto current_romfs = romfs_controller->OpenRomFSCurrentProcess();
-        if (!current_romfs) {
-            // TODO (bunnei): Find the right error code to use here
-            LOG_CRITICAL(Service_FS, "No file system interface available!");
-            R_RETURN(ResultUnknown);
-        }
-
-        romfs = current_romfs;
+    auto current_romfs = romfs_controller->OpenRomFSCurrentProcess();
+    if (!current_romfs) {
+        // TODO (bunnei): Find the right error code to use here
+        LOG_CRITICAL(Service_FS, "No file system interface available!");
+        R_RETURN(ResultUnknown);
     }
 
-    *out_interface = std::make_shared<IStorage>(system, romfs);
+    *out_interface = std::make_shared<IStorage>(system, current_romfs);
 
     R_SUCCEED();
 }

@@ -14,6 +14,7 @@ static jclass native_library = nullptr;
 
 static jmethodID s_get_parent_directory;
 static jmethodID s_get_filename;
+static jmethodID s_get_host_filesystem_path;
 static jmethodID s_get_size;
 static jmethodID s_is_directory;
 static jmethodID s_file_exists;
@@ -42,5 +43,6 @@ bool IsDirectory(const std::string& filepath);
 bool Exists(const std::string& filepath);
 std::string GetParentDirectory(const std::string& filepath);
 std::string GetFilename(const std::string& filepath);
+std::string GetHostFilesystemPath(const std::string& filepath);
 
 } // namespace Common::FS::Android

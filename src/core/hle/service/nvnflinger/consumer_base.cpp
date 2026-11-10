@@ -23,7 +23,11 @@ ConsumerBase::ConsumerBase(std::shared_ptr<BufferQueueConsumer> consumer_)
 ConsumerBase::~ConsumerBase() {
     std::scoped_lock lock{mutex};
 
-    ASSERT_MSG(is_abandoned, "consumer is not abandoned!");
+    if (!is_abandoned) {
+        LOG_WARNING(Service_Nvnflinger, "Destroying consumer that was not abandoned; cleaning up");
+        AbandonLocked();
+        is_abandoned = true;
+    }
 }
 
 void ConsumerBase::Connect(bool controlled_by_app) {

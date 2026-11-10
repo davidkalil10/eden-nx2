@@ -347,6 +347,20 @@ Result FileSystemController::RegisterProcess(
     return ResultSuccess;
 }
 
+void FileSystemController::UpdateProcessEmbeddedRomFs(ProcessId process_id,
+                                                      FileSys::VirtualFile embedded_romfs) {
+    std::scoped_lock lk{registration_lock};
+
+    const auto it = registrations.find(process_id);
+    if (it == registrations.end()) {
+        LOG_WARNING(Service_FS, "UpdateProcessEmbeddedRomFs: unknown process {}", process_id);
+        return;
+    }
+
+    it->second.romfs_factory->SetEmbeddedRomFs(std::move(embedded_romfs));
+    LOG_DEBUG(Service_FS, "Updated embedded RomFS for process {}", process_id);
+}
+
 Result FileSystemController::OpenProcess(
     ProgramId* out_program_id, std::shared_ptr<SaveDataController>* out_save_data_controller,
     std::shared_ptr<RomFsController>* out_romfs_controller, ProcessId process_id) {
