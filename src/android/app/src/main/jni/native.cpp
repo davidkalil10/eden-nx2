@@ -614,7 +614,9 @@ const char* find_cpu_name(u32 vendor, u32 part) {
             return cpu.name;
         }
     }
-    return nullptr;
+
+    // TODO(crueter): Format vendor/partid
+    return "Unknown";
 }
 
 u64 read_midr_sysfs(u32 cpu_id) {
