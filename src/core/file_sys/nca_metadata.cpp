@@ -35,6 +35,7 @@ CNMT::CNMT(VirtualFile file) {
     for (u16 i = 0; i < header.number_meta_entries; ++i) {
         auto& next = meta_records.emplace_back(MetaRecord{});
         if (file->ReadObject(&next, sizeof(CNMTHeader) + i * sizeof(MetaRecord) +
+                                        header.number_content_entries * sizeof(ContentRecord) +
                                         header.table_offset) != sizeof(MetaRecord)) {
             meta_records.erase(meta_records.end() - 1);
         }
