@@ -66,7 +66,7 @@ For information on provided development tooling, see the [Tools directory](./too
 
 ## Download
 
-You can download the latest releases from [our downloads page](https://eden-emu.dev/downloads)
+You can grab the latest releases from [our downloads page](https://eden-emu.dev/downloads)
 
 Save us some bandwidth! We have [mirrors available](./docs/user/ThirdParty.md#mirrors) as well.
 
