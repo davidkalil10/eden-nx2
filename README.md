@@ -67,10 +67,10 @@ For information on provided development tooling, see the [Tools directory](./too
 ## Download
 
 #### Stable
-You can download the latest stable releases from [our release page](https://git.eden-emu.dev/eden-emu/eden/releases).
+You can download the latest stable releases from [our stable release page](https://git.eden-emu.dev/eden-emu/eden/releases).
 
 #### Nightly
-You can download the latest nightly releases from [our release page](https://git.eden-emu.dev/eden-ci/nightly/releases).
+You can download the latest nightly releases from [our nightly release page](https://git.eden-emu.dev/eden-ci/nightly/releases).
 
 #### Mirrors
 Save us some bandwidth! We have [mirrors available](./docs/user/ThirdParty.md#mirrors) as well.
