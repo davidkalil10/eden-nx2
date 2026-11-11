@@ -10,10 +10,6 @@ object InstallCacheHelper {
     /** Staging directory for firmware zip extraction (must not use the name `registered`). */
     const val FIRMWARE_STAGING_DIR = "firmware_staging"
 
-    /**
-     * Removes transient install artifacts from [Context.getCacheDir].
-     * Leftovers (especially a `registered/` folder) can survive if install is interrupted.
-     */
     fun cleanTransientInstallCache(context: Context) {
         val cacheDir = context.cacheDir ?: return
         listOf(
