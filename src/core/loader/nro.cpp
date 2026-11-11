@@ -433,8 +433,6 @@ static bool LoadNroImpl(Core::System& system, Kernel::KProcess& process,
     constexpr u32 kEntryArgv = 5;
     constexpr u32 kEntryAppletType = 7;
     constexpr u32 kAppletTypeApplication = 0;
-    constexpr u32 kAppletTypeLibraryApplet = 2;
-    constexpr u32 kAppletTypeOverlayApplet = 3;
 
     // nx-hbloader / libnx expectations for envSetNextLoad / envHasNextLoad.
     constexpr size_t kNextLoadPathBufferSize = 512;
