@@ -424,7 +424,7 @@
     <string name="custom_driver_not_supported">Custom drivers not supported</string>
     <string name="custom_driver_not_supported_description">Custom driver loading isn\'t currently supported for this device.\nCheck this option again in the future to see if support was added!</string>
     <string name="manage_yuzu_data">Manage Eden data</string>
-    <string name="manage_yuzu_data_description">Import/export firmware, keys, user data, install Atmosphere on the SD card, and more!</string>
+    <string name="manage_yuzu_data_description">Import/export firmware, keys, user data, install Atmosphere, and more!</string>
     <string name="game_folders">Game folders</string>
     <string name="deep_scan">Deep scan</string>
     <string name="add_game_folder">Add game folder</string>
@@ -876,14 +876,14 @@
     <string name="custom_sdmc_directory_description">Set a custom path for virtual SD card storage</string>
 
     <string name="install_atmosphere_section">Install Atmosphere</string>
-    <string name="install_atmosphere_section_description">Download official Atmosphere files onto the virtual SD card for homebrew and mods</string>
+    <string name="install_atmosphere_section_description">Install Atmosphere CFW onto the virtual SD card</string>
     <string name="install_atmosphere">Install Atmosphere</string>
-    <string name="install_atmosphere_description">Fetch the latest release from GitHub and extract it into the SD card folder (atmosphere/, switch/, etc.)</string>
-    <string name="install_atmosphere_confirm">This downloads Atmosphere from GitHub (Atmosphere-NX/Atmosphere) and unpacks it into your virtual SD card. Existing files with the same paths may be overwritten. Continue?</string>
+    <string name="install_atmosphere_description">Fetch the latest release from GitHub and extract it into the SD card folder</string>
+    <string name="install_atmosphere_confirm">This downloads Atmosphere CFW and unpacks it into your virtual SD card. Existing files with the same paths may be overwritten. Continue?</string>
     <string name="install_atmosphere_progress">Installing Atmosphere</string>
     <string name="install_atmosphere_downloading">Downloading %1$s…</string>
     <string name="install_atmosphere_extracting">Extracting to virtual SD card…</string>
-    <string name="install_atmosphere_success">Atmosphere %1$s installed on the virtual SD card.</string>
+    <string name="install_atmosphere_success">Atmosphere %1$s installed on the virtual SD card successfully.</string>
     <string name="install_atmosphere_running_blocked">Stop emulation before installing Atmosphere.</string>
     <string name="path_set">Path set successfully</string>
     <string name="skip_migration">Skip</string>
