@@ -86,4 +86,4 @@ Super special thanks to Cloudflare for preventing the git server from blowing up
 - Suyu
 - Ryubing
 
-And everyone who continues or had contributed to the project! <3
+And everyone who continues to or had previously made contributions to the project! <3
