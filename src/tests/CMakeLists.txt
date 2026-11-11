@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 add_executable(tests
+    core/nx_archive.cpp
+    frontend_common/nx_archive.cpp
     common/bit_field.cpp
     common/cityhash.cpp
     common/container_hash.cpp
@@ -27,6 +29,9 @@ create_target_directory_groups(tests)
 target_link_libraries(tests PRIVATE common core input_common video_core)
 target_link_libraries(tests PRIVATE ${PLATFORM_LIBRARIES} Catch2::Catch2WithMain
     Threads::Threads OpenSSL::SSL OpenSSL::Crypto)
+
+target_compile_definitions(tests PRIVATE
+    EDEN_NX_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/core/nx_fixtures")
 
 add_test(NAME tests COMMAND tests)
 

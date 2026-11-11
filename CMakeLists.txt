@@ -453,6 +453,9 @@ if (zstd_ADDED)
     add_library(zstd::libzstd ALIAS libzstd_static)
 endif()
 
+# nxformat (.nx game archives)
+include(NxFormat)
+
 if (NOT YUZU_STATIC_ROOM)
     # zlib
     AddJsonPackage(zlib)

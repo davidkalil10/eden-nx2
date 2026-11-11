@@ -28,6 +28,7 @@
 #include "core/loader/nro.h"
 #include "core/loader/nso.h"
 #include "core/loader/nsp.h"
+#include "core/loader/nx.h"
 #include "core/loader/xci.h"
 
 namespace Loader {
@@ -129,6 +130,8 @@ FileType IdentifyFile(FileSys::VirtualFile file) {
         return *nsp_type;
     } else if (const auto xci_type = IdentifyFileLoader<AppLoader_XCI>(file)) {
         return *xci_type;
+    } else if (const auto nx_type = IdentifyFileLoader<AppLoader_NX>(file)) {
+        return *nx_type;
     } else if (const auto nro_type = IdentifyFileLoader<AppLoader_NRO>(file)) {
         return *nro_type;
     } else if (const auto nca_type = IdentifyFileLoader<AppLoader_NCA>(file)) {
@@ -162,6 +165,10 @@ bool IsBootableGameContainer(FileSys::VirtualFile file, FileType type, u64 progr
         type = IdentifyFile(file);
     }
 
+    if (type == FileType::NX) {
+        return AppLoader_NX::IsBootable(file);
+    }
+
     if (!IsContainerType(type)) {
         return false;
     }
@@ -189,6 +196,8 @@ FileType GuessFromFilename(const std::string& name) {
         return FileType::XCZ;
     else if (extension == "nsp")
         return FileType::NSP;
+    else if (extension == "nx")
+        return FileType::NX;
     else if (extension == "nsz")
         return FileType::NSZ;
     else if (extension == "kip")
@@ -214,6 +223,8 @@ std::string GetFileTypeString(FileType type) {
         return "NSP";
     case FileType::NSZ:
         return "NSZ";
+    case FileType::NX:
+        return "NX";
     case FileType::KIP:
         return "KIP";
     case FileType::DeconstructedRomDirectory:
@@ -369,6 +380,11 @@ static std::unique_ptr<AppLoader> GetFileLoader(Core::System& system, FileSys::V
     // NX KIP (Kernel Internal Process) file format
     case FileType::KIP:
         return std::make_unique<AppLoader_KIP>(std::move(file));
+
+    // NX game archive.
+    case FileType::NX:
+        return std::make_unique<AppLoader_NX>(system, std::move(file), program_id,
+                                              program_index);
 
     // NX deconstructed ROM directory.
     case FileType::DeconstructedRomDirectory:
