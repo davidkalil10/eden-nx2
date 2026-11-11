@@ -160,7 +160,6 @@ class InstallableFragment : Fragment() {
             Installable(
                 R.string.install_atmosphere,
                 R.string.install_atmosphere_description,
-                iconId = R.drawable.ic_install,
                 install = {
                     AtmosphereInstallActions.installLatestFromGitHub(
                         requireActivity(),
