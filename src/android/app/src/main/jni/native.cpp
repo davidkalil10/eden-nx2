@@ -613,7 +613,7 @@ std::string find_cpu_name(u32 vendor, u32 part) {
     for (const auto& cpu : s_cpu_list) {
         if (cpu.vendor == vendor && cpu.part == part) {
             return cpu.name;
-        }
+         }
     }
     return std::format("Unknown (vendor={:#04x}, part={:#03x})", vendor, part);
 }
