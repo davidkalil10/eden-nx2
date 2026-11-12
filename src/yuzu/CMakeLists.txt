@@ -486,7 +486,7 @@ if (WIN32 AND ENABLE_UPDATE_CHECKER)
         endif()
     endif()
 
-    # Emulator PGO must not apply to this target (AV false positives, #4706).
+    # Skip PGO for eden-updater.exe to fix false AV detection
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         target_compile_options(updater PRIVATE
             -fno-profile-instr-generate
