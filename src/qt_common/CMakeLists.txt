@@ -46,11 +46,12 @@ create_target_directory_groups(qt_common)
 
 if (USE_DISCORD_PRESENCE)
     target_sources(qt_common PRIVATE
+        discord/discord_client.cpp
+        discord/discord_client.h
         discord/discord_impl.cpp
         discord/discord_impl.h
     )
-    target_link_libraries(qt_common PUBLIC DiscordRPC::discord-rpc)
-
+    target_link_libraries(qt_common PRIVATE Qt6::Network)
     if (YUZU_USE_BUNDLED_OPENSSL)
         target_link_libraries(qt_common PUBLIC OpenSSL::SSL OpenSSL::Crypto)
     endif()

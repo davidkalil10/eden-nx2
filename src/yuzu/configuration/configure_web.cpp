@@ -76,7 +76,7 @@ void ConfigureWeb::SetConfiguration() {
 
     VerifyLogin();
 
-    ui->toggle_discordrpc->setChecked(UISettings::values.enable_discord_presence.GetValue());
+    ui->toggle_discord->setChecked(UISettings::values.enable_discord_presence.GetValue());
 }
 
 void ConfigureWeb::GenerateToken() {
@@ -93,7 +93,7 @@ void ConfigureWeb::GenerateToken() {
 }
 
 void ConfigureWeb::ApplyConfiguration() {
-    UISettings::values.enable_discord_presence = ui->toggle_discordrpc->isChecked();
+    UISettings::values.enable_discord_presence = ui->toggle_discord->isChecked();
     Settings::values.eden_username = ui->edit_username->text().toStdString();
     Settings::values.eden_token = ui->edit_token->text().toStdString();
 }

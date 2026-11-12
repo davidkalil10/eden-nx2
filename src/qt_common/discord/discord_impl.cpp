@@ -4,42 +4,45 @@
 // SPDX-FileCopyrightText: 2018 Citra Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <chrono>
+#include <algorithm>
+#include <cctype>
 #include <string>
+#include <utility>
 
-#include <QEventLoop>
+#include <QDateTime>
+#include <QJsonObject>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <boost/algorithm/string/replace.hpp>
 
-#include <discord_rpc.h>
-
-#include "common/common_types.h"
-#include "common/net/net.h"
 #include "common/string_util.h"
 #include "core/core.h"
 #include "core/loader/loader.h"
 
 #include "discord_impl.h"
 
-#ifdef YUZU_BUNDLED_OPENSSL
-#include <openssl/cert.h>
-#endif
+namespace Discord {
 
-namespace DiscordRPC {
-
-DiscordImpl::DiscordImpl(Core::System& system_) : system{system_} {
-    DiscordEventHandlers handlers{};
-    // The number is the client ID for Eden, it's used for images and the
-    // application name
-    Discord_Initialize("1397286652128264252", &handlers, 1, nullptr);
-}
+DiscordImpl::DiscordImpl(Core::System& system_) : system{system_} {}
 
 DiscordImpl::~DiscordImpl() {
-    Discord_ClearPresence();
-    Discord_Shutdown();
+    CancelArtworkRequest();
 }
 
 void DiscordImpl::Pause() {
-    Discord_ClearPresence();
+    CancelArtworkRequest();
+    client.SetActivity(QJsonValue::Null);
+    game_title.clear();
+    start_time = 0;
+}
+
+void DiscordImpl::CancelArtworkRequest() {
+    if (artwork_reply) {
+        artwork_reply->disconnect(this);
+        artwork_reply->abort();
+        artwork_reply->deleteLater();
+        artwork_reply.clear();
+    }
 }
 
 std::string DiscordImpl::GetGameString(const std::string& title) {
@@ -51,7 +54,7 @@ std::string DiscordImpl::GetGameString(const std::string& title) {
     boost::replace_all(icon_name, "é", "e");
 
     // Remove non-alphanumeric characters but keep dashes
-    std::erase_if(icon_name, [](char c) { return !std::isalnum(c) && c != '-'; });
+    std::erase_if(icon_name, [](unsigned char c) { return !std::isalnum(c) && c != '-'; });
 
     // Remove dashes from the start and end of the string
     icon_name.erase(icon_name.begin(), std::find_if(icon_name.begin(), icon_name.end(),
@@ -68,53 +71,68 @@ std::string DiscordImpl::GetGameString(const std::string& title) {
     return icon_name;
 }
 
-static constexpr char DEFAULT_DISCORD_TEXT[] = "Eden is an emulator for the Nintendo Switch";
-static constexpr char DEFAULT_DISCORD_IMAGE[] =
+static const QString DEFAULT_DISCORD_TEXT =
+    QStringLiteral("Eden is an emulator for the Nintendo Switch");
+static const QString DEFAULT_DISCORD_IMAGE = QStringLiteral(
     "https://git.eden-emu.dev/eden-emu/eden/raw/branch/master/dist/qt_themes/default/icons/256x256/"
-    "eden.png";
+    "eden.png");
 
-void DiscordImpl::UpdateGameStatus(std::string_view game_url, bool has_boxart) {
-    const std::string url = std::string{has_boxart ? game_url : DEFAULT_DISCORD_IMAGE};
-    s64 start_time = std::chrono::duration_cast<std::chrono::seconds>(
-                         std::chrono::system_clock::now().time_since_epoch())
-                         .count();
-    DiscordRichPresence presence{};
-
-    presence.largeImageKey = url.c_str();
-    presence.largeImageText = game_title.c_str();
-    presence.smallImageKey = DEFAULT_DISCORD_IMAGE;
-    presence.smallImageText = DEFAULT_DISCORD_TEXT;
-    presence.state = game_title.c_str();
-    presence.status_display_type = DiscordStatusDisplayType_State;
-    presence.details = "Currently in game";
-    presence.startTimestamp = start_time;
-    Discord_UpdatePresence(&presence);
+void DiscordImpl::UpdateGameStatus(const QString& image_url) {
+    const auto title = QString::fromStdString(game_title);
+    const QJsonObject assets{{QStringLiteral("large_image"), image_url},
+                             {QStringLiteral("large_text"), title},
+                             {QStringLiteral("small_image"), DEFAULT_DISCORD_IMAGE},
+                             {QStringLiteral("small_text"), DEFAULT_DISCORD_TEXT}};
+    const QJsonObject presence{
+        {QStringLiteral("assets"), assets},
+        {QStringLiteral("state"), title},
+        {QStringLiteral("status_display_type"), 1},
+        {QStringLiteral("details"), QStringLiteral("Currently in game")},
+        {QStringLiteral("timestamps"), QJsonObject{{QStringLiteral("start"), start_time}}}};
+    client.SetActivity(presence);
 }
 
 void DiscordImpl::Update() {
+    CancelArtworkRequest();
     if (system.IsPoweredOn()) {
-        system.GetAppLoader().ReadTitle(game_title);
+        std::string new_title;
+        system.GetAppLoader().ReadTitle(new_title);
+        if (start_time == 0 || new_title != game_title) {
+            start_time = QDateTime::currentSecsSinceEpoch();
+        }
+        game_title = std::move(new_title);
 
-        // Used to format Icon URL for yuzu website game compatibility page
-        std::string icon_name = GetGameString(game_title);
-        auto const game_url = std::format(
-            "https://raw.githubusercontent.com/eden-emulator/boxart/refs/heads/master/img/{}.png",
-            icon_name);
-
-        UpdateGameStatus(game_url, Common::Net::HeadRequest(game_url));
-
+        UpdateGameStatus(DEFAULT_DISCORD_IMAGE);
+        const auto game_url =
+            QUrl{QStringLiteral("https://raw.githubusercontent.com/eden-emulator/boxart/"
+                                "refs/heads/master/img/%1.png")
+                     .arg(QString::fromStdString(GetGameString(game_title)))};
+        QNetworkRequest request{game_url};
+        request.setTransferTimeout(5000);
+        artwork_reply = network.head(request);
+        auto* reply = artwork_reply.data();
+        connect(reply, &QNetworkReply::finished, this, [this, reply, game_url] {
+            const auto status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            if (reply->error() == QNetworkReply::NoError && status >= 200 && status < 300) {
+                UpdateGameStatus(game_url.toString());
+            }
+            artwork_reply.clear();
+            reply->deleteLater();
+        });
         return;
     }
 
-    s64 start_time = std::chrono::duration_cast<std::chrono::seconds>(
-                         std::chrono::system_clock::now().time_since_epoch())
-                         .count();
-    DiscordRichPresence presence{};
-    presence.largeImageKey = DEFAULT_DISCORD_IMAGE;
-    presence.largeImageText = DEFAULT_DISCORD_TEXT;
-    presence.status_display_type = DiscordStatusDisplayType_Name;
-    presence.details = "Currently not in game";
-    presence.startTimestamp = start_time;
-    Discord_UpdatePresence(&presence);
+    if (start_time == 0 || !game_title.empty()) {
+        start_time = QDateTime::currentSecsSinceEpoch();
+    }
+    game_title.clear();
+    const QJsonObject assets{{QStringLiteral("large_image"), DEFAULT_DISCORD_IMAGE},
+                             {QStringLiteral("large_text"), DEFAULT_DISCORD_TEXT}};
+    const QJsonObject presence{
+        {QStringLiteral("assets"), assets},
+        {QStringLiteral("status_display_type"), 0},
+        {QStringLiteral("details"), QStringLiteral("Currently not in game")},
+        {QStringLiteral("timestamps"), QJsonObject{{QStringLiteral("start"), start_time}}}};
+    client.SetActivity(presence);
 }
-} // namespace DiscordRPC
+} // namespace Discord

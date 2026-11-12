@@ -6,7 +6,7 @@
 
 #pragma once
 
-namespace DiscordRPC {
+namespace Discord {
 
 class DiscordInterface {
 public:
@@ -24,4 +24,4 @@ public:
     void Update() override {}
 };
 
-} // namespace DiscordRPC
+} // namespace Discord

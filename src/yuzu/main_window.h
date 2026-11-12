@@ -96,7 +96,7 @@ struct KeyboardInitializeParameters;
 struct ProfileSelectParameters;
 } // namespace Core::Frontend
 
-namespace DiscordRPC {
+namespace Discord {
 class DiscordInterface;
 }
 
@@ -495,7 +495,7 @@ private:
 
     std::unique_ptr<Ui::MainWindow> ui;
 
-    std::unique_ptr<DiscordRPC::DiscordInterface> discord_rpc;
+    std::unique_ptr<Discord::DiscordInterface> discord;
     std::unique_ptr<PlayTime::PlayTimeManager> play_time_manager;
     std::shared_ptr<InputCommon::InputSubsystem> input_subsystem;
 

@@ -71,7 +71,6 @@ Vulkan 1.4.317+ is also needed:
 System packages *can* be used for these libraries, but many are either not packaged by most distributions OR have issues when used by the system:
 
 - [SimpleIni](https://github.com/brofield/simpleini)
-- [DiscordRPC](https://github.com/eden-emulator/discord-rpc)
 - [cubeb](https://github.com/mozilla/cubeb)
 - [libusb](https://github.com/libusb/libusb)
 - [VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
@@ -115,7 +114,7 @@ Now, install all deps:
 sudo emerge -a \
     app-arch/lz4 app-arch/zstd app-arch/unzip \
     dev-libs/libusb dev-libs/mcl dev-libs/sirit \
-    dev-libs/boost dev-libs/openssl dev-libs/discord-rpc \
+    dev-libs/boost dev-libs/openssl \
     dev-util/spirv-tools dev-util/spirv-headers dev-util/vulkan-headers \
     dev-util/vulkan-utility-libraries dev-util/glslang \
     media-gfx/renderdoc media-libs/libva media-libs/opus media-video/ffmpeg \

@@ -825,7 +825,7 @@ MainWindow::MainWindow(bool has_broken_vulkan)
     UpdateUITheme();
 
     SetDiscordEnabled(UISettings::values.enable_discord_presence.GetValue());
-    discord_rpc->Update();
+    discord->Update();
 
     play_time_manager = std::make_unique<PlayTime::PlayTimeManager>();
 
@@ -7761,7 +7761,7 @@ bool MainWindow::OnShutdownBegin() {
     }
 
     QtCommon::system->SetShuttingDown(true);
-    discord_rpc->Pause();
+    discord->Pause();
 
     RequestGameExit();
     QtCommon::emu_thread->disconnect();
@@ -7818,7 +7818,7 @@ void MainWindow::OnEmulationStopped() {
 
     emulation_running = false;
 
-    discord_rpc->Update();
+    discord->Update();
     Common::FeralGamemode::Stop();
 
     // The emulation is stopped, so closing the window or not does not matter anymore
@@ -8681,7 +8681,7 @@ void MainWindow::OnStartGame() {
     play_time_manager->SetProgramId(QtCommon::system->GetApplicationProcessProgramID());
     play_time_manager->Start();
 
-    discord_rpc->Update();
+    discord->Update();
     Common::FeralGamemode::Start();
 }
 
@@ -10421,13 +10421,13 @@ void MainWindow::OnLanguageChanged(const QString& locale) {
 void MainWindow::SetDiscordEnabled([[maybe_unused]] bool state) {
 #ifdef USE_DISCORD_PRESENCE
     if (state)
-        discord_rpc = std::make_unique<DiscordRPC::DiscordImpl>(*QtCommon::system);
+        discord = std::make_unique<Discord::DiscordImpl>(*QtCommon::system);
     else
-        discord_rpc = std::make_unique<DiscordRPC::NullImpl>();
+        discord = std::make_unique<Discord::NullImpl>();
 #else
-    discord_rpc = std::make_unique<DiscordRPC::NullImpl>();
+    discord = std::make_unique<Discord::NullImpl>();
 #endif
-    discord_rpc->Update();
+    discord->Update();
 }
 
 void MainWindow::SetGamemodeEnabled(bool state) {
