@@ -1,14 +1,15 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#pragma once
+module;
 
 #include <filesystem>
-#include <optional>
 #include <vector>
 #include "common/common_types.h"
 
-namespace FrontendCommon {
+export module frontend:mod;
+
+export namespace FrontendCommon {
 
 enum ModInstallResult {
     Cancelled,

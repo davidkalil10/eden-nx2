@@ -26,13 +26,14 @@
 #include "core/core.h"
 #include "core/file_sys/patch_manager.h"
 #include "core/loader/loader.h"
-#include "frontend_common/mod_manager.h"
 #include "qt_common/abstract/frontend.h"
 #include "qt_common/config/uisettings.h"
 #include "qt_common/util/mod.h"
 #include "ui_configure_per_game_addons.h"
 #include "yuzu/configuration/configure_input.h"
 #include "yuzu/configuration/configure_per_game_addons.h"
+
+import frontend;
 
 ConfigurePerGameAddons::ConfigurePerGameAddons(Core::System& system_, QWidget* parent)
     : QWidget(parent), ui{std::make_unique<Ui::ConfigurePerGameAddons>()}, system{system_} {

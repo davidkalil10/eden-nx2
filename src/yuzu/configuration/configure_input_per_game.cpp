@@ -1,14 +1,18 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: 2022 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "common/settings.h"
 #include "core/core.h"
-#include "frontend_common/config.h"
 #include "hid_core/frontend/emulated_controller.h"
 #include "hid_core/hid_core.h"
 #include "ui_configure_input_per_game.h"
 #include "yuzu/configuration/configure_input_per_game.h"
 #include "yuzu/configuration/input_profiles.h"
+
+import frontend;
 
 ConfigureInputPerGame::ConfigureInputPerGame(Core::System& system_, QtConfig* config_,
                                              QWidget* parent)

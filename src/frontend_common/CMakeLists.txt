@@ -6,21 +6,22 @@
 
 add_library(frontend_common STATIC
     config.cpp
-    config.h
-    content_manager.h
-    firmware_manager.h
     firmware_manager.cpp
-    data_manager.h data_manager.cpp
-    play_time_manager.cpp
-    play_time_manager.h
-    settings_generator.h settings_generator.cpp
-    mod_manager.h mod_manager.cpp)
+    data_manager.cpp
+    settings_generator.cpp
+    mod_manager.cpp
+    update_checker.cpp)
 
-if (ENABLE_UPDATE_CHECKER)
-    target_sources(frontend_common PRIVATE
-        update_checker.cpp
-        update_checker.h)
-endif()
+target_sources(frontend_common PUBLIC
+    FILE_SET frontendModules TYPE CXX_MODULES FILES
+    settings_generator.ixx
+    data_manager.ixx
+    config.ixx
+    content_manager.ixx
+    firmware_manager.ixx
+    mod_manager.ixx
+    frontend.ixx
+    update_checker.ixx)
 
 create_target_directory_groups(frontend_common)
 target_link_libraries(frontend_common

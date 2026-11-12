@@ -15,7 +15,7 @@
 #include "common/fs/path_util.h"
 #include "common/settings.h"
 #include "common/settings_enums.h"
-#include "frontend_common/settings_generator.h"
+#include "common/play_time_manager.h"
 #include "render/performance_overlay.h"
 #ifdef HAS_RESHADE
 #include "configuration/configure_post_processing.h"
@@ -145,13 +145,6 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
     return dir->CreateFile(path);
 }
 
-// Frontend //
-#include "frontend_common/play_time_manager.h"
-
-#ifdef ENABLE_UPDATE_CHECKER
-#include "frontend_common/update_checker.h"
-#endif
-
 // Common //
 #include "common/fs/fs.h"
 #include "common/logging.h"
@@ -166,6 +159,9 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 
 // Core //
 #include "core/core.h"
+#include "core/file_sys/control_metadata.h"
+#include "core/file_sys/patch_manager.h"
+#include "core/loader/loader.h"
 #include "core/frontend/applets/general.h"
 #include "core/frontend/applets/mii_edit.h"
 #include "core/frontend/applets/software_keyboard.h"
@@ -204,9 +200,9 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 #endif
 
 #include <boost/container/flat_set.hpp>
+#include <boost/algorithm/string/replace.hpp>
 
 // Platform stuff //
-#include <boost/container/flat_set.hpp>
 
 #ifdef __APPLE__
 #include <unistd.h> // for chdir
@@ -227,6 +223,9 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 #include "common/overlay_panels.h"
 #include "common/param_package.h"
 #include "qt_common/gamemode.h"
+
+// Frontend //
+import frontend;
 
 #ifdef _WIN32
 #include "common/windows/timer_resolution.h"

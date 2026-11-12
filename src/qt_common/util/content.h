@@ -5,9 +5,9 @@
 
 #include <QObject>
 #include "common/common_types.h"
-#include "frontend_common/data_manager.h"
-#include "frontend_common/firmware_manager.h"
 #include "qt_common/qt_string_lookup.h"
+
+import frontend;
 
 namespace QtCommon::Content {
 

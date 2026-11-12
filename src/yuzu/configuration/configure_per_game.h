@@ -15,11 +15,12 @@
 
 #include "configuration/shared_widget.h"
 #include "core/file_sys/vfs/vfs_types.h"
-#include "frontend_common/config.h"
 #include "qt_common/config/qt_config.h"
 #include "qt_common/config/shared_translation.h"
 #include "qt_common/util/vk.h"
 #include "yuzu/configuration/configuration_shared.h"
+
+import frontend;
 
 namespace Core {
 class System;

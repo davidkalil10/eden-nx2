@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // SDL will break our main function in yuzu-cmd if we don't define this before adding SDL.h
+#include "common/settings.h"
 #define SDL_MAIN_HANDLED
 #include <SDL3/SDL.h>
 

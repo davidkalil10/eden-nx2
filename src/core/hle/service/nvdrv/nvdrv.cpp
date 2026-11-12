@@ -9,6 +9,7 @@
 
 #include <format>
 #include "core/core.h"
+#include "core/firmware_version.h"
 #include "core/hle/kernel/k_event.h"
 #include "core/hle/service/ipc_helpers.h"
 #include "core/hle/service/nvdrv/core/container.h"
@@ -28,7 +29,6 @@
 #include "core/hle/service/nvdrv/nvmemp.h"
 #include "core/hle/service/nvnflinger/nvnflinger.h"
 #include "core/hle/service/server_manager.h"
-#include "frontend_common/firmware_manager.h"
 #include "video_core/gpu.h"
 
 namespace Service::Nvidia {
@@ -117,7 +117,7 @@ void LoopProcess(Core::System& system) {
     server_manager->RegisterNamedService("nvgem:c", std::make_shared<NVGEM_C>(system));
     server_manager->RegisterNamedService("nvgem:cd", std::make_shared<NVGEM_CD>(system));
     // +10.0.0
-    if (FirmwareManager::GetFirmwareVersion(system).first.major >= 10) {
+    if (Core::GetFirmwareVersion(system).first.major >= 10) {
         server_manager->RegisterNamedService("nvdbg:d", std::make_shared<NVDBG_D>(system));
     }
     ServerManager::RunServer(std::move(server_manager));

@@ -1165,7 +1165,8 @@ add_library(core STATIC
     tools/freezer.cpp
     tools/freezer.h
     tools/renderdoc.cpp
-    tools/renderdoc.h)
+    tools/renderdoc.h
+    firmware_version.h)
 
 if (ENABLE_WIFI_SCAN)
     target_sources(core PRIVATE internal_network/wifi_scanner.cpp)

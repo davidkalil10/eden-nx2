@@ -4,10 +4,11 @@
 // SPDX-FileCopyrightText: 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#pragma once
+module;
 
 #include <memory>
 #include <string>
+
 #include "common/settings.h"
 
 // May be defined on command line by system provided packages (FreeBSD devel/simpleini)
@@ -27,11 +28,9 @@
 #undef CreateDirectory
 #undef MoveFile
 
-namespace Core {
-class System;
-}
+export module frontend:config;
 
-class Config {
+export class Config {
 public:
     enum class ConfigType {
         GlobalConfig,

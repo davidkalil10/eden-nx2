@@ -5,9 +5,12 @@
 
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
+
+#include "core/file_sys/patch_manager.h"
 #include "core/file_sys/savedata_factory.h"
 #include "core/hle/service/am/am_types.h"
-#include "frontend_common/content_manager.h"
+#include "core/loader/loader.h"
+
 #include "qt_common/abstract/frontend.h"
 #include "qt_common/config/uisettings.h"
 #include "qt_common/qt_common.h"
@@ -27,6 +30,8 @@
 #else
 #include <fstream>
 #endif
+
+import frontend;
 
 namespace QtCommon::Game {
 

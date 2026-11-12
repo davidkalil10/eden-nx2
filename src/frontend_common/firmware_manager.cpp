@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "firmware_manager.h"
+module;
+
 #include <filesystem>
 #include <common/fs/fs_paths.h>
 
@@ -10,14 +11,19 @@
 
 #include "common/logging.h"
 
+#include "core/core.h"
 #include "core/crypto/key_manager.h"
-#include "frontend_common/content_manager.h"
 
 #ifdef __ANDROID__
 #include <jni.h>
 #include <common/android/id_cache.h>
 #include <common/android/android_common.h>
 #endif
+
+module frontend;
+
+import :firmware;
+import :content;
 
 FirmwareManager::KeyInstallResult
 FirmwareManager::InstallKeys(std::string location, std::string extension) {

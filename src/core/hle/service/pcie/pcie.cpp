@@ -9,7 +9,8 @@
 #include "core/hle/service/pcie/pcie.h"
 #include "core/hle/service/server_manager.h"
 #include "core/hle/service/service.h"
-#include "frontend_common/firmware_manager.h"
+
+#include "core/firmware_version.h"
 
 namespace Service::PCIe {
 
@@ -81,7 +82,7 @@ void LoopProcess(Core::System& system) {
 
     server_manager->RegisterNamedService("pcie", std::make_shared<PCIE>(system));
     // +6.0.0
-    if (FirmwareManager::GetFirmwareVersion(system).first.major >= 6) {
+    if (Core::GetFirmwareVersion(system).first.major >= 6) {
         server_manager->RegisterNamedService("pcie:log", std::make_shared<PCIE_LOG>(system));
     }
     ServerManager::RunServer(std::move(server_manager));

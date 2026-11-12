@@ -11,7 +11,8 @@
 #include "core/hle/service/server_manager.h"
 #include "core/hle/service/service.h"
 #include "core/hle/service/usb/usb.h"
-#include "frontend_common/firmware_manager.h"
+
+#include "core/firmware_version.h"
 
 namespace Service::USB {
 
@@ -270,11 +271,11 @@ void LoopProcess(Core::System& system) {
     server_manager->RegisterNamedService("usb:pd:m", std::make_shared<IPdManufactureManager>(system));
     server_manager->RegisterNamedService("usb:pm", std::make_shared<IPmMainService>(system), 5);
     // +7.0.0
-    if (FirmwareManager::GetFirmwareVersion(system).first.major >= 7) {
+    if (Core::GetFirmwareVersion(system).first.major >= 7) {
         server_manager->RegisterNamedService("usb:qdb", std::make_shared<IQdbManager>(system));
     }
     // +8.0.0
-    if (FirmwareManager::GetFirmwareVersion(system).first.major >= 8) {
+    if (Core::GetFirmwareVersion(system).first.major >= 8) {
         server_manager->RegisterNamedService("usb:obsv", std::make_shared<IPmObserverService>(system), 2);
     }
     ServerManager::RunServer(std::move(server_manager));

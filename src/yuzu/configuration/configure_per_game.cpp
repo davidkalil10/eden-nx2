@@ -28,7 +28,6 @@
 #include "core/file_sys/patch_manager.h"
 #include "core/file_sys/xts_archive.h"
 #include "core/loader/loader.h"
-#include "frontend_common/config.h"
 #include "qt_common/config/uisettings.h"
 #include "qt_common/qt_common.h"
 #include "qt_common/util/vk.h"
@@ -47,6 +46,8 @@
 #include "yuzu/configuration/configure_per_game_addons.h"
 #include "yuzu/configuration/configure_system.h"
 #include "yuzu/util/util.h"
+
+import frontend;
 
 ConfigurePerGame::ConfigurePerGame(QWidget* parent, u64 title_id_, const std::string& file_name,
                                    std::vector<VkDeviceInfo::Record>& vk_device_records,

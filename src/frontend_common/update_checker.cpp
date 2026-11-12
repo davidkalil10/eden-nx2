@@ -5,20 +5,29 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+module;
+
+#include <optional>
+#include "common/net/net.h"
+
+#ifdef ENABLE_UPDATE_CHECKER
 #ifdef NIGHTLY_BUILD
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
 #endif
 
-#include "common/net/net.h"
 #include "common/scm_rev.h"
-#include "update_checker.h"
 
 #include "common/logging.h"
 
+module frontend;
+
+import :update;
+
 std::optional<Common::Net::Release> UpdateChecker::GetUpdate() {
     const auto latest = Common::Net::GetLatestRelease();
-    if (!latest) return std::nullopt;
+    if (!latest)
+        return std::nullopt;
 
     LOG_INFO(Frontend, "Received update {}", latest->name);
 
@@ -46,3 +55,15 @@ std::optional<Common::Net::Release> UpdateChecker::GetUpdate() {
 
     return std::nullopt;
 }
+
+#else
+
+module frontend;
+
+import :update;
+
+std::optional<Common::Net::Release> UpdateChecker::GetUpdate() {
+    return std::nullopt;
+}
+
+#endif

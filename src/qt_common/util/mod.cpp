@@ -4,9 +4,10 @@
 #include <filesystem>
 #include <system_error>
 #include <JlCompress.h>
-#include "frontend_common/mod_manager.h"
 #include "mod.h"
 #include "qt_common/abstract/frontend.h"
+
+import frontend;
 
 namespace QtCommon::Mod {
 QStringList GetModFolders(const QString& root, const QString& fallbackName) {

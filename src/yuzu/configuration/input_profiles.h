@@ -11,12 +11,7 @@
 #include "common/container/unordered_map.h"
 
 #include "qt_common/config/qt_config.h"
-
-namespace Core {
-class System;
-}
-
-class Config;
+#include "core/core.h"
 
 class InputProfiles {
 

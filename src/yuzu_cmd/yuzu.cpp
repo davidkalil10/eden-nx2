@@ -32,7 +32,6 @@
 #include "core/hle/service/am/applet_manager.h"
 #include "core/hle/service/filesystem/filesystem.h"
 #include "core/loader/loader.h"
-#include "frontend_common/config.h"
 #include "input_common/main.h"
 #include "network/network.h"
 #include "sdl_config.h"
@@ -52,6 +51,8 @@
 #include <shellapi.h>
 #include "common/windows/timer_resolution.h"
 #endif
+
+import frontend;
 
 #ifdef _WIN32
 extern "C" {

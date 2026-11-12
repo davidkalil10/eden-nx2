@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#pragma once
+module;
 
-namespace FrontendCommon {
+export module frontend:settings;
+
+export namespace FrontendCommon {
 
 /**
  * @brief GenerateSettings Generate platform-specific or randomized settings.

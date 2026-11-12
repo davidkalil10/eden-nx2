@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "frontend_common/play_time_manager.h"
 #include "ui_set_play_time_dialog.h"
 #include "yuzu/set_play_time_dialog.h"
+
+#include "common/play_time_manager.h"
 
 SetPlayTimeDialog::SetPlayTimeDialog(QWidget* parent, u64 current_play_time)
     : QDialog(parent), ui{std::make_unique<Ui::SetPlayTimeDialog>()} {

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#pragma once
+module;
 
 #include "common/common_types.h"
 #include "core/core.h"
@@ -18,11 +18,13 @@
 #include "core/hle/service/set/settings_types.h"
 #include "core/hle/service/set/system_settings_server.h"
 
-namespace FirmwareManager {
+export module frontend:firmware;
 
 static constexpr std::array<u64, 1> FIRMWARE_REQUIRED_GAMES = {
     0x0100152000022000ULL, // MK8DX
 };
+
+export namespace FirmwareManager {
 
 enum KeyInstallResult {
     Success,

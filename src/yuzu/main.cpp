@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <QApplication>
+#include "common/settings.h"
 #include "startup_checks.h"
 
 #if YUZU_ROOM

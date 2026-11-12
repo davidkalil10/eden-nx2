@@ -5,7 +5,6 @@
 
 #include "common/memory_detect.h"
 #include "core/hle/service/filesystem/filesystem.h"
-#include "frontend_common/data_manager.h"
 #include "hid_core/hid_core.h"
 #include "network/network.h"
 #include "qt_common.h"
@@ -42,6 +41,8 @@
 #include "common/windows/timer_resolution.h"
 #include "core/core_timing.h"
 #endif
+
+import frontend;
 
 using namespace Common::Literals;
 

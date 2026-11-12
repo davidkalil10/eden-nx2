@@ -12,9 +12,10 @@
 #include "core/file_sys/registered_cache.h"
 #include "core/hle/service/acc/profile_manager.h"
 #include "core/perf_stats.h"
-#include "frontend_common/content_manager.h"
 #include "jni/emu_window/emu_window.h"
 #include "video_core/rasterizer_interface.h"
+
+import frontend;
 
 #pragma once
 

@@ -7,10 +7,10 @@
 #include "qt_common/util/game.h"
 
 #include "common/fs/fs.h"
+
 #include "core/hle/service/acc/profile_manager.h"
-#include "frontend_common/content_manager.h"
-#include "frontend_common/data_manager.h"
-#include "frontend_common/firmware_manager.h"
+#include "core/firmware_version.h"
+#include "core/loader/loader.h"
 
 #include "compress.h"
 #include "qt_common/abstract/frontend.h"
@@ -21,6 +21,8 @@
 #include <QFuture>
 #include <QFutureWatcher>
 #include <QtConcurrentRun>
+
+import frontend;
 
 namespace QtCommon::Content {
 
@@ -176,7 +178,7 @@ void InstallFirmware(const QString& location, bool recursive) {
     progress->close();
     QGuiApplication::processEvents();
 
-    const auto pair = FirmwareManager::GetFirmwareVersion(*system);
+    const auto pair = Core::GetFirmwareVersion(*system);
     const auto firmware_data = pair.first;
     const std::string display_version(firmware_data.display_version.data());
 

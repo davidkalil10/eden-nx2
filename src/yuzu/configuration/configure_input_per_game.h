@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <array>
 #include <memory>
 
 #include <QWidget>
@@ -19,8 +20,6 @@ class QComboBox;
 namespace Core {
 class System;
 } // namespace Core
-
-class Config;
 
 class ConfigureInputPerGame : public QWidget {
     Q_OBJECT

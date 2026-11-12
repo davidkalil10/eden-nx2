@@ -29,7 +29,6 @@
 #include "common/common_types.h"
 #include "common/settings_enums.h"
 #include "common/settings_input.h"
-#include "frontend_common/content_manager.h"
 #include "input_common/drivers/tas_input.h"
 #include "qt_common/config/qt_config.h"
 #include "qt_common/qt_common.h"
@@ -49,6 +48,8 @@
 #include <QFutureWatcher>
 #include "common/net/net.h"
 #endif
+
+import frontend;
 
 class QtConfig;
 class EmuThread;

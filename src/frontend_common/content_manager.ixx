@@ -4,7 +4,7 @@
 // SPDX-FileCopyrightText: 2024 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#pragma once
+module;
 
 #include <format>
 
@@ -23,7 +23,9 @@
 #include "core/loader/loader.h"
 #include "core/loader/nca.h"
 
-namespace ContentManager {
+export module frontend:content;
+
+export namespace ContentManager {
 
 enum class InstallResult {
     Success,

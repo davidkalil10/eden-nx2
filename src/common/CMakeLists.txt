@@ -84,6 +84,8 @@ add_library(
     overflow.h
     page_table.cpp
     page_table.h
+    play_time_manager.cpp
+    play_time_manager.h
     param_package.cpp
     param_package.h
     parent_of_member.h

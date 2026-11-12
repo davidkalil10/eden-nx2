@@ -4,10 +4,11 @@
 #pragma once
 
 #include <QDialog>
-#include "frontend_common/data_manager.h"
 #include "qt_common/qt_string_lookup.h"
 
 #include "ui_data_widget.h"
+
+import frontend;
 
 namespace Ui {
 class DataDialog;

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "data_dialog.h"
-#include "frontend_common/data_manager.h"
 #include "qt_common/qt_string_lookup.h"
 #include "qt_common/util/content.h"
 #include "ui_data_dialog.h"
@@ -17,6 +16,8 @@
 #include <core/frontend/applets/profile_select.h>
 
 #include <applets/qt_profile_select.h>
+
+import frontend;
 
 DataDialog::DataDialog(QWidget* parent) : QDialog(parent), ui(std::make_unique<Ui::DataDialog>()) {
     ui->setupUi(this);

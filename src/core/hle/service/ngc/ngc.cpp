@@ -15,7 +15,8 @@
 #include "core/hle/service/ngc/ngc.h"
 #include "core/hle/service/server_manager.h"
 #include "core/hle/service/service.h"
-#include "frontend_common/firmware_manager.h"
+
+#include "core/firmware_version.h"
 
 namespace Service::NGC {
 
@@ -284,7 +285,7 @@ void LoopProcess(Core::System& system) {
     server_manager->RegisterNamedService("ngc:u", std::make_shared<NgcServiceImpl>(system), 4);
 
     // +23.0.0
-    if (FirmwareManager::GetFirmwareVersion(system).first.major >= 23) {
+    if (Core::GetFirmwareVersion(system).first.major >= 23) {
         server_manager->RegisterNamedService("stpl:u", std::make_shared<IUserService>(system), 4);
         server_manager->RegisterNamedService("stpl:sys", std::make_shared<ISystemService>(system), 4);
     }

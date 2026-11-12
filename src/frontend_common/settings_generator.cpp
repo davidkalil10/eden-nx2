@@ -1,11 +1,16 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+module;
+
 #include <random>
 #include <frozen/string.h>
 #include "common/settings.h"
 #include "common/random.h"
-#include "settings_generator.h"
+
+module frontend;
+
+import :settings;
 
 namespace FrontendCommon {
 

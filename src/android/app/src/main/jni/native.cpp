@@ -34,7 +34,6 @@
 #include <core/file_sys/patch_manager.h>
 #include <core/file_sys/savedata_factory.h>
 #include <core/loader/nro.h>
-#include <frontend_common/content_manager.h>
 #include <jni.h>
 
 extern "C" {
@@ -53,7 +52,7 @@ extern "C" {
 #include "common/settings.h"
 #include "common/string_util.h"
 #include "common/thread.h"
-#include "frontend_common/play_time_manager.h"
+#include "common/play_time_manager.h"
 #include "core/constants.h"
 #include "core/core.h"
 #include "core/cpu_manager.h"
@@ -84,11 +83,6 @@ extern "C" {
 #include "core/hle/service/filesystem/filesystem.h"
 #include "core/hle/service/set/system_settings_server.h"
 #include "core/loader/loader.h"
-#include "frontend_common/config.h"
-#include "frontend_common/firmware_manager.h"
-#ifdef ENABLE_UPDATE_CHECKER
-#include "frontend_common/update_checker.h"
-#endif
 #include "hid_core/frontend/emulated_controller.h"
 #include "hid_core/hid_core.h"
 #include "hid_core/hid_types.h"
@@ -103,6 +97,8 @@ extern "C" {
 #include "video_core/vulkan_common/vulkan_surface.h"
 #include "video_core/shader_notify.h"
 #include "network/announce_multiplayer_session.h"
+
+import frontend;
 
 #define jconst [[maybe_unused]] const auto
 #define jauto [[maybe_unused]] auto
@@ -1505,7 +1501,7 @@ jboolean Java_org_yuzu_yuzu_1emu_NativeLibrary_isFirmwareAvailable(JNIEnv* env, 
 }
 
 jstring Java_org_yuzu_yuzu_1emu_NativeLibrary_firmwareVersion(JNIEnv* env, jclass clazz) {
-    const auto pair = FirmwareManager::GetFirmwareVersion(EmulationSession::GetInstance().System());
+    const auto pair = Core::GetFirmwareVersion(EmulationSession::GetInstance().System());
     const auto firmware_data = pair.first;
     const auto result = pair.second;
 

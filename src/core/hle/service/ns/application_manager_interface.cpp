@@ -16,12 +16,13 @@
 #include "core/hle/service/ns/content_management_interface.h"
 #include "core/hle/service/ns/read_only_application_control_data_interface.h"
 #include "core/file_sys/patch_manager.h"
-#include "frontend_common/firmware_manager.h"
 #include "core/launch_timestamp_cache.h"
 
 #include <algorithm>
 #include <cstring>
 #include <vector>
+
+#include "core/firmware_version.h"
 
 namespace Service::NS {
 
@@ -712,7 +713,7 @@ Result IApplicationManagerInterface::GetApplicationViewWithPromotionInfo(
     const auto requested = application_ids.size();
     LOG_WARNING(Service_NS, "called, size={}", requested);
 
-    const auto fw_pair = FirmwareManager::GetFirmwareVersion(system);
+    const auto fw_pair = Core::GetFirmwareVersion(system);
     const bool is_fw20 = fw_pair.first.major >= 20;
 
     const size_t per_entry_size = is_fw20 ? (sizeof(ApplicationViewV20) + sizeof(PromotionInfo))

@@ -4,6 +4,8 @@
 // SPDX-FileCopyrightText: 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+module;
+
 #include <algorithm>
 #include <array>
 #include "common/fs/fs.h"
@@ -12,7 +14,6 @@
 #include "common/settings.h"
 #include "common/settings_common.h"
 #include "common/settings_enums.h"
-#include "config.h"
 
 #ifdef _WIN32
 #include "common/string_util.h"
@@ -21,6 +22,12 @@
 #include <boost/algorithm/string/replace.hpp>
 
 #include "common/assert.h"
+
+#include <SimpleIni.h>
+
+module frontend;
+
+import :config;
 
 namespace FS = Common::FS;
 

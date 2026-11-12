@@ -13,12 +13,12 @@
 #include "common/fs/path_util.h"
 #include "common/logging.h"
 #include "common/settings.h"
-#include "frontend_common/config.h"
-#include "frontend_common/settings_generator.h"
 #include "native.h"
 #ifdef HAS_RESHADE
 #include "video_core/post_processing/fx_chain.h"
 #endif
+
+import frontend;
 
 std::unique_ptr<AndroidConfig> global_config;
 std::unique_ptr<AndroidConfig> per_game_config;

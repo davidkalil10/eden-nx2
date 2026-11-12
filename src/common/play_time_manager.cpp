@@ -4,17 +4,20 @@
 // SPDX-FileCopyrightText: 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "common/play_time_manager.h"
+
 #include "common/fs/file.h"
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
 #include "common/logging.h"
 #include "common/settings.h"
 #include "common/thread.h"
-#include "core/hle/service/acc/profile_manager.h"
-#include "play_time_manager.h"
 
 #include <format>
 #include <algorithm>
+#include <optional>
+#include <vector>
+#include <chrono>
 
 namespace PlayTime {
 
@@ -135,7 +138,6 @@ void PlayTimeManager::AutoTimestamp(std::stop_token stop_token) {
 
     while (!stop_token.stop_requested()) {
         Common::StoppableTimedWait(stop_token, 30s);
-
         database[running_program_id] += GetDuration();
         Save();
     }

@@ -1,12 +1,17 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+module;
+
 #include <filesystem>
-#include "data_manager.h"
 #include "common/assert.h"
 #include "common/fs/path_util.h"
 #include <format>
 #include <cmath>
+
+module frontend;
+
+import :data;
 
 namespace FrontendCommon::DataManager {
 

@@ -9,7 +9,8 @@
 #include "core/hle/service/ipc_helpers.h"
 #include "core/hle/service/server_manager.h"
 #include "core/hle/service/service.h"
-#include "frontend_common/firmware_manager.h"
+
+#include "core/firmware_version.h"
 
 namespace Service::ES {
 
@@ -408,7 +409,7 @@ void LoopProcess(Core::System& system) {
 
     server_manager->RegisterNamedService("es", std::make_shared<ETicket>(system));
     // +13.0.0
-    if (FirmwareManager::GetFirmwareVersion(system).first.major >= 13) {
+    if (Core::GetFirmwareVersion(system).first.major >= 13) {
         server_manager->RegisterNamedService("ndrm:lu", std::make_shared<NDRM_LU>(system));
         server_manager->RegisterNamedService("ndrm:la", std::make_shared<NDRM_LA>(system));
     }

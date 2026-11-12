@@ -9,8 +9,11 @@
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
 #include "common/logging.h"
-#include "frontend_common/config.h"
 #include "yuzu/configuration/input_profiles.h"
+
+#include "common/settings.h"
+
+import frontend;
 
 namespace FS = Common::FS;
 

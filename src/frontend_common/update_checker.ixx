@@ -5,12 +5,14 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
-#pragma once
+module;
 
 #include <optional>
 #include "common/net/net.h"
 
-namespace UpdateChecker {
+export module frontend:update;
+
+export namespace UpdateChecker {
 
 std::optional<Common::Net::Release> GetUpdate();
 
