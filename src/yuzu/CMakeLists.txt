@@ -485,4 +485,12 @@ if (WIN32 AND ENABLE_UPDATE_CHECKER)
             target_link_libraries(updater PUBLIC stdc++exp)
         endif()
     endif()
+
+    # Emulator PGO must not apply to this target (AV false positives, #4706).
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_compile_options(updater PRIVATE
+            -fno-profile-instr-generate
+            -fno-profile-instr-use)
+        target_link_options(updater PRIVATE -fno-profile-instr-use)
+    endif()
 endif()
