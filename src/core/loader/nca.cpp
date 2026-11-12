@@ -272,12 +272,12 @@ ResultStatus AppLoader_NCA::ReadBanner(std::vector<u8>& buffer) {
         return ResultStatus::ErrorNoIcon;
     }
 
-    const auto file = logo->GetFile("StartupMovie.gif");
+    const auto banner_file = logo->GetFile("StartupMovie.gif");
     if (file == nullptr) {
         return ResultStatus::ErrorNoIcon;
     }
 
-    buffer = file->ReadAllBytes();
+    buffer = banner_file->ReadAllBytes();
     return ResultStatus::Success;
 }
 
@@ -291,12 +291,12 @@ ResultStatus AppLoader_NCA::ReadLogo(std::vector<u8>& buffer) {
         return ResultStatus::ErrorNoIcon;
     }
 
-    const auto file = logo->GetFile("NintendoLogo.png");
+    const auto logo_file = logo->GetFile("NintendoLogo.png");
     if (file == nullptr) {
         return ResultStatus::ErrorNoIcon;
     }
 
-    buffer = file->ReadAllBytes();
+    buffer = logo_file->ReadAllBytes();
     return ResultStatus::Success;
 }
 
