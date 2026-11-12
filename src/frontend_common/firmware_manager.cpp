@@ -13,12 +13,14 @@ module;
 
 #include "core/core.h"
 #include "core/crypto/key_manager.h"
+#include "core/firmware_version.h"
 
 #ifdef __ANDROID__
 #include <jni.h>
 #include <common/android/id_cache.h>
 #include <common/android/android_common.h>
 #endif
+
 
 module frontend;
 
@@ -126,7 +128,7 @@ FirmwareManager::FirmwareCheckResult FirmwareManager::VerifyFirmware(Core::Syste
     if (!CheckFirmwarePresence(system)) {
         return ErrorFirmwareMissing;
     } else {
-        const auto pair = GetFirmwareVersion(system);
+        const auto pair = Core::GetFirmwareVersion(system);
         const auto result = pair.second;
 
         if (result.IsError()) {

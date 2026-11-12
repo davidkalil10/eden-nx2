@@ -90,21 +90,4 @@ inline bool CheckFirmwarePresence(Core::System &system)
  */
 FirmwareCheckResult VerifyFirmware(Core::System &system);
 
-/**
- * @brief Get the currently installed firmware version.
- * @param system The system to check firmware on.
- * @return A pair of the firmware version format and result code.
- */
-inline std::pair<Service::Set::FirmwareVersionFormat, Result> GetFirmwareVersion(Core::System &system)
-{
-    Service::Set::FirmwareVersionFormat firmware_data{};
-    const auto result
-        = Service::Set::GetFirmwareVersionImpl(firmware_data,
-                                               system,
-                                               Service::Set::GetFirmwareVersionType::Version2);
-
-    return {firmware_data, result};
-}
-
-// TODO(crueter): GET AS STRING
 }

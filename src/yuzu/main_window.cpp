@@ -165,6 +165,7 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 #include "core/frontend/applets/general.h"
 #include "core/frontend/applets/mii_edit.h"
 #include "core/frontend/applets/software_keyboard.h"
+#include "core/firmware_version.h"
 
 #include "core/hle/kernel/k_process.h"
 #include "core/hle/service/acc/profile_manager.h"
@@ -10077,7 +10078,7 @@ bool MainWindow::CheckFirmwarePresence() {
 }
 
 void MainWindow::SetFirmwareVersion() {
-    const auto pair = FirmwareManager::GetFirmwareVersion(*QtCommon::system.get());
+    const auto pair = Core::GetFirmwareVersion(*QtCommon::system.get());
     const auto firmware_data = pair.first;
     const auto result = pair.second;
 
