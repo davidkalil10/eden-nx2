@@ -35,7 +35,7 @@ class ServiceManager;
 }
 
 /// Default number of maximum connections to a server session.
-static constexpr u32 ServerSessionCountMax = 0x40;
+inline constexpr u32 ServerSessionCountMax = 0x40;
 static_assert(ServerSessionCountMax == 0x40,
               "ServerSessionCountMax isn't 0x40 somehow, this assert is a reminder that this will "
               "break lots of things");

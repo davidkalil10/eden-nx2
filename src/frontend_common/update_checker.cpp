@@ -19,12 +19,14 @@ module;
 #include "common/scm_rev.h"
 
 #include "common/logging.h"
+#endif
 
 module frontend;
 
 import :update;
 
 std::optional<Common::Net::Release> UpdateChecker::GetUpdate() {
+#ifdef ENABLE_UPDATE_CHECKER
     const auto latest = Common::Net::GetLatestRelease();
     if (!latest)
         return std::nullopt;
@@ -52,18 +54,7 @@ std::optional<Common::Net::Release> UpdateChecker::GetUpdate() {
 
     if (tag != build)
         return latest;
-
-    return std::nullopt;
-}
-
-#else
-
-module frontend;
-
-import :update;
-
-std::optional<Common::Net::Release> UpdateChecker::GetUpdate() {
-    return std::nullopt;
-}
-
 #endif
+
+    return std::nullopt;
+}

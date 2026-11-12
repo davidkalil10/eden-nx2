@@ -20,10 +20,6 @@ module;
 
 export module frontend:firmware;
 
-static constexpr std::array<u64, 1> FIRMWARE_REQUIRED_GAMES = {
-    0x0100152000022000ULL, // MK8DX
-};
-
 export namespace FirmwareManager {
 
 enum KeyInstallResult {
@@ -41,6 +37,10 @@ enum KeyInstallResult {
  * @return A result code for the operation.
  */
 KeyInstallResult InstallKeys(std::string location, std::string expected_extension);
+
+inline constexpr std::array<u64, 1> FIRMWARE_REQUIRED_GAMES = {
+    0x0100152000022000ULL, // MK8DX
+};
 
 /**
  * \brief Check if the specified program requires firmware to run properly.
