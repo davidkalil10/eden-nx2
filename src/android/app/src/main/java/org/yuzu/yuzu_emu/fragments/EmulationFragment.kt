@@ -703,7 +703,6 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
                 if (logoBitmap != null) {
                     binding.loadingNintendoLogo.setImageBitmap(logoBitmap)
                     binding.loadingNintendoLogo.visibility = View.VISIBLE
-                    Log.debug("[EmulationFragment] Loaded Nintendo logo")
                 } else {
                     binding.loadingNintendoLogo.visibility = View.GONE
                 }
@@ -717,7 +716,6 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
                         animDrawable.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
                         animDrawable.start()
                     }
-                    Log.debug("[EmulationFragment] Loaded Switch Animation")
                 } else {
                     binding.loadingSwitchAnimation.visibility = View.GONE
                 }
