@@ -715,6 +715,8 @@ static const auto default_cg_mode = nullptr; //Allow RWE
 struct MacroJITx64Impl final : public Xbyak::CodeGenerator, public DynamicCachedMacro {
     explicit MacroJITx64Impl(Core::System& system, std::span<const u32> code_)
         : Xbyak::CodeGenerator(MAX_CODE_SIZE, default_cg_mode)
+        , labels(code_.size() + 1)
+        , delay_skip(code_.size())
         , code{code_}
     {
         Compile(system);
@@ -759,8 +761,8 @@ struct MacroJITx64Impl final : public Xbyak::CodeGenerator, public DynamicCached
     OptimizerState optimizer{};
     std::optional<Macro::Opcode> next_opcode{};
     ProgramType program{nullptr};
-    std::array<Xbyak::Label, MAX_CODE_SIZE> labels;
-    std::array<Xbyak::Label, MAX_CODE_SIZE> delay_skip;
+    std::vector<Xbyak::Label> labels;
+    std::vector<Xbyak::Label> delay_skip;
     Xbyak::Label end_of_code{};
     bool is_delay_slot{};
     u32 pc{};
@@ -1035,7 +1037,7 @@ void MacroJITx64Impl::Compile_Send(Core::System& system, Xbyak::Reg32 value) {
 
 void MacroJITx64Impl::Compile_Branch(Macro::Opcode opcode) {
     ASSERT(!is_delay_slot && "Executing a branch in a delay slot is not valid");
-    const s32 jump_address = s32(pc) + s32(opcode.GetBranchTarget() / sizeof(s32));
+    const size_t jump_address = (std::min)(size_t(s32(pc) + s32(opcode.GetBranchTarget() / sizeof(s32))), code.size());
 
     Xbyak::Label end;
     auto value = Compile_GetRegister(opcode.src_a, eax);
@@ -1107,7 +1109,6 @@ void MacroJITx64Impl::Optimizer_ScanFlags() {
 void MacroJITx64Impl::Compile(Core::System& system) {
     // Matching PROTECT_RE needed for W^X systems
     setProtectMode(Xbyak::CodeArray::ProtectMode::PROTECT_RW);
-    labels.fill(Xbyak::Label());
 
     Common::X64::ABI_PushRegistersAndAdjustStack(*this, Common::X64::ABI_ALL_CALLEE_SAVED, 8);
     // JIT state
@@ -1149,6 +1150,7 @@ void MacroJITx64Impl::Compile(Core::System& system) {
         Compile_NextInstruction(system);
     }
 
+    L(labels[code.size()]);
     L(end_of_code);
 
     Common::X64::ABI_PopRegistersAndAdjustStack(*this, Common::X64::ABI_ALL_CALLEE_SAVED, 8);
