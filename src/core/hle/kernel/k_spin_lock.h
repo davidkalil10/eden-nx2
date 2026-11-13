@@ -10,12 +10,9 @@
 
 namespace Kernel {
 
-class KSpinLock {
+class KSpinLock : Common::NonCopyable, Common::NonMoveable {
 public:
     explicit KSpinLock() = default;
-
-    YUZU_NON_COPYABLE(KSpinLock);
-    YUZU_NON_MOVEABLE(KSpinLock);
 
     void Lock();
     void Unlock();

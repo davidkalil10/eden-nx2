@@ -18,9 +18,7 @@
 
 namespace FileSys {
 
-class IndirectStorage : public IReadOnlyStorage {
-    YUZU_NON_COPYABLE(IndirectStorage);
-    YUZU_NON_MOVEABLE(IndirectStorage);
+class IndirectStorage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
 
 public:
     static constexpr s32 StorageCount = 2;

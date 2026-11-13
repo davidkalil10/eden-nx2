@@ -60,9 +60,7 @@ struct HierarchicalIntegrityVerificationSizeSet {
 };
 static_assert(std::is_trivially_default_constructible_v<HierarchicalIntegrityVerificationSizeSet> && std::is_trivially_copyable_v<HierarchicalIntegrityVerificationSizeSet>);
 
-class HierarchicalIntegrityVerificationStorage : public IReadOnlyStorage {
-    YUZU_NON_COPYABLE(HierarchicalIntegrityVerificationStorage);
-    YUZU_NON_MOVEABLE(HierarchicalIntegrityVerificationStorage);
+class HierarchicalIntegrityVerificationStorage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
 
 public:
     using GenerateRandomFunction = void (*)(void* dst, size_t size);

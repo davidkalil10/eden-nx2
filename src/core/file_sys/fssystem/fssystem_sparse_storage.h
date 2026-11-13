@@ -10,9 +10,7 @@
 
 namespace FileSys {
 
-class SparseStorage : public IndirectStorage {
-    YUZU_NON_COPYABLE(SparseStorage);
-    YUZU_NON_MOVEABLE(SparseStorage);
+class SparseStorage : public IndirectStorage, Common::NonCopyable, Common::NonMoveable{
 
 private:
     class ZeroStorage : public IReadOnlyStorage {

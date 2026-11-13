@@ -19,9 +19,7 @@ namespace FileSys {
 
 using namespace Common::Literals;
 
-class CompressedStorage : public IReadOnlyStorage {
-    YUZU_NON_COPYABLE(CompressedStorage);
-    YUZU_NON_MOVEABLE(CompressedStorage);
+class CompressedStorage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
 
 public:
     static constexpr size_t NodeSize = 16_KiB;
@@ -49,9 +47,7 @@ public:
     }
 
 private:
-    class CompressedStorageCore {
-        YUZU_NON_COPYABLE(CompressedStorageCore);
-        YUZU_NON_MOVEABLE(CompressedStorageCore);
+    class CompressedStorageCore : Common::NonCopyable, Common::NonMoveable {
 
     public:
         CompressedStorageCore() : m_table(), m_data_storage() {}
@@ -664,9 +660,7 @@ private:
         GetDecompressorFunction m_get_decompressor_function;
     };
 
-    class CacheManager {
-        YUZU_NON_COPYABLE(CacheManager);
-        YUZU_NON_MOVEABLE(CacheManager);
+    class CacheManager : Common::NonCopyable, Common::NonMoveable {
 
     private:
         struct AccessRange {

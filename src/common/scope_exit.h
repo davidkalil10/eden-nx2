@@ -8,8 +8,7 @@
 
 namespace detail {
 template <class F>
-class ScopeGuard {
-    YUZU_NON_COPYABLE(ScopeGuard);
+class ScopeGuard : Common::NonCopyable {
 
 private:
     F f;

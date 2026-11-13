@@ -14,9 +14,7 @@
 namespace FileSys {
 class DirectoryPathParser;
 
-class Path {
-    YUZU_NON_COPYABLE(Path);
-    YUZU_NON_MOVEABLE(Path);
+class Path : Common::NonCopyable, Common::NonMoveable {
 
 private:
     static constexpr const char* EmptyPath = "";
@@ -26,8 +24,7 @@ private:
     friend class DirectoryPathParser;
 
 public:
-    class WriteBuffer {
-        YUZU_NON_COPYABLE(WriteBuffer);
+    class WriteBuffer : Common::NonCopyable {
 
     private:
         char* m_buffer;

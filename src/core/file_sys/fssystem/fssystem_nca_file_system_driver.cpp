@@ -31,9 +31,7 @@ constexpr inline s32 IntegrityHashCacheCount = 8;
 constexpr inline s32 IntegrityDataCacheCountForMeta = 16;
 constexpr inline s32 IntegrityHashCacheCountForMeta = 2;
 
-class SharedNcaBodyStorage : public IReadOnlyStorage {
-    YUZU_NON_COPYABLE(SharedNcaBodyStorage);
-    YUZU_NON_MOVEABLE(SharedNcaBodyStorage);
+class SharedNcaBodyStorage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
 
 private:
     VirtualFile m_storage;

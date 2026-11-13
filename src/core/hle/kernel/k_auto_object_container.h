@@ -14,11 +14,8 @@ namespace Kernel {
 class KernelCore;
 class KProcess;
 
-class KAutoObjectWithListContainer {
+class KAutoObjectWithListContainer : Common::NonCopyable, Common::NonMoveable {
 public:
-    YUZU_NON_COPYABLE(KAutoObjectWithListContainer);
-    YUZU_NON_MOVEABLE(KAutoObjectWithListContainer);
-
     using ListType = boost::intrusive::rbtree<KAutoObjectWithList>;
 
     KAutoObjectWithListContainer(KernelCore& kernel) : m_lock(), m_object_list() {}
