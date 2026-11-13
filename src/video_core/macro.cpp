@@ -779,38 +779,24 @@ void MacroJITx64Impl::Execute(Core::System& system, Engines::Maxwell3D& maxwell3
 }
 
 void MacroJITx64Impl::Compile_ALU(Core::System& system, Macro::Opcode opcode) {
-    const bool is_a_zero = opcode.src_a == 0;
-    const bool is_b_zero = opcode.src_b == 0;
-    const bool valid_operation = !is_a_zero && !is_b_zero;
-    [[maybe_unused]] const bool is_move_operation = !is_a_zero && is_b_zero;
-    const bool has_zero_register = is_a_zero || is_b_zero;
-    const bool no_zero_reg_skip = opcode.alu_operation == Macro::ALUOperation::AddWithCarry ||
-                                  opcode.alu_operation == Macro::ALUOperation::SubtractWithBorrow;
+    const bool is_move_operation = opcode.src_a != 0 && opcode.src_b == 0;
+    const bool is_logical_move = opcode.alu_operation == Macro::ALUOperation::Xor ||
+                                 opcode.alu_operation == Macro::ALUOperation::Or;
+    const bool is_arithmetic_move = optimizer.can_skip_carry &&
+                                    (opcode.alu_operation == Macro::ALUOperation::Add ||
+                                     opcode.alu_operation == Macro::ALUOperation::Subtract);
+    const bool skip_operation = optimizer.zero_reg_skip && is_move_operation &&
+                                (is_logical_move || is_arithmetic_move);
 
-    Xbyak::Reg32 src_a;
-    Xbyak::Reg32 src_b;
-
-    if (!optimizer.zero_reg_skip || no_zero_reg_skip) {
-        src_a = Compile_GetRegister(opcode.src_a, RESULT);
-        src_b = Compile_GetRegister(opcode.src_b, eax);
-    } else {
-        if (!is_a_zero) {
-            src_a = Compile_GetRegister(opcode.src_a, RESULT);
-        }
-        if (!is_b_zero) {
-            src_b = Compile_GetRegister(opcode.src_b, eax);
-        }
+    const Xbyak::Reg32 src_a = Compile_GetRegister(opcode.src_a, RESULT);
+    const Xbyak::Reg32 src_b = eax;
+    if (!skip_operation) {
+        Compile_GetRegister(opcode.src_b, src_b);
     }
-
-    bool has_emitted = false;
 
     switch (opcode.alu_operation) {
     case Macro::ALUOperation::Add:
-        if (optimizer.zero_reg_skip) {
-            if (valid_operation) {
-                add(src_a, src_b);
-            }
-        } else {
+        if (!skip_operation) {
             add(src_a, src_b);
         }
 
@@ -824,16 +810,10 @@ void MacroJITx64Impl::Compile_ALU(Core::System& system, Macro::Opcode opcode) {
         setc(byte[STATE + offsetof(JITState, carry_flag)]);
         break;
     case Macro::ALUOperation::Subtract:
-        if (optimizer.zero_reg_skip) {
-            if (valid_operation) {
-                sub(src_a, src_b);
-                has_emitted = true;
-            }
-        } else {
+        if (!skip_operation) {
             sub(src_a, src_b);
-            has_emitted = true;
         }
-        if (!optimizer.can_skip_carry && has_emitted) {
+        if (!optimizer.can_skip_carry) {
             setc(byte[STATE + offsetof(JITState, carry_flag)]);
         }
         break;
@@ -843,53 +823,25 @@ void MacroJITx64Impl::Compile_ALU(Core::System& system, Macro::Opcode opcode) {
         setc(byte[STATE + offsetof(JITState, carry_flag)]);
         break;
     case Macro::ALUOperation::Xor:
-        if (optimizer.zero_reg_skip) {
-            if (valid_operation) {
-                xor_(src_a, src_b);
-            }
-        } else {
+        if (!skip_operation) {
             xor_(src_a, src_b);
         }
         break;
     case Macro::ALUOperation::Or:
-        if (optimizer.zero_reg_skip) {
-            if (valid_operation) {
-                or_(src_a, src_b);
-            }
-        } else {
+        if (!skip_operation) {
             or_(src_a, src_b);
         }
         break;
     case Macro::ALUOperation::And:
-        if (optimizer.zero_reg_skip) {
-            if (!has_zero_register) {
-                and_(src_a, src_b);
-            }
-        } else {
-            and_(src_a, src_b);
-        }
+        and_(src_a, src_b);
         break;
     case Macro::ALUOperation::AndNot:
-        if (optimizer.zero_reg_skip) {
-            if (!is_a_zero) {
-                not_(src_b);
-                and_(src_a, src_b);
-            }
-        } else {
-            not_(src_b);
-            and_(src_a, src_b);
-        }
+        not_(src_b);
+        and_(src_a, src_b);
         break;
     case Macro::ALUOperation::Nand:
-        if (optimizer.zero_reg_skip) {
-            if (!is_a_zero) {
-                and_(src_a, src_b);
-                not_(src_a);
-            }
-        } else {
-            and_(src_a, src_b);
-            not_(src_a);
-        }
+        and_(src_a, src_b);
+        not_(src_a);
         break;
     default:
         UNIMPLEMENTED_MSG("Unimplemented ALU operation {}", opcode.alu_operation.Value());
@@ -911,7 +863,13 @@ void MacroJITx64Impl::Compile_AddImmediate(Core::System& system, Macro::Opcode o
         opcode.result_operation == Macro::ResultOperation::MoveAndSetMethod) {
         if (next_opcode.has_value()) {
             const auto next = *next_opcode;
-            if (next.result_operation == Macro::ResultOperation::MoveAndSetMethod &&
+            const Macro::Opcode previous{pc > 0 ? code[pc - 1] : 0};
+            const bool in_delay_slot = previous.operation == Macro::Operation::Branch &&
+                                       !previous.branch_annul;
+            const bool next_reads_dst = opcode.dst != 0 &&
+                                        (next.src_a == opcode.dst || next.src_b == opcode.dst);
+            if (next.operation != Macro::Operation::Branch && !in_delay_slot && !next_reads_dst &&
+                next.result_operation == Macro::ResultOperation::MoveAndSetMethod &&
                 opcode.dst == next.dst) {
                 return;
             }
@@ -925,7 +883,7 @@ void MacroJITx64Impl::Compile_AddImmediate(Core::System& system, Macro::Opcode o
         }
     } else {
         auto result = Compile_GetRegister(opcode.src_a, RESULT);
-        if (opcode.immediate > 2) {
+        if (opcode.immediate > 1) {
             add(result, opcode.immediate);
         } else if (opcode.immediate == 1) {
             inc(result);
@@ -981,7 +939,7 @@ void MacroJITx64Impl::Compile_Read(Core::System& system, Macro::Opcode opcode) {
         }
     } else {
         auto result = Compile_GetRegister(opcode.src_a, RESULT);
-        if (opcode.immediate > 2) {
+        if (opcode.immediate > 1) {
             add(result, opcode.immediate);
         } else if (opcode.immediate == 1) {
             inc(result);
@@ -1027,6 +985,7 @@ void MacroJITx64Impl::Compile_Send(Core::System& system, Xbyak::Reg32 value) {
     shr(ecx, 12);
     and_(ecx, 0x3f);
     lea(eax, ptr[rcx + METHOD_ADDRESS.cvt64()]);
+    and_(eax, 0xfff);
     sal(ecx, 12);
     or_(eax, ecx);
 
@@ -1196,21 +1155,16 @@ bool MacroJITx64Impl::Compile_NextInstruction(Core::System& system) {
     }
 
     if (optimizer.has_delayed_pc) {
+        // TODO(ogniK): Optimize delay slot branching
+        Xbyak::Label no_delay_slot{};
+        test(BRANCH_HOLDER, BRANCH_HOLDER);
+        je(no_delay_slot, T_NEAR);
+        mov(rax, BRANCH_HOLDER);
+        xor_(BRANCH_HOLDER, BRANCH_HOLDER);
+        jmp(rax);
+        L(no_delay_slot);
         if (opcode.is_exit) {
-            mov(rax, end_of_code);
-            test(BRANCH_HOLDER, BRANCH_HOLDER);
-            cmove(BRANCH_HOLDER, rax);
-            // Jump to next instruction to skip delay slot check
-            je(labels[pc + 1], T_NEAR);
-        } else {
-            // TODO(ogniK): Optimize delay slot branching
-            Xbyak::Label no_delay_slot{};
-            test(BRANCH_HOLDER, BRANCH_HOLDER);
-            je(no_delay_slot, T_NEAR);
-            mov(rax, BRANCH_HOLDER);
-            xor_(BRANCH_HOLDER, BRANCH_HOLDER);
-            jmp(rax);
-            L(no_delay_slot);
+            mov(BRANCH_HOLDER, end_of_code);
         }
         L(delay_skip[pc]);
         if (opcode.is_exit) {
