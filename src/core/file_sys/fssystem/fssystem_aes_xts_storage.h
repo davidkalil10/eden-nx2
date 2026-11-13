@@ -6,14 +6,13 @@
 #include <mutex>
 #include <optional>
 
-#include "common/common_funcs.h"
 #include "core/crypto/aes_util.h"
 #include "core/crypto/key_manager.h"
 #include "core/file_sys/fssystem/fs_i_storage.h"
 
 namespace FileSys {
 
-class AesXtsStorage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
+class AesXtsStorage : public IReadOnlyStorage {
 public:
     static constexpr size_t AesBlockSize = 0x10;
     static constexpr size_t KeySize = 0x20;

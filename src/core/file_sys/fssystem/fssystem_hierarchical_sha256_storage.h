@@ -5,14 +5,11 @@
 
 #include <mutex>
 
-#include "core/file_sys/errors.h"
 #include "core/file_sys/fssystem/fs_i_storage.h"
-#include "core/file_sys/vfs/vfs.h"
 
 namespace FileSys {
 
-class HierarchicalSha256Storage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
-
+class HierarchicalSha256Storage : public IReadOnlyStorage {
 public:
     static constexpr s32 LayerCount = 3;
     static constexpr size_t HashSize = 256 / 8;

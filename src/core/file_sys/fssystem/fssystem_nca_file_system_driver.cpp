@@ -31,8 +31,7 @@ constexpr inline s32 IntegrityHashCacheCount = 8;
 constexpr inline s32 IntegrityDataCacheCountForMeta = 16;
 constexpr inline s32 IntegrityHashCacheCountForMeta = 2;
 
-class SharedNcaBodyStorage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
-
+class SharedNcaBodyStorage : public IReadOnlyStorage {
 private:
     VirtualFile m_storage;
     std::shared_ptr<NcaReader> m_nca_reader;

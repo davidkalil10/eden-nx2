@@ -10,8 +10,7 @@
 
 namespace FileSys {
 
-class SparseStorage : public IndirectStorage, Common::NonCopyable, Common::NonMoveable{
-
+class SparseStorage : public IndirectStorage {
 private:
     class ZeroStorage : public IReadOnlyStorage {
     public:

@@ -13,8 +13,7 @@
 namespace FileSys {
 
 template <size_t DataAlign_, size_t BufferAlign_>
-class AlignmentMatchingStorage : public IStorage, Common::NonCopyable, Common::NonMoveable {
-
+class AlignmentMatchingStorage : public IStorage {
 public:
     static constexpr size_t DataAlign = DataAlign_;
     static constexpr size_t BufferAlign = BufferAlign_;
@@ -75,8 +74,7 @@ public:
 };
 
 template <size_t BufferAlign_>
-class AlignmentMatchingStoragePooledBuffer : public IStorage, Common::NonCopyable, Common::NonMoveable {
-
+class AlignmentMatchingStoragePooledBuffer : public IStorage {
 public:
     static constexpr size_t BufferAlign = BufferAlign_;
 

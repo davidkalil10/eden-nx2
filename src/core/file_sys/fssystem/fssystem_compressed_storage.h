@@ -19,8 +19,7 @@ namespace FileSys {
 
 using namespace Common::Literals;
 
-class CompressedStorage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
-
+class CompressedStorage : public IReadOnlyStorage {
 public:
     static constexpr size_t NodeSize = 16_KiB;
 

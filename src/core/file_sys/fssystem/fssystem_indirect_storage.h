@@ -9,17 +9,15 @@
 #include <type_traits>
 #include <array>
 #include <cstddef>
+
 #include "core/file_sys/errors.h"
 #include "core/file_sys/fssystem/fs_i_storage.h"
 #include "core/file_sys/fssystem/fssystem_bucket_tree.h"
-#include "core/file_sys/fssystem/fssystem_bucket_tree_template_impl.h"
-#include "core/file_sys/vfs/vfs.h"
 #include "core/file_sys/vfs/vfs_offset.h"
 
 namespace FileSys {
 
-class IndirectStorage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
-
+class IndirectStorage : public IReadOnlyStorage {
 public:
     static constexpr s32 StorageCount = 2;
     static constexpr size_t NodeSize = 16_KiB;

@@ -7,8 +7,7 @@
 
 namespace FileSys {
 
-class MemoryResourceBufferHoldStorage : public IStorage, Common::NonCopyable, Common::NonMoveable {
-
+class MemoryResourceBufferHoldStorage : public IStorage {
 public:
     MemoryResourceBufferHoldStorage(VirtualFile storage, size_t buffer_size)
         : m_storage(std::move(storage)), m_buffer(::operator new(buffer_size)),

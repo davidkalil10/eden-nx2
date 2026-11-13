@@ -6,10 +6,8 @@
 
 #pragma once
 
-#include <optional>
 #include <type_traits>
 
-#include "common/common_funcs.h"
 #include "common/literals.h"
 #include "core/file_sys/fssystem/fs_i_storage.h"
 #include "core/file_sys/fssystem/fssystem_bucket_tree.h"
@@ -18,8 +16,7 @@ namespace FileSys {
 
 using namespace Common::Literals;
 
-class AesCtrCounterExtendedStorage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
-
+class AesCtrCounterExtendedStorage : public IReadOnlyStorage {
 public:
     static constexpr size_t BlockSize = 0x10;
     static constexpr size_t KeySize = 0x10;

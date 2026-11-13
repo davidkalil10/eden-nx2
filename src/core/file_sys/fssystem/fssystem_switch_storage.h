@@ -7,8 +7,7 @@
 
 namespace FileSys {
 
-class RegionSwitchStorage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
-
+class RegionSwitchStorage : public IReadOnlyStorage {
 public:
     struct Region {
         s64 offset;

@@ -6,18 +6,15 @@
 
 #pragma once
 
-#include <optional>
 #include <array>
 #include <cstddef>
 #include <type_traits>
 
 #include "core/file_sys/fssystem/fs_i_storage.h"
-#include "core/file_sys/fssystem/fs_types.h"
 
 namespace FileSys {
 
-class IntegrityVerificationStorage : public IReadOnlyStorage, Common::NonCopyable, Common::NonMoveable {
-
+class IntegrityVerificationStorage : public IReadOnlyStorage {
 public:
     static constexpr s64 HashSize = 256 / 8;
 

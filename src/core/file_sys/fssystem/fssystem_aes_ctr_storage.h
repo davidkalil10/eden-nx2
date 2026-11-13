@@ -7,14 +7,11 @@
 
 #include "core/crypto/aes_util.h"
 #include "core/crypto/key_manager.h"
-#include "core/file_sys/errors.h"
 #include "core/file_sys/fssystem/fs_i_storage.h"
-#include "core/file_sys/vfs/vfs.h"
 
 namespace FileSys {
 
-class AesCtrStorage : public IStorage, Common::NonCopyable, Common::NonMoveable {
-
+class AesCtrStorage : public IStorage {
 public:
     static constexpr size_t BlockSize = 0x10;
     static constexpr size_t KeySize = 0x10;
