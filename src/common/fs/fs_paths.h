@@ -17,6 +17,7 @@ inline constexpr const char *CACHE_DIR = "cache";
 inline constexpr const char *CONFIG_DIR = "config";
 inline constexpr const char *CRASH_DUMPS_DIR = "crash_dumps";
 inline constexpr const char *DUMP_DIR = "dump";
+inline constexpr const char *HOST_DIR = "host";
 inline constexpr const char *KEYS_DIR = "keys";
 inline constexpr const char *LOAD_DIR = "load";
 inline constexpr const char *LOG_DIR = "log";
