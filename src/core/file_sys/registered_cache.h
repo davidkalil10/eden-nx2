@@ -10,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 #include "common/container/unordered_map.h"
@@ -284,6 +285,16 @@ public:
     VirtualFile GetEntryForVersion(u64 title_id, ContentRecordType type, u32 version) const;
 
 private:
+    void AddEntryLocked(TitleType title_type, ContentRecordType content_type, u64 title_id,
+                        VirtualFile file);
+    void AddEntryWithVersionLocked(TitleType title_type, ContentRecordType content_type,
+                                   u64 title_id, u32 version, const std::string& version_string,
+                                   VirtualFile file);
+    VirtualFile GetEntryRawLocked(u64 title_id, ContentRecordType type) const;
+
+    // The Android frontend rescans the game library from background threads, sometimes two scans
+    // at once, while a running game reads this provider.
+    mutable std::shared_mutex entries_mutex;
     std::map<std::tuple<TitleType, ContentRecordType, u64>, VirtualFile> entries;
     std::vector<ExternalUpdateEntry> multi_version_entries;
 };

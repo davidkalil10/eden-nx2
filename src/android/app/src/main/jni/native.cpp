@@ -925,6 +925,9 @@ jstring Java_org_yuzu_yuzu_1emu_utils_GpuDriverHelper_getGpuModel(JNIEnv *env, j
 }
 
 jboolean Java_org_yuzu_yuzu_1emu_NativeLibrary_reloadKeys(JNIEnv* env, jclass clazz) {
+    // Library scans call this from background threads, sometimes two at once.
+    static std::mutex reload_keys_mutex;
+    std::scoped_lock lock{reload_keys_mutex};
     Core::Crypto::KeyManager::Instance().ReloadKeys();
     return static_cast<jboolean>(Core::Crypto::KeyManager::Instance().AreKeysLoaded());
 }
