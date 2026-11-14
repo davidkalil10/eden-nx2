@@ -37,6 +37,7 @@ enum class SettingsSubscreen {
     LICENSES,
     GAME_INFO,
     ADDONS,
+    PER_GAME_USER_PROFILE,
 }
 
 class SettingsSubscreenActivity : AppCompatActivity() {
@@ -135,6 +136,7 @@ class SettingsSubscreenActivity : AppCompatActivity() {
             SettingsSubscreen.LICENSES -> R.id.licensesFragment
             SettingsSubscreen.GAME_INFO -> R.id.gameInfoFragment
             SettingsSubscreen.ADDONS -> R.id.addonsFragment
+            SettingsSubscreen.PER_GAME_USER_PROFILE -> R.id.perGameUserProfileFragment
         }
 
     private fun createStartDestinationArgs(): Bundle =
@@ -143,7 +145,8 @@ class SettingsSubscreenActivity : AppCompatActivity() {
             SettingsSubscreen.FREEDRENO_SETTINGS -> bundleOf("game" to args.game)
 
             SettingsSubscreen.GAME_INFO,
-            SettingsSubscreen.ADDONS -> bundleOf(
+            SettingsSubscreen.ADDONS,
+            SettingsSubscreen.PER_GAME_USER_PROFILE -> bundleOf(
                 "game" to requireNotNull(args.game) {
                     "Game is required for ${args.destination}"
                 }

@@ -1354,6 +1354,10 @@
     <!-- Profile Management -->
     <string name="profile_manager">Profile Manager</string>
     <string name="profile_manager_description">Manage user profiles</string>
+    <string name="per_game_user_profile_title">User Profile</string>
+    <string name="per_game_user_profile_description">Choose which user profile to use when launching this game</string>
+    <string name="per_game_user_profile_use_global">Use global profile</string>
+    <string name="per_game_user_profile_use_global_description">Use the profile selected in Profile Manager</string>
     <string name="profile_add_user">Add User</string>
     <string name="profile_new_user">New User</string>
     <string name="profile_edit_user">Edit User</string>

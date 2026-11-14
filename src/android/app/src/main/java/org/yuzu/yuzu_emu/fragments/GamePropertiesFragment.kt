@@ -51,6 +51,7 @@ import org.yuzu.yuzu_emu.utils.GameHelper
 import org.yuzu.yuzu_emu.utils.GameIconUtils
 import org.yuzu.yuzu_emu.utils.GpuDriverHelper
 import org.yuzu.yuzu_emu.utils.MemoryUtil
+import org.yuzu.yuzu_emu.utils.PerGameUserProfileUtil
 import org.yuzu.yuzu_emu.utils.ViewUtils.marquee
 import org.yuzu.yuzu_emu.utils.ViewUtils.updateMargins
 import org.yuzu.yuzu_emu.utils.collect
@@ -380,6 +381,22 @@ class GamePropertiesFragment : Fragment() {
                             Settings.MenuTag.SECTION_FRAME_GEN
                         )
                         binding.root.findNavController().navigate(action)
+                    }
+                )
+            )
+            add(
+                SubmenuProperty(
+                    R.string.per_game_user_profile_title,
+                    R.string.per_game_user_profile_description,
+                    R.drawable.ic_account_circle,
+                    details = { PerGameUserProfileUtil.getSummaryLabel(args.game) },
+                    action = {
+                        binding.root.findNavController().navigate(
+                            HomeNavigationDirections.actionGlobalSettingsSubscreenActivity(
+                                SettingsSubscreen.PER_GAME_USER_PROFILE,
+                                args.game
+                            )
+                        )
                     }
                 )
             )

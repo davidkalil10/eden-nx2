@@ -816,7 +816,8 @@ struct Values {
     Setting<std::string> device_name{
         linkage, "Eden", "device_name", Category::System, Specialization::Default, true, true};
 
-    Setting<s32> current_user{linkage, 0, "current_user", Category::System};
+    SwitchableSetting<int, true> current_user{
+        linkage, 0, 0, 7, "current_user", Category::System};
 
     SwitchableSetting<ConsoleMode> use_docked_mode{linkage,
 #ifdef __ANDROID__
