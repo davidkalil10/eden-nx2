@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-FileCopyrightText: Copyright 2023 merryhime <https://mary.rs>
 // SPDX-License-Identifier: GPL-2.0-or-later
@@ -653,9 +656,6 @@ public:
     virtual bool SWPB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
-    virtual bool LDAPRB(Reg Rn, Reg Rt) {
-        return false;
-    }
     virtual bool LDADDH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
@@ -681,9 +681,6 @@ public:
         return false;
     }
     virtual bool SWPH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
-        return false;
-    }
-    virtual bool LDAPRH(Reg Rn, Reg Rt) {
         return false;
     }
     virtual bool LDADD(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
@@ -713,7 +710,7 @@ public:
     virtual bool SWP(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
-    virtual bool LDAPR(Reg Rn, Reg Rt) {
+    virtual bool LDAPR(Imm<2> size, Reg Rn, Reg Rt) {
         return false;
     }
 

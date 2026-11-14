@@ -2818,3 +2818,52 @@ TEST_CASE("A64: FCVTZS and FCVTZU (vector) with 64 fraction bits", "[a64]") {
     REQUIRE(jit.GetVector(4) == Vector{0x7fffffffffffffff, 0x8000000000000000});
     REQUIRE(jit.GetVector(6) == Vector{0xffffffffffffffff, 0});
 }
+
+TEST_CASE("A64: RETAA, RETAB", "[a64]") {
+    for (const u32 instruction : {0xd65f0bff, 0xd65f0fff}) {
+        A64TestEnv env;
+        A64::UserConfig jit_user_config{};
+        jit_user_config.callbacks = &env;
+        A64::Jit jit{jit_user_config};
+
+        env.code_mem.emplace_back(instruction);
+        env.code_mem.emplace_back(0x14000000);
+        env.code_mem.emplace_back(0x14000000);
+
+        jit.SetRegister(30, 8);
+        jit.SetPC(0);
+
+        env.ticks_left = 2;
+        CheckedRun([&]() { jit.Run(); });
+
+        REQUIRE(jit.GetPC() == 8);
+    }
+}
+
+TEST_CASE("A64: LDAPRB, LDAPRH, LDAPR", "[a64]") {
+    const std::array<std::pair<u32, u64>, 4> cases{{
+        {0x38bfc020, 0x34},
+        {0x78bfc020, 0x3534},
+        {0xb8bfc020, 0x37363534},
+        {0xf8bfc020, 0x3b3a393837363534},
+    }};
+    for (const auto& [instruction, expected] : cases) {
+        A64TestEnv env;
+        A64::UserConfig jit_user_config{};
+        jit_user_config.callbacks = &env;
+        A64::Jit jit{jit_user_config};
+
+        env.code_mem.emplace_back(instruction);
+        env.code_mem.emplace_back(0x14000000);
+
+        jit.SetRegister(0, ~u64(0));
+        jit.SetRegister(1, 0x1234);
+        jit.SetPC(0);
+
+        env.ticks_left = 2;
+        CheckedRun([&]() { jit.Run(); });
+
+        REQUIRE(jit.GetRegister(0) == expected);
+        REQUIRE(jit.GetPC() == 4);
+    }
+}
