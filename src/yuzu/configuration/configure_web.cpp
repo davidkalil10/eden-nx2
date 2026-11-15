@@ -16,7 +16,7 @@
 #include "ui_configure_web.h"
 
 ConfigureWeb::ConfigureWeb(QWidget* parent)
-    : QWidget(parent), ui(std::make_unique<Ui::ConfigureWeb>()), m_rng{QRandomGenerator::system()} {
+    : QWidget(parent), ui(std::make_unique<Ui::ConfigureWeb>()) {
     ui->setupUi(this);
 
     QString user_regex = QStringLiteral(".{4,20}");

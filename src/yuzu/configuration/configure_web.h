@@ -32,7 +32,6 @@ private:
     void SetConfiguration();
 
     std::unique_ptr<Ui::ConfigureWeb> ui;
-    QRandomGenerator* m_rng;
 
 private slots:
     void VerifyLogin();
