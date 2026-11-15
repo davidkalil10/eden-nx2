@@ -15,7 +15,6 @@ enum class StringSetting(override val key: String) : AbstractStringSetting {
     PROGRAM_ARGS("program_args"),
     POST_SHADER_CHAIN("post_shader_chain"),
 
-    WEB_TOKEN("eden_token"),
     WEB_USERNAME("eden_username")
     ;
 

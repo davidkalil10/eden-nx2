@@ -35,6 +35,5 @@ private:
     QRandomGenerator* m_rng;
 
 private slots:
-    void GenerateToken();
     void VerifyLogin();
 };

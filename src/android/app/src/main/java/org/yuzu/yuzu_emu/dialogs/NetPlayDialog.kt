@@ -419,16 +419,6 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
             }
         }
 
-        val visibilityWatcher = object : TextValidatorWatcher(
-            binding.btnConfirm,
-            binding.lobbyVisibility,
-            context.getString(R.string.multiplayer_token_required)
-        ) {
-            override fun validate(s: String): Boolean {
-                return NetDataValidators.roomVisibility(s, context)
-            }
-        }
-
         val ipWatcher = object : TextValidatorWatcher(
             binding.btnConfirm,
             binding.layoutIpAddress,
@@ -462,7 +452,6 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
         if (isCreateRoom) {
             binding.roomName.addTextChangedListener(roomNameWatcher)
             binding.dropdownPreferredGameName.addTextChangedListener(preferredWatcher)
-            binding.dropdownLobbyVisibility.addTextChangedListener(visibilityWatcher)
 
             binding.dropdownPreferredGameName.apply {
                 setAdapter(
@@ -475,7 +464,7 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
             }
 
             binding.dropdownLobbyVisibility.setText(
-                context.getString(R.string.multiplayer_unlisted_visibility)
+                context.getString(R.string.multiplayer_public_visibility)
             )
 
             binding.dropdownLobbyVisibility.apply {

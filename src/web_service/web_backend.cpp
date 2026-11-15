@@ -26,8 +26,8 @@ namespace WebService {
 constexpr std::array<const char, 1> API_VERSION{'1'};
 
 struct Client::Impl {
-    Impl(std::string host_, std::string username_, std::string token_)
-        : host{std::move(host_)}, username{std::move(username_)}, token{std::move(token_)} {
+    Impl(std::string host_, std::string username_)
+        : host{std::move(host_)}, username{std::move(username_)} {
 
         // Normalize host expression
         if (!this->host.empty() && this->host.back() == '/') {
@@ -40,7 +40,7 @@ struct Client::Impl {
      */
     WebResult GenericRequest(const std::string& method, const std::string& path,
                              const std::string& data, const std::string& accept,
-                             const std::string& username_ = "", const std::string& token_ = "") {
+                             const std::string& username_ = "") {
         hydro::RequestOptions opts;
 #ifdef YUZU_BUNDLED_OPENSSL
         opts.connect.cert = std::string{kCert};
@@ -50,7 +50,6 @@ struct Client::Impl {
 
         if (!username_.empty()) {
             opts.headers.add("x-username", username_);
-            opts.headers.add("x-token", token_);
         }
 
         opts.headers.add("api-version", std::string(API_VERSION.begin(), API_VERSION.end()));
@@ -90,11 +89,10 @@ struct Client::Impl {
 
     std::string host;
     std::string username;
-    std::string token;
 };
 
-Client::Client(std::string host, std::string username, std::string token)
-    : impl{std::make_unique<Impl>(std::move(host), std::move(username), std::move(token))} {}
+Client::Client(std::string host, std::string username)
+    : impl{std::make_unique<Impl>(std::move(host), std::move(username))} {}
 
 Client::~Client() = default;
 

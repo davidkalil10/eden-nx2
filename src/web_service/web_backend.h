@@ -15,7 +15,7 @@ struct WebResult;
 
 class Client {
 public:
-    Client(std::string host, std::string username, std::string token);
+    Client(std::string host, std::string username);
     ~Client();
 
     /**

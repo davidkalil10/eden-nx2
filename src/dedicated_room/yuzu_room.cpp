@@ -57,8 +57,7 @@ static void PrintHelp(const char* argv0) {
              "-g, --preferred-game    The preferred game for this room\n"
              "-i, --preferred-game-id The preferred game-id for this room\n"
              "-u, --username          The username used for announce\n"
-             "-t, --token             The token used for announce\n"
-             "-a, --web-api-url       yuzu Web API url\n"
+             "-a, --web-api-url       Eden Web API url\n"
              "-b, --ban-list-file     The file for storing the room ban list\n"
              "-l, --log-file          The file for storing the room log\n"
              "-h, --help              Display this help and exit\n"
@@ -74,30 +73,6 @@ static void PrintVersion() {
 
 /// The magic text at the beginning of a yuzu-room ban list file.
 static constexpr char BanListMagic[] = "YuzuRoom-BanList-1";
-
-static constexpr char token_delimiter{':'};
-
-static void PadToken(std::string& token) {
-    std::array<unsigned char, 512> output{};
-    std::array<unsigned char, 2048> roundtrip{};
-    for (size_t i = 0; i < 3; i++) {
-        EVP_DecodeBlock(output.data(), reinterpret_cast<const unsigned char*>(token.c_str()), token.size());
-        EVP_EncodeBlock(output.data(), roundtrip.data(), roundtrip.size());
-        if (memcmp(roundtrip.data(), token.data(), token.size()) == 0) {
-            break;
-        }
-        token.push_back('=');
-    }
-}
-
-static std::string UsernameFromDisplayToken(const std::string& display_token) {
-    std::size_t outlen = 4 * ((display_token.length() + 2) / 3);
-    std::array<unsigned char, 512> output{};
-    EVP_DecodeBlock(output.data(), reinterpret_cast<const unsigned char*>(display_token.c_str()), display_token.length());
-    std::string decoded_display_token(reinterpret_cast<char*>(&output), outlen);
-    return decoded_display_token.substr(0, decoded_display_token.find(token_delimiter));
-}
-
 
 static Network::Room::BanList LoadBanList(const std::string& path) {
     std::ifstream file;
@@ -174,7 +149,6 @@ void LaunchRoom(int argc, char** argv, bool called_by_option) {
     std::string password;
     std::string preferred_game;
     std::string username;
-    std::string token;
     std::string web_api_url;
     std::string ban_list_file;
     std::string log_file = "eden-room.log";
@@ -193,7 +167,6 @@ void LaunchRoom(int argc, char** argv, bool called_by_option) {
         {"preferred-game", required_argument, 0, 'g'},
         {"preferred-game-id", required_argument, 0, 'i'},
         {"username", optional_argument, 0, 'u'},
-        {"token", required_argument, 0, 't'},
         {"web-api-url", required_argument, 0, 'a'},
         {"ban-list-file", required_argument, 0, 'b'},
         {"log-file", required_argument, 0, 'l'},
@@ -240,9 +213,6 @@ void LaunchRoom(int argc, char** argv, bool called_by_option) {
                 break;
             case 'u':
                 username.assign(optarg);
-                break;
-            case 't':
-                token.assign(optarg);
                 break;
             case 'a':
                 web_api_url.assign(optarg);
@@ -306,16 +276,9 @@ void LaunchRoom(int argc, char** argv, bool called_by_option) {
         LOG_INFO(Network, "Endpoint url is empty: Hosting a private room");
     }
     if (announce) {
-        // The room service no longer uses JWTs, so a token is optional. The
-        // username (if provided) is only used as the moderation identity.
-        if (username.empty() && !token.empty()) {
-            PadToken(token);
-            username = UsernameFromDisplayToken(token);
-        }
         LOG_INFO(Network, "Hosting a public room");
         Settings::values.web_api_url = web_api_url;
         Settings::values.eden_username = username;
-        Settings::values.eden_token = token;
     }
 
     // Load the ban list

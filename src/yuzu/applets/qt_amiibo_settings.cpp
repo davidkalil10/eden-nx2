@@ -107,8 +107,9 @@ void QtAmiiboSettingsDialog::LoadAmiiboInfo() {
 void QtAmiiboSettingsDialog::LoadAmiiboApiInfo(std::string_view amiibo_id) {
 #ifdef ENABLE_WEB_SERVICE
     // TODO: Host this data on our website
-    WebService::Client client{"https://amiiboapi.com", {}, {}};
-    WebService::Client image_client{"https://raw.githubusercontent.com", {}, {}};
+    // TODO: THIS SUCKS WHY DO WE HAVE A CLIENT ABSTRACTION
+    WebService::Client client{"https://amiiboapi.com", {}};
+    WebService::Client image_client{"https://raw.githubusercontent.com", {}};
     const auto url_path = std::format("/api/amiibo/?id={}", amiibo_id);
 
     const auto amiibo_json = client.GetJson(url_path).returned_data;
