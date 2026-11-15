@@ -623,13 +623,7 @@ public:
     }
 
     // Loads and stores - Atomic memory options
-    virtual bool LDCLRB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
-        return false;
-    }
     virtual bool LDEORB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
-        return false;
-    }
-    virtual bool LDSETB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
     virtual bool LDSMAXB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
@@ -644,13 +638,7 @@ public:
     virtual bool LDUMINB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
-    virtual bool LDCLRH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
-        return false;
-    }
     virtual bool LDEORH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
-        return false;
-    }
-    virtual bool LDSETH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
     virtual bool LDSMAXH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
@@ -668,13 +656,13 @@ public:
     virtual bool LDADD(Imm<2> size, bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
-    virtual bool LDCLR(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
+    virtual bool LDCLR(Imm<2> size, bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
     virtual bool LDEOR(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
-    virtual bool LDSET(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
+    virtual bool LDSET(Imm<2> size, bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
     virtual bool LDSMAX(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {

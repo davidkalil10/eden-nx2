@@ -296,24 +296,20 @@ struct TranslatorVisitor final {
     bool LDTRSW(Imm<9> imm9, Reg Rn, Reg Rt);
 
     // Loads and stores - Atomic memory options
-    bool LDCLRB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDEORB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
-    bool LDSETB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDSMAXB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDSMINB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDUMAXB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDUMINB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
-    bool LDCLRH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDEORH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
-    bool LDSETH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDSMAXH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDSMINH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDUMAXH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDUMINH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDADD(Imm<2> size, bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
-    bool LDCLR(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
+    bool LDCLR(Imm<2> size, bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDEOR(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
-    bool LDSET(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
+    bool LDSET(Imm<2> size, bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDSMAX(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDSMIN(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDUMAX(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);

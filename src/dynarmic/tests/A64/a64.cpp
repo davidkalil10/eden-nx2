@@ -2868,19 +2868,29 @@ TEST_CASE("A64: LDAPRB, LDAPRH, LDAPR", "[a64]") {
     }
 }
 
-TEST_CASE("A64: LDADD and SWP", "[a64]") {
+TEST_CASE("A64: LDADD, LDCLR, LDSET and SWP", "[a64]") {
     struct TestCase {
         u32 instruction;
         size_t size;
         u64 loaded;
         u64 stored;
     };
-    const std::array<TestCase, 10> cases{{
+    const std::array<TestCase, 20> cases{{
         {0x38210062, 1, 0x34, 0xbc},
         {0x78210062, 2, 0x3534, 0xacbc},
         {0xb8210062, 4, 0x37363534, 0x8c9cacbc},
         {0xf8210062, 8, 0x3b3a393837363534, 0x4c5c6c7c8c9cacbc},
         {0xf8e10062, 8, 0x3b3a393837363534, 0x4c5c6c7c8c9cacbc},
+        {0x38211062, 1, 0x34, 0x34},
+        {0x78211062, 2, 0x3534, 0x34},
+        {0xb8211062, 4, 0x37363534, 0x22100034},
+        {0xf8211062, 8, 0x3b3a393837363534, 0x2a18083822100034},
+        {0xf8e11062, 8, 0x3b3a393837363534, 0x2a18083822100034},
+        {0x38213062, 1, 0x34, 0xbc},
+        {0x78213062, 2, 0x3534, 0x77bc},
+        {0xb8213062, 4, 0x37363534, 0x777677bc},
+        {0xf8213062, 8, 0x3b3a393837363534, 0x3b3a3b7c777677bc},
+        {0xf8e13062, 8, 0x3b3a393837363534, 0x3b3a3b7c777677bc},
         {0x38218062, 1, 0x34, 0x88},
         {0x78218062, 2, 0x3534, 0x7788},
         {0xb8218062, 4, 0x37363534, 0x55667788},

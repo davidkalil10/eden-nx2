@@ -352,6 +352,8 @@ u32 GenRandomA64Inst(u64 pc, bool is_last_inst) {
             "LDAXP",
             "CAS",
             "LDADD",
+            "LDCLR",
+            "LDSET",
             "SWP",
             // Behaviour differs from QEMU
             "MSR_reg",

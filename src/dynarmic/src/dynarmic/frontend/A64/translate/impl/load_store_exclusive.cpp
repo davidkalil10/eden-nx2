@@ -262,6 +262,20 @@ bool TranslatorVisitor::LDADD(Imm<2> sz, bool A, bool R, Reg Rs, Reg Rn, Reg Rt)
     });
 }
 
+bool TranslatorVisitor::LDCLR(Imm<2> sz, bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
+    const size_t size = sz.ZeroExtend<size_t>();
+    return AtomicSharedDecodeAndOperation(*this, size, A, R, Rn, Rt, [&](const IR::U32U64& data, size_t, size_t regsize) {
+        return ir.AndNot(data, X(regsize, Rs));
+    });
+}
+
+bool TranslatorVisitor::LDSET(Imm<2> sz, bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
+    const size_t size = sz.ZeroExtend<size_t>();
+    return AtomicSharedDecodeAndOperation(*this, size, A, R, Rn, Rt, [&](const IR::U32U64& data, size_t, size_t regsize) {
+        return ir.Or(data, X(regsize, Rs));
+    });
+}
+
 bool TranslatorVisitor::SWP(Imm<2> sz, bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
     const size_t size = sz.ZeroExtend<size_t>();
     return AtomicSharedDecodeAndOperation(*this, size, A, R, Rn, Rt, [&](const IR::U32U64&, size_t, size_t regsize) {
