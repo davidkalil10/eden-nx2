@@ -7,12 +7,14 @@
 #pragma once
 
 #include <algorithm>
+#include <format>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
-#include <format>
+#include <utility>
 #include "common/common_types.h"
 #include "common/settings_common.h"
 #include "common/settings_enums.h"
@@ -71,16 +73,19 @@ public:
                      u32 specialization_ = Specialization::Default, bool save_ = true,
                      bool runtime_modifiable_ = false, BasicSetting* other_setting_ = nullptr)
         requires(ranged)
-        : BasicSetting(linkage, name, category_, save_, runtime_modifiable_, specialization_, other_setting_),
+        : BasicSetting(linkage, name, category_, save_, runtime_modifiable_, specialization_,
+                       other_setting_),
           value{default_val}, default_value{default_val}, maximum{max_val}, minimum{min_val} {}
 
-    explicit Setting(Linkage& linkage, const Type& default_val,
-                     const std::string& name, Category category_,
-                     u32 specialization_ = Specialization::Default, bool save_ = true,
-                     bool runtime_modifiable_ = false, BasicSetting* other_setting_ = nullptr)
+    explicit Setting(Linkage& linkage, const Type& default_val, const std::string& name,
+                     Category category_, u32 specialization_ = Specialization::Default,
+                     bool save_ = true, bool runtime_modifiable_ = false,
+                     BasicSetting* other_setting_ = nullptr)
         requires(ranged && std::is_enum_v<Type>)
-        : BasicSetting(linkage, name, category_, save_, runtime_modifiable_, specialization_, other_setting_),
-          value{default_val}, default_value{default_val}, maximum{EnumMetadata<Type>::GetLast()}, minimum{EnumMetadata<Type>::GetFirst()} {}
+        : BasicSetting(linkage, name, category_, save_, runtime_modifiable_, specialization_,
+                       other_setting_),
+          value{default_val}, default_value{default_val}, maximum{EnumMetadata<Type>::GetLast()},
+          minimum{EnumMetadata<Type>::GetFirst()} {}
 
     /**
      *  Returns a reference to the setting's value.
@@ -92,6 +97,17 @@ public:
     }
     [[nodiscard]] virtual const Type& GetValue(bool need_global) const {
         return value;
+    }
+
+    /**
+     * Registers a callback that is invoked when the setting is updated.
+     * The callback is immediately invoked with the current value upon registration.
+     *
+     * @param func Callback to register
+     */
+    void RegisterCallback(std::function<void(const Type&)> func) {
+        callback = std::move(func);
+        NotifyCallback();
     }
 
     /**
@@ -110,6 +126,7 @@ public:
             temp = ranged ? std::clamp(val, this->minimum, this->maximum) : val;
         }
         std::swap(value, temp);
+        NotifyCallback();
     }
 
     /**
@@ -172,6 +189,7 @@ public:
     virtual const Type& operator=(const Type& val) {
         Type temp{ranged ? std::clamp(val, minimum, maximum) : val};
         std::swap(value, temp);
+        NotifyCallback();
         return value;
     }
 
@@ -273,6 +291,13 @@ public:
     }
 
 protected:
+    void NotifyCallback() const {
+        if (callback) {
+            callback(GetValue());
+        }
+    }
+
+    std::function<void(const Type&)> callback{};
     Type value{};               ///< The setting
     const Type default_value{}; ///< The default value
     const Type maximum{};       ///< Maximum allowed value of the setting
@@ -303,8 +328,14 @@ public:
      * @param other_setting_ A second Setting to associate to this one in metadata
      */
     template <typename T = BasicSetting>
-    explicit SwitchableSetting(Linkage& linkage, const Type& default_val, const std::string& name, Category category_, u32 specialization_ = Specialization::Default, bool save_ = true, bool runtime_modifiable_ = false, T* other_setting_ = nullptr) requires(!ranged)
-        : Setting<Type, false>{ linkage, default_val, name, category_, specialization_, save_, runtime_modifiable_, other_setting_} {
+    explicit SwitchableSetting(Linkage& linkage, const Type& default_val, const std::string& name,
+                               Category category_, u32 specialization_ = Specialization::Default,
+                               bool save_ = true, bool runtime_modifiable_ = false,
+                               T* other_setting_ = nullptr)
+        requires(!ranged)
+        : Setting<Type, false>{
+              linkage, default_val,         name,          category_, specialization_,
+              save_,   runtime_modifiable_, other_setting_} {
         linkage.restore_functions.emplace_back([this]() { this->SetGlobal(true); });
     }
     virtual ~SwitchableSetting() = default;
@@ -316,19 +347,40 @@ public:
     /// @param max_val Sets the maximum allowed value of the setting
     /// @param name Label for the setting
     /// @param category_ Category of the setting AKA INI group
-    /// @param specialization_ Suggestion for how frontend implementations represent this in a config
+    /// @param specialization_ Suggestion for how frontend implementations represent this in a
+    /// config
     /// @param save_ Suggests that this should or should not be saved to a frontend config file
     /// @param runtime_modifiable_ Suggests whether this is modifiable while a guest is loaded
     /// @param other_setting_ A second Setting to associate to this one in metadata
     template <typename T = BasicSetting>
-    explicit SwitchableSetting(Linkage& linkage, const Type& default_val, const Type& min_val, const Type& max_val, const std::string& name, Category category_, u32 specialization_ = Specialization::Default, bool save_ = true, bool runtime_modifiable_ = false, T* other_setting_ = nullptr) requires(ranged)
-        : Setting<Type, true>{linkage, default_val, min_val, max_val, name, category_, specialization_, save_, runtime_modifiable_, other_setting_} {
+    explicit SwitchableSetting(Linkage& linkage, const Type& default_val, const Type& min_val,
+                               const Type& max_val, const std::string& name, Category category_,
+                               u32 specialization_ = Specialization::Default, bool save_ = true,
+                               bool runtime_modifiable_ = false, T* other_setting_ = nullptr)
+        requires(ranged)
+        : Setting<Type, true>{linkage,         default_val, min_val,
+                              max_val,         name,        category_,
+                              specialization_, save_,       runtime_modifiable_,
+                              other_setting_} {
         linkage.restore_functions.emplace_back([this]() { this->SetGlobal(true); });
     }
 
     template <typename T = BasicSetting>
-    explicit SwitchableSetting(Linkage& linkage, const Type& default_val, const std::string& name, Category category_, u32 specialization_ = Specialization::Default, bool save_ = true, bool runtime_modifiable_ = false, T* other_setting_ = nullptr) requires(ranged)
-        : Setting<Type, true>{linkage, default_val, EnumMetadata<Type>::GetFirst(), EnumMetadata<Type>::GetLast(), name, category_, specialization_, save_, runtime_modifiable_, other_setting_} {
+    explicit SwitchableSetting(Linkage& linkage, const Type& default_val, const std::string& name,
+                               Category category_, u32 specialization_ = Specialization::Default,
+                               bool save_ = true, bool runtime_modifiable_ = false,
+                               T* other_setting_ = nullptr)
+        requires(ranged)
+        : Setting<Type, true>{linkage,
+                              default_val,
+                              EnumMetadata<Type>::GetFirst(),
+                              EnumMetadata<Type>::GetLast(),
+                              name,
+                              category_,
+                              specialization_,
+                              save_,
+                              runtime_modifiable_,
+                              other_setting_} {
         linkage.restore_functions.emplace_back([this]() { this->SetGlobal(true); });
     }
 
@@ -339,7 +391,11 @@ public:
      * @param to_global Whether to use the global or custom setting.
      */
     void SetGlobal(bool to_global) override final {
+        if (use_global == to_global) {
+            return;
+        }
         use_global = to_global;
+        this->NotifyCallback();
     }
 
     /**
@@ -392,6 +448,7 @@ public:
         } else {
             std::swap(custom, temp);
         }
+        this->NotifyCallback();
     }
 
     [[nodiscard]] constexpr bool Switchable() const override final {
@@ -413,9 +470,11 @@ public:
         Type temp{ranged ? std::clamp(val, this->minimum, this->maximum) : val};
         if (use_global) {
             std::swap(this->value, temp);
+            this->NotifyCallback();
             return this->value;
         }
         std::swap(custom, temp);
+        this->NotifyCallback();
         return custom;
     }
 
