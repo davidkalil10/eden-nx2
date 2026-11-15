@@ -111,7 +111,7 @@ void QtAmiiboSettingsDialog::LoadAmiiboApiInfo(std::string_view amiibo_id) {
     WebService::Client image_client{"https://raw.githubusercontent.com", {}, {}};
     const auto url_path = std::format("/api/amiibo/?id={}", amiibo_id);
 
-    const auto amiibo_json = client.GetJson(url_path, true).returned_data;
+    const auto amiibo_json = client.GetJson(url_path).returned_data;
     if (amiibo_json.empty()) {
         ui->amiiboImageLabel->setVisible(false);
         ui->amiiboInfoGroup->setVisible(false);
@@ -136,7 +136,7 @@ void QtAmiiboSettingsDialog::LoadAmiiboApiInfo(std::string_view amiibo_id) {
     }
 
     const auto image_url_path = amiibo.image.substr(34, amiibo.image.size() - 34);
-    const auto image_data = image_client.GetImage(image_url_path, true).returned_data;
+    const auto image_data = image_client.GetImage(image_url_path).returned_data;
 
     if (image_data.empty()) {
         ui->amiiboImageLabel->setVisible(false);

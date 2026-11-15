@@ -35,11 +35,6 @@
 #include "network/announce_multiplayer_session.h"
 #include "network/network.h"
 #include "network/room.h"
-#include "network/verify_user.h"
-
-#ifdef ENABLE_WEB_SERVICE
-#include "web_service/verify_user_jwt.h"
-#endif
 
 #undef _UNICODE
 #include <getopt.h>
@@ -103,13 +98,6 @@ static std::string UsernameFromDisplayToken(const std::string& display_token) {
     return decoded_display_token.substr(0, decoded_display_token.find(token_delimiter));
 }
 
-static std::string TokenFromDisplayToken(const std::string& display_token) {
-    std::size_t outlen = 4 * ((display_token.length() + 2) / 3);
-    std::array<unsigned char, 512> output{};
-    EVP_DecodeBlock(output.data(), reinterpret_cast<const unsigned char*>(display_token.c_str()), display_token.length());
-    std::string decoded_display_token(reinterpret_cast<char*>(&output), outlen);
-    return decoded_display_token.substr(decoded_display_token.find(token_delimiter) + 1);
-}
 
 static Network::Room::BanList LoadBanList(const std::string& path) {
     std::ifstream file;
@@ -313,28 +301,21 @@ void LaunchRoom(int argc, char** argv, bool called_by_option) {
                   "list.\nSet with --ban-list-file <file>");
     }
     bool announce = true;
-    if (token.empty() && announce) {
-        announce = false;
-        LOG_INFO(Network, "Token is empty: Hosting a private room");
-    }
     if (web_api_url.empty() && announce) {
         announce = false;
         LOG_INFO(Network, "Endpoint url is empty: Hosting a private room");
     }
     if (announce) {
-        if (username.empty()) {
-            LOG_INFO(Network, "Hosting a public room");
-            Settings::values.web_api_url = web_api_url;
+        // The room service no longer uses JWTs, so a token is optional. The
+        // username (if provided) is only used as the moderation identity.
+        if (username.empty() && !token.empty()) {
             PadToken(token);
-            Settings::values.eden_username = UsernameFromDisplayToken(token);
-            username = Settings::values.eden_username.GetValue();
-            Settings::values.eden_token = TokenFromDisplayToken(token);
-        } else {
-            LOG_INFO(Network, "Hosting a public room");
-            Settings::values.web_api_url = web_api_url;
-            Settings::values.eden_username = username;
-            Settings::values.eden_token = token;
+            username = UsernameFromDisplayToken(token);
         }
+        LOG_INFO(Network, "Hosting a public room");
+        Settings::values.web_api_url = web_api_url;
+        Settings::values.eden_username = username;
+        Settings::values.eden_token = token;
     }
 
     // Load the ban list
@@ -343,27 +324,12 @@ void LaunchRoom(int argc, char** argv, bool called_by_option) {
         ban_list = LoadBanList(ban_list_file);
     }
 
-    std::unique_ptr<Network::VerifyUser::Backend> verify_backend;
-    if (announce) {
-#ifdef ENABLE_WEB_SERVICE
-        verify_backend =
-            std::make_unique<WebService::VerifyUserJWT>(Settings::values.web_api_url.GetValue());
-#else
-        LOG_INFO(Network,
-                 "Eden Web Services is not available with this build: validation is disabled.");
-        verify_backend = std::make_unique<Network::VerifyUser::NullBackend>();
-#endif
-    } else {
-        verify_backend = std::make_unique<Network::VerifyUser::NullBackend>();
-    }
-
     Network::Init();
     if (auto room = Network::GetRoom().lock()) {
         AnnounceMultiplayerRoom::GameInfo preferred_game_info{.name = preferred_game,
                                                               .id = preferred_game_id};
         if (!room->Create(room_name, room_description, bind_address, static_cast<u16>(port),
-                          password, max_members, username, preferred_game_info,
-                          std::move(verify_backend), ban_list)) {
+                          password, max_members, username, preferred_game_info, ban_list)) {
             LOG_INFO(Network, "Failed to create room: ");
             std::exit(-1);
         }
