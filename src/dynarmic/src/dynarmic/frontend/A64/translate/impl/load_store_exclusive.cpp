@@ -213,4 +213,60 @@ bool TranslatorVisitor::LDAPR(Imm<2> sz, Reg Rn, Reg Rt) {
     return LDAR(sz, Rn, Rt);
 }
 
+static IR::U32U64 Select(TranslatorVisitor& v, size_t bitsize, IR::U1 condition, IR::U32U64 if_true, IR::U32U64 if_false) {
+    const IR::U32U64 zero = v.I(bitsize, 0);
+    const IR::U32U64 mask = v.ir.SubWithCarry(zero, zero, condition);
+    return v.ir.Or(v.ir.AndNot(if_true, mask), v.ir.And(if_false, mask));
+}
+
+template<typename Operation>
+static bool AtomicSharedDecodeAndOperation(TranslatorVisitor& v, size_t size, bool acquire, bool release, Reg Rn, Reg Rd, Operation operation) {
+    const auto ldacctype = acquire ? IR::AccType::ORDEREDRW : IR::AccType::ATOMIC;
+    const auto stacctype = release ? IR::AccType::ORDEREDRW : IR::AccType::ATOMIC;
+    const size_t datasize = 8 << size;
+    const size_t regsize = datasize == 64 ? 64 : 32;
+    const size_t dbytes = datasize / 8;
+
+    IR::U64 address;
+    if (Rn == Reg::SP) {
+        address = v.SP(64);
+    } else {
+        address = v.X(64, Rn);
+    }
+
+    const IR::U32U64 data = v.ZeroExtend(v.ExclusiveMem(address, dbytes, ldacctype), regsize);
+    const IR::UAny value = v.ir.LeastSignificant(datasize, operation(data, datasize, regsize));
+    const IR::U32 status = v.ExclusiveMem(address, dbytes, stacctype, value);
+    const IR::U1 stored = v.ir.IsZero(status);
+    v.X(64, Rd, Select(v, 64, stored, v.ZeroExtend(data, 64), v.X(64, Rd)));
+
+    v.ir.SetCheckBit(stored);
+    const auto cond_pass = IR::Term::LinkBlock{v.ir.current_location->AdvancePC(4)};
+    const auto cond_fail = IR::Term::LinkBlock{*v.ir.current_location};
+    v.ir.SetTerm(IR::Term::CheckBit{cond_pass, cond_fail});
+    return false;
+}
+
+bool TranslatorVisitor::CAS(Imm<2> sz, bool L, Reg Rs, bool o0, Reg Rn, Reg Rt) {
+    const size_t size = sz.ZeroExtend<size_t>();
+    return AtomicSharedDecodeAndOperation(*this, size, L, o0, Rn, Rs, [&](const IR::U32U64& data, size_t datasize, size_t regsize) {
+        const IR::U1 equal = ir.IsZero(ir.Eor(data, ZeroExtend(X(datasize, Rs), regsize)));
+        return Select(*this, regsize, equal, X(regsize, Rt), data);
+    });
+}
+
+bool TranslatorVisitor::LDADD(Imm<2> sz, bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
+    const size_t size = sz.ZeroExtend<size_t>();
+    return AtomicSharedDecodeAndOperation(*this, size, A, R, Rn, Rt, [&](const IR::U32U64& data, size_t, size_t regsize) {
+        return ir.Add(data, X(regsize, Rs));
+    });
+}
+
+bool TranslatorVisitor::SWP(Imm<2> sz, bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
+    const size_t size = sz.ZeroExtend<size_t>();
+    return AtomicSharedDecodeAndOperation(*this, size, A, R, Rn, Rt, [&](const IR::U32U64&, size_t, size_t regsize) {
+        return X(regsize, Rs);
+    });
+}
+
 }  // namespace Dynarmic::A64

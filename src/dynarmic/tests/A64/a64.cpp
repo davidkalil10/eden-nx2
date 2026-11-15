@@ -2867,3 +2867,173 @@ TEST_CASE("A64: LDAPRB, LDAPRH, LDAPR", "[a64]") {
         REQUIRE(jit.GetPC() == 4);
     }
 }
+
+TEST_CASE("A64: LDADD and SWP", "[a64]") {
+    struct TestCase {
+        u32 instruction;
+        size_t size;
+        u64 loaded;
+        u64 stored;
+    };
+    const std::array<TestCase, 10> cases{{
+        {0x38210062, 1, 0x34, 0xbc},
+        {0x78210062, 2, 0x3534, 0xacbc},
+        {0xb8210062, 4, 0x37363534, 0x8c9cacbc},
+        {0xf8210062, 8, 0x3b3a393837363534, 0x4c5c6c7c8c9cacbc},
+        {0xf8e10062, 8, 0x3b3a393837363534, 0x4c5c6c7c8c9cacbc},
+        {0x38218062, 1, 0x34, 0x88},
+        {0x78218062, 2, 0x3534, 0x7788},
+        {0xb8218062, 4, 0x37363534, 0x55667788},
+        {0xf8218062, 8, 0x3b3a393837363534, 0x1122334455667788},
+        {0xf8e18062, 8, 0x3b3a393837363534, 0x1122334455667788},
+    }};
+    for (const TestCase& test_case : cases) {
+        A64TestEnv env;
+        ExclusiveMonitor monitor{1};
+        A64::UserConfig conf;
+        conf.callbacks = &env;
+        conf.processor_id = 0;
+        conf.global_monitor = &monitor;
+        A64::Jit jit{conf};
+
+        env.code_mem.emplace_back(test_case.instruction);
+        env.code_mem.emplace_back(0x14000000);
+
+        jit.SetRegister(1, 0x1122334455667788);
+        jit.SetRegister(2, ~u64(0));
+        jit.SetRegister(3, 0x1234);
+        jit.SetPC(0);
+
+        env.ticks_left = 2;
+        CheckedRun([&]() { jit.Run(); });
+
+        REQUIRE(jit.GetRegister(1) == 0x1122334455667788);
+        REQUIRE(jit.GetRegister(2) == test_case.loaded);
+        REQUIRE(env.MemoryRead(0x1234, test_case.size) == test_case.stored);
+        REQUIRE(jit.GetPC() == 4);
+    }
+}
+
+TEST_CASE("A64: CAS", "[a64]") {
+    struct TestCase {
+        u32 instruction;
+        size_t size;
+        u64 compare;
+        u64 loaded;
+        u64 stored;
+    };
+    const std::array<TestCase, 7> cases{{
+        {0x08a17c62, 1, 0xffffffffffffff34, 0x34, 0x88},
+        {0x08a17c62, 1, 0xffffffffffffff35, 0x34, 0x34},
+        {0x48a17c62, 2, 0xffffffffffff3534, 0x3534, 0x7788},
+        {0x88a17c62, 4, 0xffffffff37363534, 0x37363534, 0x55667788},
+        {0xc8a17c62, 8, 0x3b3a393837363534, 0x3b3a393837363534, 0x1122334455667788},
+        {0xc8a17c62, 8, 0x3b3a393837363535, 0x3b3a393837363534, 0x3b3a393837363534},
+        {0xc8e1fc62, 8, 0x3b3a393837363534, 0x3b3a393837363534, 0x1122334455667788},
+    }};
+    for (const TestCase& test_case : cases) {
+        A64TestEnv env;
+        ExclusiveMonitor monitor{1};
+        A64::UserConfig conf;
+        conf.callbacks = &env;
+        conf.processor_id = 0;
+        conf.global_monitor = &monitor;
+        A64::Jit jit{conf};
+
+        env.code_mem.emplace_back(test_case.instruction);
+        env.code_mem.emplace_back(0x14000000);
+
+        jit.SetRegister(1, test_case.compare);
+        jit.SetRegister(2, 0x1122334455667788);
+        jit.SetRegister(3, 0x1234);
+        jit.SetPC(0);
+
+        env.ticks_left = 2;
+        CheckedRun([&]() { jit.Run(); });
+
+        REQUIRE(jit.GetRegister(1) == test_case.loaded);
+        REQUIRE(jit.GetRegister(2) == 0x1122334455667788);
+        REQUIRE(env.MemoryRead(0x1234, test_case.size) == test_case.stored);
+        REQUIRE(jit.GetPC() == 4);
+    }
+}
+
+TEST_CASE("A64: LDADD, SWP and CAS retry a failed store", "[a64]") {
+    struct ContendedEnv final : A64TestEnv {
+        bool MemoryWriteExclusive32(u64 vaddr, std::uint32_t value, std::uint32_t expected) override {
+            if (std::exchange(contended, false)) {
+                MemoryWrite(vaddr, 0x1000, sizeof(u32));
+                return false;
+            }
+            return A64TestEnv::MemoryWriteExclusive32(vaddr, value, expected);
+        }
+        bool contended = true;
+    };
+    struct TestCase {
+        u32 instruction;
+        u64 operand;
+        u64 address;
+        u64 operand_after;
+        u64 address_after;
+        u64 stored;
+    };
+    const std::array<TestCase, 5> cases{{
+        {0xb8210061, 0xffffffff00000005, 0x1234, 0x1000, 0x1234, 0x1005},
+        {0xb8210063, 5, 0x100001234, 5, 0x1000, 0x1005},
+        {0xb8218061, 0xffffffff00000005, 0x1234, 0x1000, 0x1234, 5},
+        {0x88a17c62, 0xffffffff37363534, 0x1234, 0x1000, 0x1234, 0x1000},
+        {0x88a37c62, 5, 0x100001234, 5, 0x1000, 0x1000},
+    }};
+    for (const TestCase& test_case : cases) {
+        ContendedEnv env;
+        ExclusiveMonitor monitor{1};
+        A64::UserConfig conf;
+        conf.callbacks = &env;
+        conf.processor_id = 0;
+        conf.global_monitor = &monitor;
+        A64::Jit jit{conf};
+
+        env.code_mem.emplace_back(test_case.instruction);
+        env.code_mem.emplace_back(0x14000000);
+
+        jit.SetRegister(1, test_case.operand);
+        jit.SetRegister(2, 7);
+        jit.SetRegister(3, test_case.address);
+        jit.SetPC(0);
+
+        env.ticks_left = 3;
+        CheckedRun([&]() { jit.Run(); });
+
+        REQUIRE(!env.contended);
+        REQUIRE(jit.GetRegister(1) == test_case.operand_after);
+        REQUIRE(jit.GetRegister(2) == 7);
+        REQUIRE(jit.GetRegister(3) == test_case.address_after);
+        REQUIRE(env.MemoryRead(test_case.address, sizeof(u32)) == test_case.stored);
+        REQUIRE(jit.GetPC() == 4);
+    }
+}
+
+TEST_CASE("A64: STADD with a stack pointer base", "[a64]") {
+    A64TestEnv env;
+    ExclusiveMonitor monitor{1};
+    A64::UserConfig conf;
+    conf.callbacks = &env;
+    conf.processor_id = 0;
+    conf.global_monitor = &monitor;
+    A64::Jit jit{conf};
+
+    env.code_mem.emplace_back(0xf82103ff);
+    env.code_mem.emplace_back(0x14000000);
+
+    jit.SetRegister(1, 0x1122334455667788);
+    jit.SetSP(0x1234);
+    jit.SetPC(0);
+
+    env.ticks_left = 2;
+    CheckedRun([&]() { jit.Run(); });
+
+    REQUIRE(jit.GetRegister(1) == 0x1122334455667788);
+    REQUIRE(jit.GetSP() == 0x1234);
+    REQUIRE(env.MemoryRead(0x1234, sizeof(u64)) == 0x4c5c6c7c8c9cacbc);
+    REQUIRE(jit.GetPC() == 4);
+}

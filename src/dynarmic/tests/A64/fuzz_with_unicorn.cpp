@@ -85,6 +85,9 @@ static u32 GenRandomInst(u64 pc, bool is_last_inst) {
             "LDAXR",
             "LDXP",
             "LDAXP",
+            "CAS",
+            "LDADD",
+            "SWP",
             // Behaviour differs from QEMU
             "MSR_reg",
             "MSR_imm",

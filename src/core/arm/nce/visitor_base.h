@@ -510,13 +510,7 @@ public:
     virtual bool CASP(bool sz, bool L, Reg Rs, bool o0, Reg Rn, Reg Rt) {
         return false;
     }
-    virtual bool CASB(bool L, Reg Rs, bool o0, Reg Rn, Reg Rt) {
-        return false;
-    }
-    virtual bool CASH(bool L, Reg Rs, bool o0, Reg Rn, Reg Rt) {
-        return false;
-    }
-    virtual bool CAS(bool sz, bool L, Reg Rs, bool o0, Reg Rn, Reg Rt) {
+    virtual bool CAS(Imm<2> size, bool L, Reg Rs, bool o0, Reg Rn, Reg Rt) {
         return false;
     }
 
@@ -629,9 +623,6 @@ public:
     }
 
     // Loads and stores - Atomic memory options
-    virtual bool LDADDB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
-        return false;
-    }
     virtual bool LDCLRB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
@@ -651,12 +642,6 @@ public:
         return false;
     }
     virtual bool LDUMINB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
-        return false;
-    }
-    virtual bool SWPB(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
-        return false;
-    }
-    virtual bool LDADDH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
     virtual bool LDCLRH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
@@ -680,10 +665,7 @@ public:
     virtual bool LDUMINH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
-    virtual bool SWPH(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
-        return false;
-    }
-    virtual bool LDADD(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
+    virtual bool LDADD(Imm<2> size, bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
     virtual bool LDCLR(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
@@ -707,7 +689,7 @@ public:
     virtual bool LDUMIN(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
-    virtual bool SWP(bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
+    virtual bool SWP(Imm<2> size, bool A, bool R, Reg Rs, Reg Rn, Reg Rt) {
         return false;
     }
     virtual bool LDAPR(Imm<2> size, Reg Rn, Reg Rt) {
