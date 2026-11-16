@@ -4,7 +4,7 @@
 #pragma once
 
 #include "common/common_types.h"
-#include "core/hle/result.h"
+#include "common/result.h"
 
 namespace Core::HID {
 class EmulatedController;

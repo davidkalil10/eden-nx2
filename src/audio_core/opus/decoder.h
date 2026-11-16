@@ -11,7 +11,7 @@
 #include "audio_core/opus/parameters.h"
 #include "common/common_types.h"
 #include "core/hle/kernel/k_transfer_memory.h"
-#include "core/hle/service/audio/errors.h"
+#include "audio_core/errors.h"
 
 namespace Core {
 class System;

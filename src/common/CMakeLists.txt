@@ -52,6 +52,11 @@ add_library(
     fiber.h
     fixed_point.h
     free_region_manager.h
+    frontend/emu_window.cpp
+    frontend/emu_window.h
+    frontend/framebuffer_layout.cpp
+    frontend/framebuffer_layout.h
+    frontend/graphics_context.h
     fs/file.cpp
     fs/file.h
     fs/fs.cpp
@@ -134,6 +139,7 @@ add_library(
     unique_function.h
     random.cpp
     random.h
+    result.h
     uuid.cpp
     uuid.h
     vector_math.h

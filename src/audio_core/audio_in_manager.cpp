@@ -11,7 +11,7 @@
 #include "audio_core/sink/sink_details.h"
 #include "common/settings.h"
 #include "core/core.h"
-#include "core/hle/service/audio/errors.h"
+#include "audio_core/errors.h"
 
 namespace AudioCore::AudioIn {
 

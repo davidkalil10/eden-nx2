@@ -9,7 +9,7 @@
 #include <span>
 
 #include "common/common_types.h"
-#include "core/hle/result.h"
+#include "common/result.h"
 #include "hid_core/hid_types.h"
 
 namespace Kernel {

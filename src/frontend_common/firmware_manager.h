@@ -14,7 +14,7 @@
 #include <core/hle/service/am/frontend/applet_mii_edit.h>
 #include <string>
 
-#include "core/hle/result.h"
+#include "common/result.h"
 #include "core/hle/service/set/settings_types.h"
 #include "core/hle/service/set/system_settings_server.h"
 

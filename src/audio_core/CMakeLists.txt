@@ -24,6 +24,7 @@ add_library(audio_core STATIC
     audio_core.h
     audio_event.h
     audio_event.cpp
+    errors.h
     audio_render_manager.cpp
     audio_render_manager.h
     audio_in_manager.cpp

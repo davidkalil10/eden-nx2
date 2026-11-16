@@ -10,7 +10,7 @@
 #include <utility>
 
 #include "common/common_types.h"
-#include "core/frontend/framebuffer_layout.h"
+#include "common/frontend/framebuffer_layout.h"
 
 namespace Core::Frontend {
 

@@ -8,7 +8,7 @@
 #include "audio_core/renderer/behavior/behavior_info.h"
 #include "audio_core/renderer/memory/memory_pool_info.h"
 #include "common/common_types.h"
-#include "core/hle/service/audio/errors.h"
+#include "audio_core/errors.h"
 
 namespace Kernel {
 class KProcess;

@@ -8,7 +8,7 @@
 #include "common/common_types.h"
 #include "core/core.h"
 #include "core/core_timing.h"
-#include "core/frontend/emu_window.h"
+#include "common/frontend/emu_window.h"
 #include "core/hle/kernel/k_process.h"
 #include "core/memory.h"
 #include "hid_core/frontend/emulated_console.h"

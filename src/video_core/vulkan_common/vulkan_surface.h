@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/frontend/emu_window.h"
+#include "common/frontend/emu_window.h"
 #include "video_core/vulkan_common/vulkan_wrapper.h"
 
 namespace Vulkan {

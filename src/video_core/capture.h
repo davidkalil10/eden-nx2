@@ -6,7 +6,7 @@
 #include "common/alignment.h"
 #include "common/bit_util.h"
 #include "common/common_types.h"
-#include "core/frontend/framebuffer_layout.h"
+#include "common/frontend/framebuffer_layout.h"
 #include "video_core/surface.h"
 
 namespace VideoCore::Capture {

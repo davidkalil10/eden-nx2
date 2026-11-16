@@ -11,7 +11,7 @@
 #include <span>
 
 #include "common/common_types.h"
-#include "core/hle/result.h"
+#include "common/result.h"
 #include "core/hle/service/kernel_helpers.h"
 #include "hid_core/hid_types.h"
 #include "hid_core/resources/applet_resource.h"

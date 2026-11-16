@@ -6,7 +6,7 @@
 #include <memory>
 
 #include "common/dynamic_library.h"
-#include "core/frontend/graphics_context.h"
+#include "common/frontend/graphics_context.h"
 
 namespace Vulkan {
 

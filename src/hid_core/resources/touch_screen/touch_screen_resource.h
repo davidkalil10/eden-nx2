@@ -8,7 +8,7 @@
 
 #include "common/common_types.h"
 #include "common/point.h"
-#include "core/hle/result.h"
+#include "common/result.h"
 #include "hid_core/hid_types.h"
 #include "hid_core/resources/touch_screen/gesture_handler.h"
 #include "hid_core/resources/touch_screen/touch_types.h"

@@ -203,11 +203,6 @@ add_library(core STATIC
     frontend/applets/software_keyboard.h
     frontend/applets/web_browser.cpp
     frontend/applets/web_browser.h
-    frontend/emu_window.cpp
-    frontend/emu_window.h
-    frontend/framebuffer_layout.cpp
-    frontend/framebuffer_layout.h
-    frontend/graphics_context.h
     hle/api_version.h
     hle/ipc.h
     hle/kernel/board/nintendo/nx/k_memory_layout.cpp
@@ -531,7 +526,6 @@ add_library(core STATIC
     hle/service/audio/audio_renderer.h
     hle/service/audio/audio.cpp
     hle/service/audio/audio.h
-    hle/service/audio/errors.h
     hle/service/audio/final_output_recorder_manager_for_applet.cpp
     hle/service/audio/final_output_recorder_manager_for_applet.h
     hle/service/audio/final_output_recorder_manager.cpp

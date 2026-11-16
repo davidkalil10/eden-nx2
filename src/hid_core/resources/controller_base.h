@@ -6,7 +6,7 @@
 #include <memory>
 
 #include "common/common_types.h"
-#include "core/hle/result.h"
+#include "common/result.h"
 #include "hid_core/resources/applet_resource.h"
 
 namespace Core::Timing {

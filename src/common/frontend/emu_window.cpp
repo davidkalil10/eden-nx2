@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <mutex>
-#include "core/frontend/emu_window.h"
+#include "common/frontend/emu_window.h"
 
 namespace Core::Frontend {
 

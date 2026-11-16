@@ -12,7 +12,7 @@
 
 #include "common/bit_field.h"
 #include "common/common_types.h"
-#include "core/hle/result.h"
+#include "common/result.h"
 #include "hid_core/resources/shared_memory_holder.h"
 
 namespace Core {

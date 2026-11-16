@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "core/core_timing.h"
-#include "core/frontend/emu_window.h"
+#include "common/frontend/emu_window.h"
 #include "hid_core/frontend/emulated_devices.h"
 #include "hid_core/hid_core.h"
 #include "hid_core/resources/applet_resource.h"
