@@ -7,6 +7,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <span>
 #include <string>
 #include <vector>
@@ -48,6 +49,13 @@ enum class Architecture {
 };
 
 /// Generic ARMv8 CPU interface
+// Multicore: while any core does host-only work (compiling a block), no core runs guest code, so
+// every core loses the same time and the order of guest events between cores stays what it is on
+// hardware, where that work does not exist. One per process.
+struct StallGate {
+    std::atomic<u32> stalls{0};
+};
+
 class ArmInterface : Common::NonCopyable, Common::NonMoveable {
 public:
     explicit ArmInterface(bool uses_wall_clock) : m_uses_wall_clock{uses_wall_clock} {}
@@ -55,6 +63,9 @@ public:
 
     // Perform any backend-specific initialization.
     virtual void Initialize() {}
+
+    // Another core began host-only work: leave guest code and wait at the gate.
+    virtual void RequestStallHalt() {}
 
     // Runs the CPU until an event happens.
     virtual HaltReason RunThread(Kernel::KThread* thread) = 0;

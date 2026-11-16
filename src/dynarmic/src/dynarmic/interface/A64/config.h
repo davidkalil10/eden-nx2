@@ -122,6 +122,11 @@ struct UserCallbacks {
     virtual void InstructionCacheOperationRaised(InstructionCacheOperation /*op*/, VAddr /*value*/) {}
     virtual void InstructionSynchronizationBarrierRaised() {}
 
+    /// Around the compile of a block the running code needs: host-only work the guest must not
+    /// see.
+    virtual void CompileBegin() {}
+    virtual void CompileEnd() {}
+
     // Timing-related callbacks
     // ticks ticks have passed
     virtual void AddTicks(std::uint64_t ticks) = 0;
