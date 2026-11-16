@@ -246,7 +246,7 @@ public:
     [[nodiscard]] const CpuManager& GetCpuManager() const;
 
     /// Gets a mutable reference to the system memory instance.
-    [[nodiscard]] Core::Memory::Memory& ApplicationMemory() override;
+    [[nodiscard]] Core::Memory::Memory& ApplicationMemory();
 
     /// Gets a constant reference to the system memory instance.
     [[nodiscard]] const Core::Memory::Memory& ApplicationMemory() const;
@@ -282,7 +282,7 @@ public:
     [[nodiscard]] const Kernel::GlobalSchedulerContext& GlobalSchedulerContext() const;
 
     /// Gets the manager for the guest device memory
-    [[nodiscard]] Core::DeviceMemory& DeviceMemory() override;
+    [[nodiscard]] Core::DeviceMemory& DeviceMemory();
 
     /// Gets the manager for the guest device memory
     [[nodiscard]] const Core::DeviceMemory& DeviceMemory() const;
@@ -294,13 +294,13 @@ public:
     [[nodiscard]] const Kernel::KProcess* ApplicationProcess() const;
 
     /// Provides a reference to the core timing instance.
-    [[nodiscard]] Timing::CoreTiming& CoreTiming() override;
+    [[nodiscard]] Timing::CoreTiming& CoreTiming();
 
     /// Provides a constant reference to the core timing instance.
     [[nodiscard]] const Timing::CoreTiming& CoreTiming() const;
 
     /// Provides a reference to the kernel instance.
-    [[nodiscard]] Kernel::KernelCore& Kernel() override;
+    [[nodiscard]] Kernel::KernelCore& Kernel();
 
     /// Provides a constant reference to the kernel instance.
     [[nodiscard]] const Kernel::KernelCore& Kernel() const;
@@ -406,6 +406,24 @@ public:
     void RegisterHostThread() override;
 
     [[nodiscard]] u64 GPUTicks() override;
+
+    [[nodiscard]] std::chrono::nanoseconds GlobalTimeNs() override;
+    [[nodiscard]] std::chrono::microseconds GlobalTimeUs() override;
+    [[nodiscard]] std::shared_ptr<Timing::EventType> CreateTimingEvent(
+        std::string name, TimedCallback&& callback) override;
+    void ScheduleLoopingEvent(std::chrono::nanoseconds start_time,
+                              std::chrono::nanoseconds resched_time,
+                              const std::shared_ptr<Timing::EventType>& event) override;
+    void UnscheduleEvent(const std::shared_ptr<Timing::EventType>& event) override;
+    void SignalEvent(Kernel::KEvent& event) override;
+    void ClearEvent(Kernel::KEvent& event) override;
+    void OpenProcess(Kernel::KProcess& process) override;
+    void CloseProcess(Kernel::KProcess& process) override;
+    [[nodiscard]] Memory::GuestMemoryAccess& ProcessMemory(Kernel::KProcess& process) override;
+    [[nodiscard]] Common::ProcessAddress TransferMemoryAddress(
+        Kernel::KTransferMemory& transfer_memory) override;
+    [[nodiscard]] const u8* DeviceMemoryBase() override;
+    [[nodiscard]] Core::Memory::GuestMemoryAccess& ApplicationGuestMemory() override;
     void EndGameFrame() override;
 
     /// Tells if system is running on multicore.

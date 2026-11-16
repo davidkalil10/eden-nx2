@@ -229,7 +229,7 @@ else()
 endif()
 
 target_include_directories(audio_core PRIVATE ${OPUS_INCLUDE_DIRS})
-target_link_libraries(audio_core PUBLIC common core Opus::opus)
+target_link_libraries(audio_core PUBLIC common Opus::opus)
 
 if (ENABLE_CUBEB)
     target_sources(audio_core PRIVATE

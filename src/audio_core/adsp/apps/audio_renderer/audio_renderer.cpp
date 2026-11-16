@@ -14,7 +14,6 @@
 #include "audio_core/sink/sink.h"
 #include "common/logging.h"
 #include "common/thread.h"
-#include "core/core_timing.h"
 
 namespace AudioCore::ADSP::AudioRenderer {
 
@@ -65,7 +64,7 @@ void AudioRenderer::Stop() {
 }
 
 void AudioRenderer::Signal() {
-    signalled_tick = system.CoreTiming().GetGlobalTimeNs().count();
+    signalled_tick = system.GlobalTimeNs().count();
     Send(Direction::DSP, Message::Render);
 }
 
@@ -161,7 +160,7 @@ void AudioRenderer::Main(std::stop_token stop_token) {
             }
             std::array<bool, MaxRendererSessions> buffers_reset{};
             std::array<u64, MaxRendererSessions> render_times_taken{};
-            const auto start_time{system.CoreTiming().GetGlobalTimeUs().count()};
+            const auto start_time{system.GlobalTimeUs().count()};
 
             for (u32 index = 0; index < MaxRendererSessions; index++) {
                 auto& command_buffer{command_buffers[index]};
@@ -204,7 +203,7 @@ void AudioRenderer::Main(std::stop_token stop_token) {
                             command_list_processor.Process(index) - start_time;
                     }
 
-                    const auto end_time{system.CoreTiming().GetGlobalTimeUs().count()};
+                    const auto end_time{system.GlobalTimeUs().count()};
 
                     command_buffer.remaining_command_count =
                         command_list_processor.GetRemainingCommandCount();

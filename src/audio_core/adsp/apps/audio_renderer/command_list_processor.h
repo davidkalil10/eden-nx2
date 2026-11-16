@@ -10,11 +10,9 @@
 #include "audio_core/renderer/command/command_list_header.h"
 #include "common/common_types.h"
 
-namespace Core {
-namespace Memory {
-class Memory;
+namespace Core::Memory {
+class GuestMemoryAccess;
 }
-} // namespace Core
 
 namespace Kernel {
 class KProcess;
@@ -80,7 +78,7 @@ public:
     /// Core system
     Host* system{};
     /// Core memory
-    Core::Memory::Memory* memory{};
+    Core::Memory::GuestMemoryAccess* memory{};
     /// Stream for the processed samples
     Sink::SinkStream* stream{};
     /// Header info for this command list

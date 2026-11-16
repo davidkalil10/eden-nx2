@@ -6,7 +6,6 @@
 #include "audio_core/host.h"
 #include "audio_core/renderer/audio_renderer.h"
 #include "audio_core/renderer/system_manager.h"
-#include "core/hle/kernel/k_process.h"
 #include "audio_core/errors.h"
 
 namespace AudioCore::Renderer {

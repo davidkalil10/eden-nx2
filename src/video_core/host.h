@@ -8,12 +8,9 @@
 
 #include "common/common_types.h"
 
-namespace Core {
-class DeviceMemory;
-namespace Memory {
-class Memory;
+namespace Core::Memory {
+class GuestMemoryAccess;
 }
-} // namespace Core
 
 namespace Tegra {
 class GPU;
@@ -30,8 +27,8 @@ public:
     [[nodiscard]] virtual bool IsPoweredOn() const = 0;
     [[nodiscard]] virtual Tegra::GPU& GPU() = 0;
     [[nodiscard]] virtual Tegra::Host1x::Host1x& Host1x() = 0;
-    [[nodiscard]] virtual Core::DeviceMemory& DeviceMemory() = 0;
-    [[nodiscard]] virtual Core::Memory::Memory& ApplicationMemory() = 0;
+    [[nodiscard]] virtual const u8* DeviceMemoryBase() = 0;
+    [[nodiscard]] virtual Core::Memory::GuestMemoryAccess& ApplicationGuestMemory() = 0;
     virtual void RegisterHostThread() = 0;
     virtual void GatherGPUDirtyMemory(std::function<void(PAddr, size_t)>& callback) = 0;
     [[nodiscard]] virtual u64 GPUTicks() = 0;

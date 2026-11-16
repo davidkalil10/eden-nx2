@@ -14,7 +14,7 @@ namespace Tegra::Host1x {
 Host1x::Host1x(VideoCore::Host& system_)
     : system{system_}
     , syncpoint_manager{}
-    , memory_manager(system.DeviceMemory())
+    , memory_manager(system.DeviceMemoryBase())
     , gmmu_manager{system, memory_manager, 32, 0, 12}
     , allocator{1 << 12}
 {}

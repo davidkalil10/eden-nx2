@@ -9,7 +9,6 @@
 #include "audio_core/audio_out_manager.h"
 #include "audio_core/host.h"
 #include "audio_core/out/audio_out.h"
-#include "core/hle/kernel/k_event.h"
 #include "audio_core/errors.h"
 
 namespace AudioCore::AudioOut {

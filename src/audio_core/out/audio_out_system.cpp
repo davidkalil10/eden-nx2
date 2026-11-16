@@ -11,8 +11,6 @@
 #include "audio_core/host.h"
 #include "audio_core/out/audio_out_system.h"
 #include "common/logging.h"
-#include "core/core_timing.h"
-#include "core/hle/kernel/k_event.h"
 
 // See texture_cache/util.h
 template<typename T, size_t N>
@@ -120,8 +118,8 @@ Result System::Stop() {
         session->Stop();
         session->SetVolume(0.0f);
         session->ClearBuffers();
-        if (buffers.ReleaseBuffers(system.CoreTiming(), *session, true)) {
-            buffer_event->Signal(system.Kernel());
+        if (buffers.ReleaseBuffers(system, *session, true)) {
+            system.SignalEvent(*buffer_event);
         }
         state = State::Stopped;
     }
@@ -159,10 +157,10 @@ void System::RegisterBuffers() {
 }
 
 void System::ReleaseBuffers() {
-    bool signal{buffers.ReleaseBuffers(system.CoreTiming(), *session, false)};
+    bool signal{buffers.ReleaseBuffers(system, *session, false)};
     if (signal) {
         // Signal if any buffer was released, or if none are registered, we need more.
-        buffer_event->Signal(system.Kernel());
+        system.SignalEvent(*buffer_event);
     }
 }
 
@@ -179,7 +177,7 @@ bool System::FlushAudioOutBuffers() {
     buffers.FlushBuffers(buffers_released);
 
     if (buffers_released > 0) {
-        buffer_event->Signal(system.Kernel());
+        system.SignalEvent(*buffer_event);
     }
     return true;
 }

@@ -144,6 +144,8 @@ add_library(
     nvnflinger/hwc_layer.h
     nvnflinger/nvdata.h
     nvnflinger/pixel_format.h
+    guest_memory.h
+    guest_memory_access.h
     result.h
     uuid.cpp
     uuid.h

@@ -20,9 +20,8 @@
 #include "common/div_ceil.h"
 #include "common/scope_exit.h"
 #include "common/settings.h"
-#include "core/device_memory.h"
-#include "core/device_memory_manager.h"
-#include "core/memory.h"
+#include "common/guest_memory_access.h"
+#include "video_core/host1x/device_memory_manager.h"
 
 namespace Core {
 
@@ -169,8 +168,8 @@ struct DeviceMemoryManagerAllocator {
 };
 
 template <typename Traits>
-DeviceMemoryManager<Traits>::DeviceMemoryManager(const DeviceMemory& device_memory_)
-    : physical_base{uintptr_t(device_memory_.buffer.BackingBasePointer())}
+DeviceMemoryManager<Traits>::DeviceMemoryManager(const u8* backing_base)
+    : physical_base{uintptr_t(backing_base)}
     , device_inter{nullptr}
     , compressed_device_addr(1ULL << ((Settings::values.memory_layout_mode.GetValue() == Settings::MemoryLayout::Memory_4Gb ? physical_min_bits : physical_max_bits) - Memory::YUZU_PAGEBITS))
     , tracked_entries(device_as_size >> Memory::YUZU_PAGEBITS)
@@ -205,7 +204,7 @@ void DeviceMemoryManager<Traits>::Free(DAddr start, size_t size) {
 template <typename Traits>
 void DeviceMemoryManager<Traits>::Map(DAddr address, VAddr virtual_address, size_t size, Asid asid,
                                       bool track) {
-    Core::Memory::Memory* process_memory = registered_processes[asid.id];
+    Core::Memory::GuestMemoryAccess* process_memory = registered_processes[asid.id];
     size_t start_page_d = address >> Memory::YUZU_PAGEBITS;
     size_t num_pages = Common::AlignUp(size, Memory::YUZU_PAGESIZE) >> Memory::YUZU_PAGEBITS;
     std::scoped_lock lk(mapping_guard);
@@ -273,7 +272,7 @@ void DeviceMemoryManager<Traits>::Unmap(DAddr address, size_t size) {
 template <typename Traits>
 void DeviceMemoryManager<Traits>::TrackContinuityImpl(DAddr address, VAddr virtual_address,
                                                       size_t size, Asid asid) {
-    Core::Memory::Memory* process_memory = registered_processes[asid.id];
+    Core::Memory::GuestMemoryAccess* process_memory = registered_processes[asid.id];
     size_t start_page_d = address >> Memory::YUZU_PAGEBITS;
     size_t num_pages = Common::AlignUp(size, Memory::YUZU_PAGESIZE) >> Memory::YUZU_PAGEBITS;
     uintptr_t last_ptr = 0;
@@ -516,7 +515,7 @@ void DeviceMemoryManager<Traits>::WriteBlockUnsafe(DAddr address, const void* sr
 }
 
 template <typename Traits>
-Asid DeviceMemoryManager<Traits>::RegisterProcess(Memory::Memory* memory_device_inter) {
+Asid DeviceMemoryManager<Traits>::RegisterProcess(Memory::GuestMemoryAccess* memory_device_inter) {
     size_t new_id{};
     if (!id_pool.empty()) {
         new_id = id_pool.front();

@@ -588,7 +588,7 @@ TEST_CASE("MemoryTracker: FlushCachedWrites batching") {
 
 TEST_CASE("DeviceMemoryManager: UpdatePagesCachedBatch basic") {
     Core::DeviceMemory device_memory;
-    Tegra::MaxwellDeviceMemoryManager manager(device_memory);
+    Tegra::MaxwellDeviceMemoryManager manager(device_memory.buffer.BackingBasePointer());
     // empty should be a no-op
     std::vector<std::pair<DAddr, size_t>> empty;
     manager.UpdatePagesCachedBatch(empty, 1);

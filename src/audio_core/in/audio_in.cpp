@@ -4,7 +4,6 @@
 #include "audio_core/audio_in_manager.h"
 #include "audio_core/host.h"
 #include "audio_core/in/audio_in.h"
-#include "core/hle/kernel/k_event.h"
 
 namespace AudioCore::AudioIn {
 
@@ -68,9 +67,9 @@ u32 In::GetReleasedBuffers(std::span<u64> tags) {
     return system.GetReleasedBuffers(tags);
 }
 
-Kernel::KReadableEvent& In::GetBufferEvent() {
+Kernel::KEvent& In::GetBufferEvent() {
     std::scoped_lock l{parent_mutex};
-    return event->GetReadableEvent();
+    return *event;
 }
 
 f32 In::GetVolume() const {

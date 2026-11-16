@@ -4,7 +4,6 @@
 #include "audio_core/audio_out_manager.h"
 #include "audio_core/host.h"
 #include "audio_core/out/audio_out.h"
-#include "core/hle/kernel/k_event.h"
 
 namespace AudioCore::AudioOut {
 
@@ -68,9 +67,9 @@ u32 Out::GetReleasedBuffers(std::span<u64> tags) {
     return system.GetReleasedBuffers(tags);
 }
 
-Kernel::KReadableEvent& Out::GetBufferEvent() {
+Kernel::KEvent& Out::GetBufferEvent() {
     std::scoped_lock l{parent_mutex};
-    return event->GetReadableEvent();
+    return *event;
 }
 
 f32 Out::GetVolume() const {

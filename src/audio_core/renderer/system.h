@@ -21,12 +21,6 @@
 #include "common/thread.h"
 #include "audio_core/errors.h"
 
-namespace Core {
-namespace Memory {
-class Memory;
-}
-} // namespace Core
-
 namespace Kernel {
 class KEvent;
 class KProcess;

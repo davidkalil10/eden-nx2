@@ -10,10 +10,7 @@
 #include "audio_core/common/wave_buffer.h"
 #include "audio_core/renderer/voice/voice_state.h"
 #include "common/common_types.h"
-
-namespace Core::Memory {
-class Memory;
-}
+#include "common/guest_memory_access.h"
 
 namespace AudioCore::Renderer {
 
@@ -54,6 +51,6 @@ struct DecodeArg {
  * @param memory - Core memory to read data from.
  * @param args - The wavebuffer data, and information for how to decode it.
  */
-void DecodeFromWaveBuffers(Core::Memory::Memory& memory, const DecodeFromWaveBuffersArgs& args);
+void DecodeFromWaveBuffers(Core::Memory::GuestMemoryAccess& memory, const DecodeFromWaveBuffersArgs& args);
 
 } // namespace AudioCore::Renderer

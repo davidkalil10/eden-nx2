@@ -92,7 +92,7 @@ public:
      * filled.
      * @return The buffer event.
      */
-    Kernel::KReadableEvent& GetBufferEvent();
+    Kernel::KEvent& GetBufferEvent();
 
     /**
      * Get the current system volume.
