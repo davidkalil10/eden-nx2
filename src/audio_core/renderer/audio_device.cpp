@@ -9,9 +9,9 @@
 
 #include "audio_core/audio_core.h"
 #include "audio_core/common/feature_support.h"
+#include "audio_core/host.h"
 #include "audio_core/renderer/audio_device.h"
 #include "audio_core/sink/sink.h"
-#include "core/core.h"
 
 namespace AudioCore::Renderer {
 
@@ -34,7 +34,7 @@ constexpr std::array output_device_names{
     AudioDevice::AudioDeviceName{"AudioExternalOutput"},
 };
 
-AudioDevice::AudioDevice(Core::System& system, const u64 applet_resource_user_id_,
+AudioDevice::AudioDevice(Host& system, const u64 applet_resource_user_id_,
                          const u32 revision)
     : output_sink{system.AudioCore().GetOutputSink()},
       applet_resource_user_id{applet_resource_user_id_}, user_revision{revision} {}

@@ -22,6 +22,7 @@ add_library(audio_core STATIC
     adsp/apps/opus/shared_memory.h
     audio_core.cpp
     audio_core.h
+    host.h
     audio_event.h
     audio_event.cpp
     errors.h

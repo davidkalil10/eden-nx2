@@ -5,12 +5,9 @@
 
 #include <span>
 
+#include "audio_core/host.h"
 #include "audio_core/renderer/system.h"
 #include "audio_core/errors.h"
-
-namespace Core {
-class System;
-}
 
 namespace Kernel {
 class KTransferMemory;
@@ -28,7 +25,7 @@ class Manager;
  */
 class Renderer {
 public:
-    explicit Renderer(Core::System& system, Manager& manager, Kernel::KEvent* rendered_event);
+    explicit Renderer(Host& system, Manager& manager, Kernel::KEvent* rendered_event);
 
     /**
      * Initialize the renderer.
@@ -84,7 +81,7 @@ public:
 
 private:
     /// System core
-    Core::System& core;
+    Host& core;
     /// Manager this renderer is registered with
     Manager& manager;
     /// Is the audio renderer initialized?

@@ -9,12 +9,12 @@
 #include <span>
 
 #include "audio_core/common/common.h"
+#include "audio_core/host.h"
 #include "audio_core/sink/sink.h"
 #include "common/scratch_buffer.h"
 #include "audio_core/errors.h"
 
 namespace Core {
-class System;
 namespace Timing {
 struct EventType;
 } // namespace Timing
@@ -38,7 +38,7 @@ struct AudioBuffer;
  **/
 class DeviceSession {
 public:
-    explicit DeviceSession(Core::System& system);
+    explicit DeviceSession(Host& system);
     ~DeviceSession();
 
     /**
@@ -126,7 +126,7 @@ public:
 
 private:
     /// System
-    Core::System& system;
+    Host& system;
     /// Output sink this device will use
     Sink::Sink* sink{};
     /// The backend stream for this device session to send samples to

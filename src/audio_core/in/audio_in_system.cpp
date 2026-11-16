@@ -8,15 +8,15 @@
 
 #include "audio_core/audio_event.h"
 #include "audio_core/audio_manager.h"
+#include "audio_core/host.h"
 #include "audio_core/in/audio_in_system.h"
 #include "common/logging.h"
-#include "core/core.h"
 #include "core/core_timing.h"
 #include "core/hle/kernel/k_event.h"
 
 namespace AudioCore::AudioIn {
 
-System::System(Core::System& system_, Kernel::KEvent* event_, const size_t session_id_)
+System::System(Host& system_, Kernel::KEvent* event_, const size_t session_id_)
     : system{system_}, buffer_event{event_},
       session_id{session_id_}, session{std::make_unique<DeviceSession>(system_)} {}
 

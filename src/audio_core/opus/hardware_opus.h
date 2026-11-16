@@ -14,12 +14,13 @@
 #include "audio_core/adsp/apps/opus/shared_memory.h"
 #include "audio_core/adsp/mailbox.h"
 #include "audio_core/errors.h"
+#include "audio_core/host.h"
 
 namespace AudioCore::OpusDecoder {
 class OpusDecoder;
 class HardwareOpus {
 public:
-    HardwareOpus(Core::System& system);
+    HardwareOpus(Host& system);
     Result RegisterDecoder(OpusDecoder* decoder);
     void UnregisterDecoder(OpusDecoder* decoder);
 
@@ -44,7 +45,7 @@ public:
     Result UnmapMemory(void* buffer, u64 buffer_size);
 
 private:
-    Core::System& system;
+    Host& system;
     std::mutex mutex;
     std::array<OpusDecoder*, 24> decoders{};
     ADSP::OpusDecoder::OpusDecoder& opus_decoder;

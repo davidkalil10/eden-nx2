@@ -5,10 +5,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "audio_core/adsp/adsp.h"
+#include "audio_core/host.h"
 
 namespace AudioCore::ADSP {
 
-ADSP::ADSP(Core::System& system, Sink::Sink& sink) {
+ADSP::ADSP(Host& system, Sink::Sink& sink) {
     audio_renderer.emplace(system, sink);
     opus_decoder.emplace(system);
     opus_decoder->Send(Direction::DSP, OpusDecoder::Message::Start);

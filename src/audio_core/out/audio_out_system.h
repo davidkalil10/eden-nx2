@@ -12,10 +12,7 @@
 #include "audio_core/device/audio_buffers.h"
 #include "audio_core/device/device_session.h"
 #include "audio_core/errors.h"
-
-namespace Core {
-class System;
-}
+#include "audio_core/host.h"
 
 namespace Kernel {
 class KEvent;
@@ -61,7 +58,7 @@ enum class State {
  */
 class System {
 public:
-    explicit System(Core::System& system, Kernel::KEvent* event, size_t session_id);
+    explicit System(Host& system, Kernel::KEvent* event, size_t session_id);
     ~System();
 
     /**
@@ -228,7 +225,7 @@ public:
 
 private:
     /// Core system
-    Core::System& system;
+    Host& system;
     /// Process handle
     Kernel::KProcess* handle{};
     /// (Unused)

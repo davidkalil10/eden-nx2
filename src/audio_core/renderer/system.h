@@ -7,6 +7,7 @@
 #include <mutex>
 #include <span>
 
+#include "audio_core/host.h"
 #include "audio_core/renderer/behavior/behavior_info.h"
 #include "audio_core/renderer/command/command_processing_time_estimator.h"
 #include "audio_core/renderer/effect/effect_context.h"
@@ -24,7 +25,6 @@ namespace Core {
 namespace Memory {
 class Memory;
 }
-class System;
 } // namespace Core
 
 namespace Kernel {
@@ -56,7 +56,7 @@ class System {
     };
 
 public:
-    explicit System(Core::System& core, Kernel::KEvent* adsp_rendered_event);
+    explicit System(Host& core, Kernel::KEvent* adsp_rendered_event);
 
     /**
      * Calculate the total size required for all audio render workbuffers.
@@ -218,7 +218,7 @@ public:
 
 private:
     /// Core system
-    Core::System& core;
+    Host& core;
     /// Reference to the ADSP's AudioRenderer for communication
     ::AudioCore::ADSP::AudioRenderer::AudioRenderer& audio_renderer;
     /// Is this system initialized?

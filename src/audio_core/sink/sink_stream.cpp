@@ -18,7 +18,6 @@
 #include "common/fixed_point.h"
 #include "common/scope_exit.h"
 #include "common/settings.h"
-#include "core/core.h"
 #include "core/core_timing.h"
 
 namespace AudioCore::Sink {

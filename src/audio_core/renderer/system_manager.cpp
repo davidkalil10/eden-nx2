@@ -8,13 +8,13 @@
 
 #include "audio_core/adsp/adsp.h"
 #include "audio_core/audio_core.h"
+#include "audio_core/host.h"
 #include "audio_core/renderer/system_manager.h"
 #include "common/thread.h"
-#include "core/core.h"
 
 namespace AudioCore::Renderer {
 
-SystemManager::SystemManager(Core::System& core_)
+SystemManager::SystemManager(Host& core_)
     : core{core_}, audio_renderer{core.AudioCore().ADSP().AudioRenderer()} {}
 
 SystemManager::~SystemManager() {

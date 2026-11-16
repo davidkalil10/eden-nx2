@@ -10,15 +10,15 @@
 #include "audio_core/adsp/apps/audio_renderer/audio_renderer.h"
 #include "audio_core/audio_core.h"
 #include "audio_core/common/common.h"
+#include "audio_core/host.h"
 #include "audio_core/sink/sink.h"
 #include "common/logging.h"
 #include "common/thread.h"
-#include "core/core.h"
 #include "core/core_timing.h"
 
 namespace AudioCore::ADSP::AudioRenderer {
 
-AudioRenderer::AudioRenderer(Core::System& system_, Sink::Sink& sink_)
+AudioRenderer::AudioRenderer(Host& system_, Sink::Sink& sink_)
     : system{system_}, sink{sink_} {}
 
 AudioRenderer::~AudioRenderer() {

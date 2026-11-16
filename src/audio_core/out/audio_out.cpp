@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "audio_core/audio_out_manager.h"
+#include "audio_core/host.h"
 #include "audio_core/out/audio_out.h"
 #include "core/hle/kernel/k_event.h"
 
 namespace AudioCore::AudioOut {
 
-Out::Out(Core::System& system_, Manager& manager_, Kernel::KEvent* event_, size_t session_id_)
+Out::Out(Host& system_, Manager& manager_, Kernel::KEvent* event_, size_t session_id_)
     : manager{manager_}, parent_mutex{manager.mutex}, event{event_}, system{system_, event,
                                                                             session_id_} {}
 

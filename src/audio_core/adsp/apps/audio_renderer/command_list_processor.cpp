@@ -7,17 +7,17 @@
 #include <string>
 
 #include "audio_core/adsp/apps/audio_renderer/command_list_processor.h"
+#include "audio_core/host.h"
 #include "audio_core/renderer/command/command_list_header.h"
 #include "audio_core/renderer/command/commands.h"
 #include "common/settings.h"
-#include "core/core.h"
 #include "core/core_timing.h"
 #include "core/hle/kernel/k_process.h"
 #include "core/memory.h"
 
 namespace AudioCore::ADSP::AudioRenderer {
 
-void CommandListProcessor::Initialize(Core::System& system_, Kernel::KProcess& process,
+void CommandListProcessor::Initialize(Host& system_, Kernel::KProcess& process,
                                       CpuAddr buffer, u64 size, Sink::SinkStream* stream_) {
     system = &system_;
     memory = &process.GetMemory();

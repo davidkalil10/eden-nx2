@@ -4,6 +4,7 @@
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "audio_core/host.h"
 #include "audio_core/opus/decoder.h"
 #include "audio_core/opus/hardware_opus.h"
 #include "audio_core/opus/parameters.h"
@@ -22,7 +23,7 @@ OpusPacketHeader ReverseHeader(OpusPacketHeader header) {
 }
 } // namespace
 
-OpusDecoder::OpusDecoder(Core::System& system_, HardwareOpus& hardware_opus_)
+OpusDecoder::OpusDecoder(Host& system_, HardwareOpus& hardware_opus_)
     : system{system_}, hardware_opus{hardware_opus_} {}
 
 OpusDecoder::~OpusDecoder() {

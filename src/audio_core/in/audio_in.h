@@ -5,11 +5,8 @@
 
 #include <mutex>
 
+#include "audio_core/host.h"
 #include "audio_core/in/audio_in_system.h"
-
-namespace Core {
-class System;
-}
 
 namespace Kernel {
 class KEvent;
@@ -25,7 +22,7 @@ class Manager;
  */
 class In {
 public:
-    explicit In(Core::System& system, Manager& manager, Kernel::KEvent* event, size_t session_id);
+    explicit In(Host& system, Manager& manager, Kernel::KEvent* event, size_t session_id);
 
     /**
      * Free this audio in from the audio in manager.

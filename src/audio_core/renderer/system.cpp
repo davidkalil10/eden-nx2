@@ -14,6 +14,7 @@
 #include "audio_core/common/common.h"
 #include "audio_core/common/feature_support.h"
 #include "audio_core/common/workbuffer_allocator.h"
+#include "audio_core/host.h"
 #include "audio_core/renderer/behavior/info_updater.h"
 #include "audio_core/renderer/command/command_buffer.h"
 #include "audio_core/renderer/command/command_generator.h"
@@ -32,7 +33,6 @@
 #include "audio_core/renderer/voice/voice_info.h"
 #include "audio_core/renderer/voice/voice_state.h"
 #include "common/alignment.h"
-#include "core/core.h"
 #include "core/core_timing.h"
 #include "core/hle/kernel/k_event.h"
 #include "core/hle/kernel/k_process.h"
@@ -99,7 +99,7 @@ u64 System::GetWorkBufferSize(const AudioRendererParameterInternal& params) {
     return size;
 }
 
-System::System(Core::System& core_, Kernel::KEvent* adsp_rendered_event_)
+System::System(Host& core_, Kernel::KEvent* adsp_rendered_event_)
     : core{core_}, audio_renderer{core.AudioCore().ADSP().AudioRenderer()},
       adsp_rendered_event{adsp_rendered_event_} {}
 

@@ -5,11 +5,8 @@
 
 #include <mutex>
 
+#include "audio_core/host.h"
 #include "audio_core/out/audio_out_system.h"
-
-namespace Core {
-class System;
-}
 
 namespace Kernel {
 class KEvent;
@@ -25,7 +22,7 @@ class Manager;
  */
 class Out {
 public:
-    explicit Out(Core::System& system, Manager& manager, Kernel::KEvent* event, size_t session_id);
+    explicit Out(Host& system, Manager& manager, Kernel::KEvent* event, size_t session_id);
 
     /**
      * Free this audio out from the audio out manager.

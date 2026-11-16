@@ -6,10 +6,7 @@
 #include <string_view>
 
 #include "audio_core/audio_render_manager.h"
-
-namespace Core {
-class System;
-}
+#include "audio_core/host.h"
 
 namespace AudioCore {
 namespace Sink {
@@ -30,7 +27,7 @@ public:
         }
     };
 
-    explicit AudioDevice(Core::System& system, u64 applet_resource_user_id, u32 revision);
+    explicit AudioDevice(Host& system, u64 applet_resource_user_id, u32 revision);
 
     /**
      * Get a list of the available output devices.

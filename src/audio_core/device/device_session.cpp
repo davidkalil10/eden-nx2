@@ -8,8 +8,8 @@
 #include "audio_core/audio_manager.h"
 #include "audio_core/device/audio_buffer.h"
 #include "audio_core/device/device_session.h"
+#include "audio_core/host.h"
 #include "audio_core/sink/sink_stream.h"
-#include "core/core.h"
 #include "core/core_timing.h"
 #include "core/guest_memory.h"
 #include "core/memory.h"
@@ -21,7 +21,7 @@ namespace AudioCore {
 using namespace std::literals;
 constexpr auto INCREMENT_TIME{5ms};
 
-DeviceSession::DeviceSession(Core::System& system_)
+DeviceSession::DeviceSession(Host& system_)
     : system{system_}, thread_event{Core::Timing::CreateEvent(
                            "AudioOutSampleTick",
                            [this](s64 time, std::chrono::nanoseconds) { return ThreadFunc(); })} {}

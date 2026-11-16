@@ -6,6 +6,7 @@
 #include <span>
 
 #include "audio_core/common/common.h"
+#include "audio_core/host.h"
 #include "audio_core/renderer/command/command_list_header.h"
 #include "common/common_types.h"
 
@@ -13,7 +14,6 @@ namespace Core {
 namespace Memory {
 class Memory;
 }
-class System;
 } // namespace Core
 
 namespace Kernel {
@@ -44,7 +44,7 @@ public:
      * @param size   - The size of the buffer.
      * @param stream - The stream to be used for sending the samples.
      */
-    void Initialize(Core::System& system, Kernel::KProcess& process, CpuAddr buffer, u64 size,
+    void Initialize(Host& system, Kernel::KProcess& process, CpuAddr buffer, u64 size,
                     Sink::SinkStream* stream);
 
     /**
@@ -78,7 +78,7 @@ public:
     u64 Process(u32 session_id);
 
     /// Core system
-    Core::System* system{};
+    Host* system{};
     /// Core memory
     Core::Memory::Memory* memory{};
     /// Stream for the processed samples

@@ -12,9 +12,9 @@
 #include "audio_core/adsp/apps/opus/shared_memory.h"
 #include "audio_core/audio_core.h"
 #include "audio_core/common/common.h"
+#include "audio_core/host.h"
 #include "common/logging.h"
 #include "common/thread.h"
-#include "core/core.h"
 #include "core/core_timing.h"
 
 namespace AudioCore::ADSP::OpusDecoder {
@@ -36,7 +36,7 @@ bool IsValidMultiStreamStreamCounts(s32 total_stream_count, s32 stereo_stream_co
 }
 } // namespace
 
-OpusDecoder::OpusDecoder(Core::System& system_) : system{system_} {
+OpusDecoder::OpusDecoder(Host& system_) : system{system_} {
     init_thread = std::jthread([this](std::stop_token stop_token) { Init(stop_token); });
 }
 

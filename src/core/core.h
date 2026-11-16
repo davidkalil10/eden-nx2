@@ -18,6 +18,7 @@
 #include "common/common_types.h"
 #include "core/file_sys/vfs/vfs_types.h"
 #include "core/hle/service/os/event.h"
+#include "audio_core/host.h"
 #include "core/hle/service/kernel_helpers.h"
 #include "video_core/host.h"
 
@@ -143,7 +144,7 @@ enum class SystemResultStatus : u32 {
     ErrorLoader,         ///< The base for loader errors (too many to repeat)
 };
 
-class System final : public VideoCore::Host {
+class System final : public ::AudioCore::Host, public VideoCore::Host {
 public:
     using CurrentBuildProcessID = std::array<u8, 0x20>;
 
@@ -176,13 +177,13 @@ public:
     void Pause();
 
     /// Check if the core is currently paused.
-    [[nodiscard]] bool IsPaused() const;
+    [[nodiscard]] bool IsPaused() const override;
 
     /// Shutdown the main emulated process.
     void ShutdownMainProcess();
 
     /// Check if the core is shutting down.
-    [[nodiscard]] bool IsShuttingDown() const;
+    [[nodiscard]] bool IsShuttingDown() const override;
 
     /// Set the shutting down state.
     void SetShuttingDown(bool shutting_down);
@@ -269,7 +270,7 @@ public:
     [[nodiscard]] const VideoCore::RendererBase& Renderer() const;
 
     /// Gets a mutable reference to the audio interface
-    [[nodiscard]] AudioCore::AudioCore& AudioCore();
+    [[nodiscard]] AudioCore::AudioCore& AudioCore() override;
 
     /// Gets an immutable reference to the audio interface.
     [[nodiscard]] const AudioCore::AudioCore& AudioCore() const;
@@ -293,13 +294,13 @@ public:
     [[nodiscard]] const Kernel::KProcess* ApplicationProcess() const;
 
     /// Provides a reference to the core timing instance.
-    [[nodiscard]] Timing::CoreTiming& CoreTiming();
+    [[nodiscard]] Timing::CoreTiming& CoreTiming() override;
 
     /// Provides a constant reference to the core timing instance.
     [[nodiscard]] const Timing::CoreTiming& CoreTiming() const;
 
     /// Provides a reference to the kernel instance.
-    [[nodiscard]] Kernel::KernelCore& Kernel();
+    [[nodiscard]] Kernel::KernelCore& Kernel() override;
 
     /// Provides a constant reference to the kernel instance.
     [[nodiscard]] const Kernel::KernelCore& Kernel() const;

@@ -3,15 +3,15 @@
 
 #include "audio_core/audio_render_manager.h"
 #include "audio_core/common/audio_renderer_parameter.h"
+#include "audio_core/host.h"
 #include "audio_core/renderer/audio_renderer.h"
 #include "audio_core/renderer/system_manager.h"
-#include "core/core.h"
 #include "core/hle/kernel/k_process.h"
 #include "audio_core/errors.h"
 
 namespace AudioCore::Renderer {
 
-Renderer::Renderer(Core::System& system_, Manager& manager_, Kernel::KEvent* rendered_event)
+Renderer::Renderer(Host& system_, Manager& manager_, Kernel::KEvent* rendered_event)
     : core{system_}, manager{manager_}, system{system_, rendered_event} {}
 
 Result Renderer::Initialize(const AudioRendererParameterInternal& params,

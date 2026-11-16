@@ -6,7 +6,6 @@
 
 #include "audio_core/adsp/apps/audio_renderer/command_list_processor.h"
 #include "audio_core/renderer/command/performance/performance.h"
-#include "core/core.h"
 #include "core/core_timing.h"
 
 namespace AudioCore::Renderer {

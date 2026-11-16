@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "audio_core/adsp/apps/opus/opus_decoder.h"
+#include "audio_core/host.h"
 #include "audio_core/opus/decoder_manager.h"
 #include "common/alignment.h"
 
@@ -30,7 +31,7 @@ bool IsValidStreamCount(u32 channel_count, u32 total_stream_count, u32 stereo_st
 
 } // namespace
 
-OpusDecoderManager::OpusDecoderManager(Core::System& system_)
+OpusDecoderManager::OpusDecoderManager(Host& system_)
     : system{system_}, hardware_opus{system} {
     for (u32 i = 0; i < MaxChannels; i++) {
         required_workbuffer_sizes[i] = hardware_opus.GetWorkBufferSize(1 + i);
