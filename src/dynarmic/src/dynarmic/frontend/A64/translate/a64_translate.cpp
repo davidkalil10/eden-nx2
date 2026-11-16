@@ -45,7 +45,8 @@ void Translate(IR::Block& block, LocationDescriptor descriptor, A64::UserConfig 
 }
 
 bool TranslateSingleInstruction(IR::Block& block, LocationDescriptor descriptor, u32 instruction) {
-    TranslatorVisitor visitor{block, descriptor, {}};
+    const A64::UserConfig conf{};
+    TranslatorVisitor visitor{block, descriptor, conf};
 
     bool should_continue = false;
     if (auto const decoder = Decode<TranslatorVisitor, bool>(visitor, instruction))

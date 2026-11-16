@@ -80,7 +80,8 @@ void TranslateArm(IR::Block& block, LocationDescriptor descriptor, const A32::Us
 }
 
 bool TranslateSingleArmInstruction(IR::Block& block, LocationDescriptor descriptor, u32 arm_instruction) {
-    TranslatorVisitor visitor{block, descriptor, {}};
+    const A32::UserConfig conf{};
+    TranslatorVisitor visitor{block, descriptor, conf};
 
     bool should_continue = true;
 

@@ -179,7 +179,8 @@ void TranslateThumb(IR::Block& block, LocationDescriptor descriptor, const A32::
 }
 
 bool TranslateSingleThumbInstruction(IR::Block& block, LocationDescriptor descriptor, u32 thumb_instruction) {
-    TranslatorVisitor visitor{block, descriptor, {}};
+    const A32::UserConfig conf{};
+    TranslatorVisitor visitor{block, descriptor, conf};
 
     bool should_continue = true;
 
