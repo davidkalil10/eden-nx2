@@ -14,7 +14,6 @@
 #include "common/assert.h"
 #include "common/logging.h"
 #include "common/settings.h"
-#include "core/core_timing.h"
 #include "common/frontend/emu_window.h"
 #include "video_core/capture.h"
 #include "video_core/present.h"

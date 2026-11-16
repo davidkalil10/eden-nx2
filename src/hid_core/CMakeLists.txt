@@ -13,10 +13,19 @@ add_library(hid_core STATIC
     frontend/emulated_devices.h
     frontend/input_converter.cpp
     frontend/input_converter.h
-    frontend/input_interpreter.cpp
-    frontend/input_interpreter.h
     frontend/motion_input.cpp
     frontend/motion_input.h
+    hid_core.cpp
+    hid_core.h
+    hid_result.h
+    hid_types.h
+    hid_util.h
+)
+
+# HLE-side HID code depends on the kernel and services, so it is built as part of core
+target_sources(core PRIVATE
+    frontend/input_interpreter.cpp
+    frontend/input_interpreter.h
     hidbus/hidbus_base.cpp
     hidbus/hidbus_base.h
     hidbus/ringcon.cpp
@@ -132,11 +141,6 @@ add_library(hid_core STATIC
     resources/shared_memory_format.h
     resources/shared_memory_holder.cpp
     resources/shared_memory_holder.h
-    hid_core.cpp
-    hid_core.h
-    hid_result.h
-    hid_types.h
-    hid_util.h
     resource_manager.cpp
     resource_manager.h
 )
@@ -158,4 +162,4 @@ else()
 endif()
 
 create_target_directory_groups(hid_core)
-target_link_libraries(hid_core PUBLIC core)
+target_link_libraries(hid_core PUBLIC common)

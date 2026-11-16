@@ -11,7 +11,6 @@
 #include "audio_core/renderer/system_manager.h"
 #include "common/thread.h"
 #include "core/core.h"
-#include "core/core_timing.h"
 
 namespace AudioCore::Renderer {
 
