@@ -135,8 +135,7 @@ void RoomJson::Delete() {
 
 std::unique_ptr<AnnounceMultiplayerRoom::Backend> MakeRoomJsonBackend() {
     return std::make_unique<RoomJson>(Settings::values.web_api_url.GetValue(),
-                                      Settings::values.eden_username.GetValue(),
-                                      Settings::values.eden_token.GetValue());
+                                      Settings::values.eden_username.GetValue());
 }
 
 } // namespace WebService

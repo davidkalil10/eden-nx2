@@ -35,6 +35,7 @@
 #include "network/announce_multiplayer_session.h"
 #include "network/network.h"
 #include "network/room.h"
+
 #ifdef ENABLE_WEB_SERVICE
 #include "web_service/announce_room_json.h"
 #endif

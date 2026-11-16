@@ -94,8 +94,6 @@ static jmethodID s_yuzu_input_device_has_keys;
 static jmethodID s_add_netplay_message;
 static jmethodID s_clear_chat;
 
-static constexpr jint JNI_VERSION = JNI_VERSION_1_6;
-
 namespace Common::Android {
     JNIEnv *GetEnvForThread() {
         thread_local static struct OwnedEnv {
