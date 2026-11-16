@@ -110,6 +110,7 @@ signals:
     void DumpRomFSRequested(u64 program_id, const std::string& game_path, DumpRomFSTarget target);
     void VerifyIntegrityRequested(const std::string& game_path);
     void ConvertToNxRequested(const std::string& game_path);
+    void ExtractNxRequested(const std::string& game_path);
     void AddToNxRequested(const std::string& game_path);
     void RemoveFromNxRequested(const std::string& game_path);
     void EditNxMetadataRequested(const std::string& game_path);

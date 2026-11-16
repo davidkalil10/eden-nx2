@@ -526,6 +526,7 @@ void GameList::AddGamePopup(QMenu& context_menu, u64 program_id, const std::stri
     QAction* verify_integrity = context_menu.addAction(tr("Verify Integrity"));
     QAction* copy_tid = context_menu.addAction(tr("Copy Title ID to Clipboard"));
     QAction* convert_nx = nullptr;
+    QAction* extract_nx = nullptr;
     QAction* add_to_nx = nullptr;
     QAction* remove_from_nx = nullptr;
     QAction* edit_nx_metadata = nullptr;
@@ -535,6 +536,8 @@ void GameList::AddGamePopup(QMenu& context_menu, u64 program_id, const std::stri
         convert_nx->setEnabled(!nx_tool_running);
     }
     if (NxTools::IsNxArchive(path)) {
+        extract_nx = context_menu.addAction(tr("Dump NX..."));
+        extract_nx->setEnabled(!nx_tool_running);
         QMenu* nx_menu = context_menu.addMenu(tr("Manage NX Archive"));
         add_to_nx = nx_menu->addAction(tr("Add Update or DLC..."));
         remove_from_nx = nx_menu->addAction(tr("Remove Update or DLC..."));
@@ -628,6 +631,8 @@ void GameList::AddGamePopup(QMenu& context_menu, u64 program_id, const std::stri
                 [this, path]() { emit ConvertToNxRequested(path); });
     }
     if (add_to_nx) {
+        connect(extract_nx, &QAction::triggered, this,
+                [this, path]() { emit ExtractNxRequested(path); });
         connect(add_to_nx, &QAction::triggered, this,
                 [this, path]() { emit AddToNxRequested(path); });
         connect(remove_from_nx, &QAction::triggered, this,
