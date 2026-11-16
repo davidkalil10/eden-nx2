@@ -10,6 +10,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 
 #include "common/polyfill_thread.h"
 #include "common/uuid.h"
@@ -31,6 +32,14 @@ namespace Service::Set {
 
 Result GetFirmwareVersionImpl(FirmwareVersionFormat& out_firmware, Core::System& system,
                               GetFirmwareVersionType type);
+
+/// Returns the installed firmware version along with the result of the lookup.
+inline std::pair<FirmwareVersionFormat, Result> GetInstalledFirmwareVersion(Core::System& system) {
+    FirmwareVersionFormat firmware_data{};
+    const auto result =
+        GetFirmwareVersionImpl(firmware_data, system, GetFirmwareVersionType::Version2);
+    return {firmware_data, result};
+}
 
 class ISystemSettingsServer final : public ServiceFramework<ISystemSettingsServer> {
 public:

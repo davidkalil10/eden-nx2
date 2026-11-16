@@ -53,7 +53,7 @@ extern "C" {
 #include "common/settings.h"
 #include "common/string_util.h"
 #include "common/thread.h"
-#include "frontend_common/play_time_manager.h"
+#include "core/play_time_manager.h"
 #include "core/constants.h"
 #include "core/core.h"
 #include "core/cpu_manager.h"
@@ -103,6 +103,9 @@ extern "C" {
 #include "video_core/vulkan_common/vulkan_surface.h"
 #include "video_core/shader_notify.h"
 #include "network/announce_multiplayer_session.h"
+#ifdef ENABLE_WEB_SERVICE
+#include "web_service/announce_room_json.h"
+#endif
 
 #define jconst [[maybe_unused]] const auto
 #define jauto [[maybe_unused]] auto
@@ -1795,7 +1798,12 @@ Java_org_yuzu_yuzu_1emu_NativeLibrary_initMultiplayer(
         return;
     }
 
+#ifdef ENABLE_WEB_SERVICE
+    announce_multiplayer_session = std::make_shared<Core::AnnounceMultiplayerSession>(
+        &WebService::MakeRoomJsonBackend);
+#else
     announce_multiplayer_session = std::make_shared<Core::AnnounceMultiplayerSession>();
+#endif
 
     multiplayer = std::make_unique<AndroidMultiplayer>(s_instance.System(), announce_multiplayer_session);
     multiplayer->NetworkInit();

@@ -35,6 +35,9 @@
 #include "network/announce_multiplayer_session.h"
 #include "network/network.h"
 #include "network/room.h"
+#ifdef ENABLE_WEB_SERVICE
+#include "web_service/announce_room_json.h"
+#endif
 
 #undef _UNICODE
 #include <getopt.h>
@@ -297,7 +300,12 @@ void LaunchRoom(int argc, char** argv, bool called_by_option) {
             std::exit(-1);
         }
         LOG_INFO(Network, "Room is open. Close with Q+Enter...");
+#ifdef ENABLE_WEB_SERVICE
+        auto announce_session = std::make_unique<Core::AnnounceMultiplayerSession>(
+            &WebService::MakeRoomJsonBackend);
+#else
         auto announce_session = std::make_unique<Core::AnnounceMultiplayerSession>();
+#endif
         if (announce) {
             announce_session->Start();
         }

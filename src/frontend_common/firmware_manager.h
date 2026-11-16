@@ -95,13 +95,7 @@ FirmwareCheckResult VerifyFirmware(Core::System &system);
  */
 inline std::pair<Service::Set::FirmwareVersionFormat, Result> GetFirmwareVersion(Core::System &system)
 {
-    Service::Set::FirmwareVersionFormat firmware_data{};
-    const auto result
-        = Service::Set::GetFirmwareVersionImpl(firmware_data,
-                                               system,
-                                               Service::Set::GetFirmwareVersionType::Version2);
-
-    return {firmware_data, result};
+    return Service::Set::GetInstalledFirmwareVersion(system);
 }
 
 // TODO(crueter): GET AS STRING

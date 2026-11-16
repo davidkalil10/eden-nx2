@@ -148,7 +148,7 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 }
 
 // Frontend //
-#include "frontend_common/play_time_manager.h"
+#include "core/play_time_manager.h"
 
 #ifdef ENABLE_UPDATE_CHECKER
 #include "frontend_common/update_checker.h"

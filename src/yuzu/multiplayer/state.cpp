@@ -21,6 +21,10 @@
 #include "yuzu/multiplayer/state.h"
 #include "yuzu/util/clickable_label.h"
 
+#ifdef ENABLE_WEB_SERVICE
+#include "web_service/announce_room_json.h"
+#endif
+
 MultiplayerState::MultiplayerState(QWidget* parent, QStandardItemModel* game_list_model_,
                                    QAction* leave_room_, QAction* show_room_, Core::System& system_)
     : QWidget(parent), game_list_model(game_list_model_), leave_room(leave_room_),
@@ -39,7 +43,12 @@ MultiplayerState::MultiplayerState(QWidget* parent, QStandardItemModel* game_lis
     qRegisterMetaType<Network::RoomMember::State>();
     qRegisterMetaType<Network::RoomMember::Error>();
     qRegisterMetaType<WebService::WebResult>();
+#ifdef ENABLE_WEB_SERVICE
+    announce_multiplayer_session = std::make_shared<Core::AnnounceMultiplayerSession>(
+        &WebService::MakeRoomJsonBackend);
+#else
     announce_multiplayer_session = std::make_shared<Core::AnnounceMultiplayerSession>();
+#endif
     announce_multiplayer_session->BindErrorCallback(
         [this](const WebService::WebResult& result) { emit AnnounceFailed(result); });
     connect(this, &MultiplayerState::AnnounceFailed, this, &MultiplayerState::OnAnnounceFailed);
