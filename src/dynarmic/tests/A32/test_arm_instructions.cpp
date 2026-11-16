@@ -928,14 +928,6 @@ TEST_CASE("arm: BX loops can be interrupted", "[arm][A32]") {
         }
     };
 
-    const u32 ldr_r1_r2 = 0xe5921000;
-    const u32 bx_r3 = 0xe12fff13;
-    const u32 bx_lr = 0xe12fff1e;
-    const u32 cmp_r0_0 = 0xe3500000;
-    const u32 beq_unwind = 0x0a000003;
-    const u32 sub_r0_r0_1 = 0xe2400001;
-    const u32 bl_recurse = 0xebfffffb;
-
     const u32 bx_loop = 0x00;
     const u32 bx_lr_loop = 0x08;
     const u32 recursion = 0x10;
@@ -945,11 +937,17 @@ TEST_CASE("arm: BX loops can be interrupted", "[arm][A32]") {
         for (const bool cycle_counting : {true, false}) {
             HaltingEnv test_env;
             test_env.code_mem = {
-                ldr_r1_r2, bx_r3,
-                ldr_r1_r2, bx_lr,
-                cmp_r0_0, beq_unwind, sub_r0_r0_1, bl_recurse,
-                ldr_r1_r2, bx_lr,
-                bx_lr,
+                0xe5921000,  // ldr r1, [r2]
+                0xe12fff13,  // bx r3
+                0xe5921000,  // ldr r1, [r2]
+                0xe12fff1e,  // bx lr
+                0xe3500000,  // cmp r0, #0
+                0x0a000003,  // beq +#20
+                0xe2400001,  // sub r0, r0, #1
+                0xebfffffb,  // bl -#12
+                0xe5921000,  // ldr r1, [r2]
+                0xe12fff1e,  // bx lr
+                0xe12fff1e,  // bx lr
             };
             A32::UserConfig user_config;
             user_config.callbacks = &test_env;
