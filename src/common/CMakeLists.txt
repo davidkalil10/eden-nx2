@@ -137,6 +137,7 @@ add_library(
     uuid.cpp
     uuid.h
     vector_math.h
+    web_result.h
     zstd_compression.cpp
     zstd_compression.h
     fs/ryujinx_compat.h fs/ryujinx_compat.cpp
@@ -171,13 +172,7 @@ if(ANDROID)
         android/android_common.cpp
         android/android_common.h
         android/id_cache.cpp
-        android/id_cache.h
-        android/multiplayer/multiplayer.cpp
-        android/multiplayer/multiplayer.h
-        android/applets/software_keyboard.cpp
-        android/applets/software_keyboard.h
-        android/applets/web_browser.cpp
-        android/applets/web_browser.h)
+        android/id_cache.h)
 endif()
 
 if(ARCHITECTURE_x86_64)

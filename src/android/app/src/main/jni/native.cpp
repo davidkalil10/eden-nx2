@@ -41,7 +41,7 @@ extern "C" {
 #include <libavcodec/jni.h>
 }
 
-#include "common/android/multiplayer/multiplayer.h"
+#include "jni/multiplayer/multiplayer.h"
 #include "common/android/android_common.h"
 #include "common/android/id_cache.h"
 #include "common/dynamic_library.h"
@@ -77,7 +77,7 @@ extern "C" {
 #include "core/frontend/applets/profile_select.h"
 #include "core/frontend/applets/software_keyboard.h"
 #include "core/frontend/applets/web_browser.h"
-#include "common/android/applets/web_browser.h"
+#include "jni/applets/web_browser.h"
 #include "core/file_sys/common_funcs.h"
 #include "core/hle/service/am/applet_manager.h"
 #include "core/hle/service/am/frontend/applets.h"
@@ -1770,7 +1770,22 @@ Java_org_yuzu_yuzu_1emu_NativeLibrary_initJvm(JNIEnv *env, jclass clazz) {
     if (env->GetJavaVM(&vm) != JNI_OK)
         return;
 
+    InitFFmpegOnLoad(vm);
     Common::Android::Initialize(vm, env);
+    Common::Android::SoftwareKeyboard::InitJNI(env);
+    Common::Android::WebBrowser::InitJNI(env);
+}
+
+extern "C" void JNI_OnUnload(JavaVM* vm, [[maybe_unused]] void* reserved) {
+    JNIEnv* env;
+    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        return;
+    }
+
+    Common::Android::Shutdown(env);
+    Common::Android::SoftwareKeyboard::CleanupJNI(env);
+    Common::Android::WebBrowser::CleanupJNI(env);
+    AndroidMultiplayer::NetworkShutdown();
 }
 
 JNIEXPORT void JNICALL

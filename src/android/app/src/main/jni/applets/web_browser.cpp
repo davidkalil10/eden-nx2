@@ -3,7 +3,7 @@
 
 #include "common/android/android_common.h"
 #include "common/android/id_cache.h"
-#include "common/android/applets/web_browser.h"
+#include "jni/applets/web_browser.h"
 #include "common/logging.h"
 
 static jclass s_native_library_class = nullptr;

@@ -10,7 +10,7 @@
 #include <jni.h>
 
 #include "common/android/android_common.h"
-#include "common/android/applets/software_keyboard.h"
+#include "jni/applets/software_keyboard.h"
 #include "common/android/id_cache.h"
 #include "common/logging.h"
 #include "common/string_util.h"

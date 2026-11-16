@@ -7,6 +7,12 @@
 add_library(yuzu-android SHARED
     emu_window/emu_window.cpp
     emu_window/emu_window.h
+    applets/software_keyboard.cpp
+    applets/software_keyboard.h
+    applets/web_browser.cpp
+    applets/web_browser.h
+    multiplayer/multiplayer.cpp
+    multiplayer/multiplayer.h
     native.cpp
     native.h
     native_config.cpp

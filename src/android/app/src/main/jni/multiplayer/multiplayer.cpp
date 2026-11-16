@@ -10,9 +10,10 @@
 #include "network/network.h"
 #include "android/log.h"
 
+#include "common/logging.h"
 #include "common/settings.h"
 #include "web_service/web_backend.h"
-#include "web_service/web_result.h"
+#include "common/web_result.h"
 
 #include <thread>
 #include <chrono>
