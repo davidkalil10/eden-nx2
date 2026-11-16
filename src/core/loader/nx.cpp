@@ -9,7 +9,7 @@
 #include <mutex>
 #include <optional>
 
-#include <fmt/format.h>
+#include <format>
 #include <nx_disk_source.hpp>
 #include <nx_session.hpp>
 #include <zstd.h>
@@ -451,7 +451,7 @@ bool UpdateDisabled(u64 program_id, u32 version) {
     if (it == Settings::values.disabled_addons.end()) {
         return false;
     }
-    const auto key = fmt::format("Update@{}", version);
+    const auto key = std::format("Update@{}", version);
     return std::find(it->second.begin(), it->second.end(), "Update") != it->second.end() ||
            std::find(it->second.begin(), it->second.end(), key) != it->second.end();
 }
@@ -560,7 +560,7 @@ struct AppLoader_NX::Impl {
         std::string version{Archive().snapshot_display_version(si)};
         const auto& s = Archive().snapshots()[si];
         if (version.empty() && IsUpdate(s.type)) {
-            version = fmt::format("v{}", s.numeric_version);
+            version = std::format("v{}", s.numeric_version);
         }
         return version;
     }
@@ -640,7 +640,7 @@ struct AppLoader_NX::Impl {
             const auto name = entry->GetName();
             return name.ends_with(".tik") || name.ends_with(".cert");
         });
-        return FileSys::BuildPartitionFile(fmt::format("snapshot{}.nsp", si), std::move(files));
+        return FileSys::BuildPartitionFile(std::format("snapshot{}.nsp", si), std::move(files));
     }
 
     void OpenNative(u32 pi, std::size_t program_index) {

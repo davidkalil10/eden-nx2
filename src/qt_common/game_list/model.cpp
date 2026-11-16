@@ -46,7 +46,17 @@ GameListModel::GameListModel(std::shared_ptr<FileSys::VfsFilesystem> vfs_,
 
 GameListModel::~GameListModel() = default;
 
+void GameListModel::SetScanEnabled(bool enabled) {
+    scan_enabled = enabled;
+    if (!enabled) {
+        current_worker.reset();
+    }
+}
+
 void GameListModel::PopulateAsync(QVector<UISettings::GameDir>& game_dirs) {
+    if (!scan_enabled) {
+        return;
+    }
     emit PopulatingStarted();
 
     current_worker.reset();
@@ -158,6 +168,9 @@ void GameListModel::RemoveFavorite(u64 program_id) {
 }
 
 void GameListModel::Repopulate() {
+    if (!scan_enabled) {
+        return;
+    }
     current_worker.reset();
     QtCommon::system->GetFileSystemController().CreateFactories(*QtCommon::vfs);
     PopulateAsync(UISettings::values.game_dirs);

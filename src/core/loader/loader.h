@@ -329,6 +329,22 @@ public:
     }
 
     /**
+     * Get the display version of the application
+     *
+     * @param[out] version Reference to store the display version into
+     *
+     * @return ResultStatus result of function
+     */
+    virtual ResultStatus ReadDisplayVersion(std::string& version) {
+        FileSys::NACP control;
+        if (const ResultStatus result = ReadControlData(control); result != ResultStatus::Success) {
+            return result;
+        }
+        version = control.GetVersionString();
+        return ResultStatus::Success;
+    }
+
+    /**
      * Get the RomFS of the manual of the application
      *
      * @param[out] out_file The raw manual RomFS of the game

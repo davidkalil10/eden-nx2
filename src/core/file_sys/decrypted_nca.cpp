@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <format>
 #include <map>
 #include <optional>
 
@@ -128,7 +129,7 @@ bool SetTitleKey(NcaReader& reader, std::string& error) {
         return false;
     }
     if (!keys.HasKey(Core::Crypto::S128KeyType::Titlekek, master_key_id)) {
-        error = fmt::format("missing titlekek for key generation {}", reader.GetKeyGeneration());
+        error = std::format("missing titlekek for key generation {}", reader.GetKeyGeneration());
         return false;
     }
     const auto titlekek = keys.GetKey(Core::Crypto::S128KeyType::Titlekek, master_key_id);
@@ -325,7 +326,7 @@ VirtualFile DecryptSection(const NcaReader& reader, const NcaFsHeaderReader& hea
         break;
     }
     default:
-        error = fmt::format("unsupported NCA encryption type {}", static_cast<int>(type));
+        error = std::format("unsupported NCA encryption type {}", static_cast<int>(type));
         return nullptr;
     }
     return pieces.Build(std::move(name), size, raw);
@@ -455,7 +456,7 @@ VirtualFile BuildAddOnContentNca(u64 title_id, VirtualFile romfs) {
     if (section_size > romfs_size) {
         parts.push_back(std::make_shared<StaticVfsFile>(u8{0}, section_size - romfs_size));
     }
-    return ConcatenatedVfsFile::MakeConcatenatedFile(fmt::format("{:016x}.nca", title_id),
+    return ConcatenatedVfsFile::MakeConcatenatedFile(std::format("{:016x}.nca", title_id),
                                                      std::move(parts));
 }
 
@@ -493,7 +494,7 @@ VirtualFile OpenDecryptedNca(VirtualFile nca, std::string& error) {
         }
         NcaFsHeaderReader fs_header;
         if (R_FAILED(fs_header.Initialize(reader, i))) {
-            error = fmt::format("invalid FS header {}", i);
+            error = std::format("invalid FS header {}", i);
             return nullptr;
         }
         const auto offset = static_cast<s64>(reader.GetFsOffset(i));
@@ -501,7 +502,7 @@ VirtualFile OpenDecryptedNca(VirtualFile nca, std::string& error) {
         // A sparse section is larger than its stored bytes: the update brings what was cut.
         const bool sparse = fs_header.ExistsSparseLayer();
         if (end <= offset || (!sparse && static_cast<u64>(end) > nca->GetSize())) {
-            error = fmt::format("FS section {} is out of range", i);
+            error = std::format("FS section {} is out of range", i);
             return nullptr;
         }
         dense_size = std::max(dense_size, end);
@@ -511,16 +512,16 @@ VirtualFile OpenDecryptedNca(VirtualFile nca, std::string& error) {
             any_sparse = true;
             raw = DenseSparseSection(reader, fs_header, nca, end - offset, holes, error);
             if (raw == nullptr) {
-                error = fmt::format("FS section {}: {}", i, error);
+                error = std::format("FS section {}: {}", i, error);
                 return nullptr;
             }
         } else {
             raw = std::make_shared<OffsetVfsFile>(nca, end - offset, offset);
         }
         auto plain = DecryptSection(reader, fs_header, std::move(raw), offset,
-                                    fmt::format("fs{}", i), error);
+                                    std::format("fs{}", i), error);
         if (plain == nullptr) {
-            error = fmt::format("FS section {}: {}", i, error);
+            error = std::format("FS section {}: {}", i, error);
             return nullptr;
         }
         if (!holes.empty()) {
@@ -531,7 +532,7 @@ VirtualFile OpenDecryptedNca(VirtualFile nca, std::string& error) {
             for (const auto& [begin, hole_end] : holes) {
                 zeroed.Set(begin, hole_end, zeros);
             }
-            plain = zeroed.Build(fmt::format("fs{}", i), end - offset, plain);
+            plain = zeroed.Build(std::format("fs{}", i), end - offset, plain);
         }
         sections.emplace_back(offset, std::move(plain));
 
@@ -549,7 +550,7 @@ VirtualFile OpenDecryptedNca(VirtualFile nca, std::string& error) {
             if (std::any_of(bytes + SparseMarkerOffset,
                             bytes + SparseMarkerOffset + SparseMarker.size(),
                             [](u8 b) { return b != 0; })) {
-                error = fmt::format("FS section {}: reserved bytes are not empty", i);
+                error = std::format("FS section {}: reserved bytes are not empty", i);
                 return nullptr;
             }
             std::memcpy(bytes + SparseMarkerOffset, SparseMarker.data(), SparseMarker.size());
@@ -625,7 +626,7 @@ VirtualFile OpenDecryptedPackage(VirtualFile package, std::string& error) {
         if (name.ends_with(".nca")) {
             auto plain = OpenDecryptedNca(file, error);
             if (plain == nullptr) {
-                error = fmt::format("{}: {}", name, error);
+                error = std::format("{}: {}", name, error);
                 return nullptr;
             }
             file = std::move(plain);
@@ -664,7 +665,7 @@ VirtualFile OpenDecryptedGamecard(VirtualFile image, std::string& error) {
         }
         const auto entries = ReadHfs0(image, partition.offset, partition.offset + partition.size);
         if (!entries) {
-            error = fmt::format("invalid {} partition", partition.name);
+            error = std::format("invalid {} partition", partition.name);
             return nullptr;
         }
         files.insert(files.end(), entries->begin(), entries->end());
@@ -688,12 +689,12 @@ VirtualFile OpenDecryptedGamecard(VirtualFile image, std::string& error) {
         auto plain = OpenDecryptedNca(
             std::make_shared<OffsetVfsFile>(image, entry.size, entry.offset, entry.name), error);
         if (plain == nullptr) {
-            error = fmt::format("{}: {}", entry.name, error);
+            error = std::format("{}: {}", entry.name, error);
             return nullptr;
         }
         // A sparse NCA grows when decrypted; it cannot keep its place in the image.
         if (plain->GetSize() != static_cast<std::size_t>(entry.size)) {
-            error = fmt::format("{}: the decrypted NCA has another size (sparse NCA)", entry.name);
+            error = std::format("{}: the decrypted NCA has another size (sparse NCA)", entry.name);
             return nullptr;
         }
         replaced.insert_or_assign(entry.offset, std::move(plain));

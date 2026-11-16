@@ -91,6 +91,7 @@ public:
 
 public slots:
     void SetNxToolRunning(bool running);
+    void SetScanEnabled(bool enabled);
     void RefreshGameDirectory();
     void RefreshExternalContent();
     void UpdateIconSizes();

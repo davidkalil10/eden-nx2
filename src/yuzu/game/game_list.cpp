@@ -140,6 +140,10 @@ GameList::GameList(FileSys::VirtualFilesystem vfs_, FileSys::ManualContentProvid
     ResetViewMode();
 }
 
+void GameList::SetScanEnabled(bool enabled) {
+    item_model->SetScanEnabled(enabled);
+}
+
 void GameList::SetNxToolRunning(bool running) {
     nx_tool_running = running;
 }

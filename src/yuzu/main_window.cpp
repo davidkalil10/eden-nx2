@@ -1890,11 +1890,9 @@ void MainWindow::ConnectWidgetEvents() {
     connect(nx_tools, &NxTools::ArchivesChanged, this, &MainWindow::OnGameListRefresh);
     connect(nx_tools, &NxTools::MetadataWriteFinished, this, [this] {
         nx_metadata_write_in_progress = false;
-        if (!close_pending) {
-            QtCommon::Game::ResetMetadata(false);
-            game_list->SetScanEnabled(true);
-            game_list->PopulateAsync(UISettings::values.game_dirs);
-        }
+        QtCommon::Game::ResetMetadata(false);
+        game_list->SetScanEnabled(true);
+        game_list->PopulateAsync(UISettings::values.game_dirs);
     });
     connect(game_list, &GameList::ConvertToNxRequested, this,
             [this](const std::string& path) { OnGameListNxTool(path, &NxTools::ConvertToNx); });
@@ -9683,7 +9681,7 @@ void MainWindow::OnGameListRefresh() {
 #ifdef EDEN_NX_TOOLS
 void MainWindow::OnGameListEditNxMetadata(const std::string& game_path) {
     const auto can_edit = [this] {
-        if (boot_in_progress || close_pending || nx_metadata_write_in_progress) {
+        if (nx_metadata_write_in_progress) {
             return false;
         }
         if (emulation_running || QtCommon::system->IsPoweredOn()) {

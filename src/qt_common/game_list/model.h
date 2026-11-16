@@ -50,6 +50,7 @@ public:
     void DonePopulating(const QStringList& watch_list);
 
     void PopulateAsync(QVector<UISettings::GameDir>& game_dirs);
+    void SetScanEnabled(bool enabled);
     void WorkerEvent();
 
     bool IsEmpty() const;
@@ -80,6 +81,7 @@ private:
     void Repopulate();
 
     bool m_flat = false;
+    bool scan_enabled = true;
 
     std::shared_ptr<FileSys::VfsFilesystem> vfs;
     FileSys::ManualContentProvider* provider;
