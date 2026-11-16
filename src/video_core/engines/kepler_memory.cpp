@@ -6,7 +6,6 @@
 
 #include "common/assert.h"
 #include "common/logging.h"
-#include "core/core.h"
 #include "video_core/engines/kepler_memory.h"
 #include "video_core/engines/maxwell_3d.h"
 #include "video_core/memory_manager.h"

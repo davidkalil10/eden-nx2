@@ -10,7 +10,6 @@
 #include "common/alignment.h"
 #include "common/scope_exit.h"
 #include "common/swap.h"
-#include "core/core.h"
 
 namespace AudioCore::OpusDecoder {
 using namespace Service::Audio;

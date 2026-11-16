@@ -4,7 +4,6 @@
 #include "audio_core/adsp/apps/opus/opus_decoder.h"
 #include "audio_core/opus/decoder_manager.h"
 #include "common/alignment.h"
-#include "core/core.h"
 
 namespace AudioCore::OpusDecoder {
 using namespace Service::Audio;

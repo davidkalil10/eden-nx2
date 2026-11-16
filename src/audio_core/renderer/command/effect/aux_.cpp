@@ -7,7 +7,6 @@
 #include "audio_core/adsp/apps/audio_renderer/command_list_processor.h"
 #include "audio_core/renderer/command/effect/aux_.h"
 #include "audio_core/renderer/effect/aux_.h"
-#include "core/core.h"
 #include "core/memory.h"
 
 namespace AudioCore::Renderer {

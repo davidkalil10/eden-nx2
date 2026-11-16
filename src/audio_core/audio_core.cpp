@@ -7,7 +7,6 @@
 #include "audio_core/audio_core.h"
 #include "audio_core/sink/sink_details.h"
 #include "common/settings.h"
-#include "core/core.h"
 
 namespace AudioCore {
 

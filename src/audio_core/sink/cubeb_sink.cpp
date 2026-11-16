@@ -12,7 +12,6 @@
 #include "audio_core/sink/sink_stream.h"
 #include "common/logging.h"
 #include "common/scope_exit.h"
-#include "core/core.h"
 
 #ifdef _WIN32
 #include <objbase.h>

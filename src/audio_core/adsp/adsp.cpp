@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "audio_core/adsp/adsp.h"
-#include "core/core.h"
 
 namespace AudioCore::ADSP {
 

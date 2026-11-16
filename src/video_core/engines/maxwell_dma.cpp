@@ -9,7 +9,6 @@
 #include "common/logging.h"
 #include <ranges>
 #include "common/settings.h"
-#include "core/core.h"
 #include "video_core/engines/maxwell_3d.h"
 #include "video_core/engines/maxwell_dma.h"
 #include "video_core/guest_memory.h"

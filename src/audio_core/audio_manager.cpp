@@ -6,7 +6,6 @@
 
 #include "audio_core/audio_manager.h"
 #include "common/thread.h"
-#include "core/core.h"
 #include "audio_core/errors.h"
 
 namespace AudioCore {

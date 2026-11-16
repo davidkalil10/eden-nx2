@@ -4,7 +4,6 @@
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "core/core.h"
 #include "core/hle/kernel/k_shared_memory.h"
 #include "hid_core/hid_result.h"
 #include "hid_core/resources/applet_resource.h"
