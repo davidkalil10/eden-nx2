@@ -93,6 +93,7 @@ add_library(video_core STATIC
     fence_manager.h
     gpu.cpp
     gpu.h
+    host.h
     gpu_thread.cpp
     gpu_thread.h
     guest_memory.h

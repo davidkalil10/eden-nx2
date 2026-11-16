@@ -8,10 +8,6 @@
 #include "video_core/engines/maxwell_dma.h"
 #include "video_core/rasterizer_interface.h"
 
-namespace Core {
-class System;
-}
-
 namespace Null {
 
 class RasterizerNull;

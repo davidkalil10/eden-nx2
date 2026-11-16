@@ -13,10 +13,6 @@
 #include "video_core/rasterizer_interface.h"
 #include "video_core/renderer_opengl/gl_resource_manager.h"
 
-namespace Core {
-class System;
-}
-
 namespace OpenGL {
 
 class CachedQuery;

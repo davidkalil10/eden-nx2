@@ -19,6 +19,7 @@
 #include "core/file_sys/vfs/vfs_types.h"
 #include "core/hle/service/os/event.h"
 #include "core/hle/service/kernel_helpers.h"
+#include "video_core/host.h"
 
 namespace Core::Frontend {
 class EmuWindow;
@@ -142,7 +143,7 @@ enum class SystemResultStatus : u32 {
     ErrorLoader,         ///< The base for loader errors (too many to repeat)
 };
 
-class System {
+class System final : public VideoCore::Host {
 public:
     using CurrentBuildProcessID = std::array<u8, 0x20>;
 
@@ -217,14 +218,14 @@ public:
      * application).
      * @returns True if the emulated system is powered on, otherwise false.
      */
-    [[nodiscard]] bool IsPoweredOn() const;
+    [[nodiscard]] bool IsPoweredOn() const override;
 
     /// Prepare the core emulation for a reschedule
     void PrepareReschedule(u32 core_index);
 
     std::span<GPUDirtyMemoryManager> GetGPUDirtyMemoryManager();
 
-    void GatherGPUDirtyMemory(std::function<void(PAddr, size_t)>& callback);
+    void GatherGPUDirtyMemory(std::function<void(PAddr, size_t)>& callback) override;
 
     [[nodiscard]] size_t GetCurrentHostThreadID() const;
 
@@ -244,19 +245,19 @@ public:
     [[nodiscard]] const CpuManager& GetCpuManager() const;
 
     /// Gets a mutable reference to the system memory instance.
-    [[nodiscard]] Core::Memory::Memory& ApplicationMemory();
+    [[nodiscard]] Core::Memory::Memory& ApplicationMemory() override;
 
     /// Gets a constant reference to the system memory instance.
     [[nodiscard]] const Core::Memory::Memory& ApplicationMemory() const;
 
     /// Gets a mutable reference to the GPU interface
-    [[nodiscard]] Tegra::GPU& GPU();
+    [[nodiscard]] Tegra::GPU& GPU() override;
 
     /// Gets an immutable reference to the GPU interface.
     [[nodiscard]] const Tegra::GPU& GPU() const;
 
     /// Gets a mutable reference to the Host1x interface
-    [[nodiscard]] Tegra::Host1x::Host1x& Host1x();
+    [[nodiscard]] Tegra::Host1x::Host1x& Host1x() override;
 
     /// Gets an immutable reference to the Host1x interface.
     [[nodiscard]] const Tegra::Host1x::Host1x& Host1x() const;
@@ -280,7 +281,7 @@ public:
     [[nodiscard]] const Kernel::GlobalSchedulerContext& GlobalSchedulerContext() const;
 
     /// Gets the manager for the guest device memory
-    [[nodiscard]] Core::DeviceMemory& DeviceMemory();
+    [[nodiscard]] Core::DeviceMemory& DeviceMemory() override;
 
     /// Gets the manager for the guest device memory
     [[nodiscard]] const Core::DeviceMemory& DeviceMemory() const;
@@ -401,7 +402,10 @@ public:
     void RegisterCoreThread(std::size_t id);
 
     /// Register a host thread as an auxiliary thread.
-    void RegisterHostThread();
+    void RegisterHostThread() override;
+
+    [[nodiscard]] u64 GPUTicks() override;
+    void EndGameFrame() override;
 
     /// Tells if system is running on multicore.
     [[nodiscard]] bool IsMulticore() const;

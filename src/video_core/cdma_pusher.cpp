@@ -7,7 +7,6 @@
 #include <bit>
 
 #include "common/thread.h"
-#include "core/core.h"
 #include "video_core/cdma_pusher.h"
 #include "video_core/engines/maxwell_3d.h"
 #include "video_core/host1x/control.h"

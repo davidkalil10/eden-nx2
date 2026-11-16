@@ -952,6 +952,14 @@ void System::RegisterCoreThread(std::size_t id) {
     impl->kernel.RegisterCoreThread(id);
 }
 
+u64 System::GPUTicks() {
+    return CoreTiming().GetGPUTicks();
+}
+
+void System::EndGameFrame() {
+    GetPerfStats().EndGameFrame();
+}
+
 void System::RegisterHostThread() {
     impl->kernel.RegisterHostThread();
 }
