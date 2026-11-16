@@ -915,3 +915,60 @@ TEST_CASE("arm: vrintx and vrinta through the soft-float fallback", "[arm][A32]"
     REQUIRE(jit.ExtRegs()[4] == 0);  // 3.0, ties away from zero
     REQUIRE(jit.ExtRegs()[5] == 0x40080000);
 }
+
+TEST_CASE("arm: BX loops can be interrupted", "[arm][A32]") {
+    struct HaltingEnv final : ArmTestEnv {
+        A32::Jit* jit = nullptr;
+
+        u64 MemoryRead(u32 vaddr, size_t size) override {
+            if (jit) {
+                jit->HaltExecution();
+            }
+            return ArmTestEnv::MemoryRead(vaddr, size);
+        }
+    };
+
+    const u32 ldr_r1_r2 = 0xe5921000;
+    const u32 bx_r3 = 0xe12fff13;
+    const u32 bx_lr = 0xe12fff1e;
+    const u32 cmp_r0_0 = 0xe3500000;
+    const u32 beq_unwind = 0x0a000003;
+    const u32 sub_r0_r0_1 = 0xe2400001;
+    const u32 bl_recurse = 0xebfffffb;
+
+    const u32 bx_loop = 0x00;
+    const u32 bx_lr_loop = 0x08;
+    const u32 recursion = 0x10;
+    const u32 rsb_loop = 0x20;
+
+    for (const auto [start, loop] : {std::pair{bx_loop, bx_loop}, std::pair{bx_lr_loop, bx_lr_loop}, std::pair{recursion, rsb_loop}}) {
+        for (const bool cycle_counting : {true, false}) {
+            HaltingEnv test_env;
+            test_env.code_mem = {
+                ldr_r1_r2, bx_r3,
+                ldr_r1_r2, bx_lr,
+                cmp_r0_0, beq_unwind, sub_r0_r0_1, bl_recurse,
+                ldr_r1_r2, bx_lr,
+                bx_lr,
+            };
+            A32::UserConfig user_config;
+            user_config.callbacks = &test_env;
+            user_config.enable_cycle_counting = cycle_counting;
+            A32::Jit jit{user_config};
+            test_env.jit = cycle_counting ? nullptr : &jit;
+
+            for (const u32 recursion_depth : {1, 16}) {
+                jit.Regs()[0] = recursion_depth;
+                jit.Regs()[3] = loop;
+                jit.Regs()[14] = loop;
+                jit.Regs()[15] = start;
+                jit.SetCpsr(0x000001d0);
+
+                test_env.ticks_left = 100;
+                CheckedRun([&]() { jit.Run(); });
+
+                REQUIRE(jit.Regs()[15] == loop);
+            }
+        }
+    }
+}

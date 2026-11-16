@@ -2818,3 +2818,63 @@ TEST_CASE("A64: FCVTZS and FCVTZU (vector) with 64 fraction bits", "[a64]") {
     REQUIRE(jit.GetVector(4) == Vector{0x7fffffffffffffff, 0x8000000000000000});
     REQUIRE(jit.GetVector(6) == Vector{0xffffffffffffffff, 0});
 }
+
+TEST_CASE("A64: BR and RET loops can be interrupted", "[a64]") {
+    struct HaltingEnv final : A64TestEnv {
+        A64::Jit* jit = nullptr;
+
+        u64 MemoryRead(u64 vaddr, size_t size) override {
+            if (jit) {
+                jit->HaltExecution();
+            }
+            return A64TestEnv::MemoryRead(vaddr, size);
+        }
+    };
+
+    std::vector<u32> code_mem;
+    oaknut::VectorCodeGenerator code{code_mem, nullptr};
+    oaknut::Label recurse, unwind;
+
+    const u64 br_loop = code.offset();
+    code.LDR(X1, X2);
+    code.BR(X3);
+
+    const u64 ret_loop = code.offset();
+    code.LDR(X1, X2);
+    code.RET();
+
+    const u64 recursion = code.offset();
+    code.l(recurse);
+    code.CBZ(X0, unwind);
+    code.SUB(X0, X0, 1);
+    code.BL(recurse);
+    const u64 rsb_loop = code.offset();
+    code.LDR(X1, X2);
+    code.RET();
+    code.l(unwind);
+    code.RET();
+
+    for (const auto [start, loop] : {std::pair{br_loop, br_loop}, std::pair{ret_loop, ret_loop}, std::pair{recursion, rsb_loop}}) {
+        for (const bool cycle_counting : {true, false}) {
+            HaltingEnv env;
+            env.code_mem = code_mem;
+            A64::UserConfig jit_user_config{};
+            jit_user_config.callbacks = &env;
+            jit_user_config.enable_cycle_counting = cycle_counting;
+            A64::Jit jit{jit_user_config};
+            env.jit = cycle_counting ? nullptr : &jit;
+
+            for (const u64 recursion_depth : {1, 16}) {
+                jit.SetRegister(0, recursion_depth);
+                jit.SetRegister(3, loop);
+                jit.SetRegister(30, loop);
+                jit.SetPC(start);
+
+                env.ticks_left = 100;
+                CheckedRun([&]() { jit.Run(); });
+
+                REQUIRE(jit.GetPC() == loop);
+            }
+        }
+    }
+}

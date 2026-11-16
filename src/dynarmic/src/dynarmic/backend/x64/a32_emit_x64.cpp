@@ -239,6 +239,16 @@ void A32EmitX64::GenTerminalHandlers() {
         code.or_(rbx, rcx);
     };
 
+    const auto return_if_interrupted = [this] {
+        if (conf.enable_cycle_counting) {
+            code.cmp(qword[rsp + ABI_SHADOW_SPACE + offsetof(StackLayout, cycles_remaining)], 0);
+            code.jng(code.GetReturnFromRunCodeAddress());
+        } else {
+            code.cmp(dword[code.ABI_JIT_PTR + offsetof(A32JitState, halt_reason)], 0);
+            code.jne(code.GetReturnFromRunCodeAddress());
+        }
+    };
+
     Xbyak::Label fast_dispatch_cache_miss, rsb_cache_miss;
 
     code.align();
@@ -254,6 +264,7 @@ void A32EmitX64::GenTerminalHandlers() {
     } else {
         code.jne(code.GetReturnFromRunCodeAddress());
     }
+    return_if_interrupted();
     code.mov(rax, qword[code.ABI_JIT_PTR + offsetof(A32JitState, rsb_codeptrs) + rax * sizeof(u64)]);
     code.jmp(rax);
     PerfMapRegister(terminal_handler_pop_rsb_hint, code.getCurr(), "a32_terminal_handler_pop_rsb_hint");
@@ -263,6 +274,7 @@ void A32EmitX64::GenTerminalHandlers() {
         terminal_handler_fast_dispatch_hint = code.getCurr<const void*>();
         calculate_location_descriptor();
         code.L(rsb_cache_miss);
+        return_if_interrupted();
         code.mov(r8, reinterpret_cast<u64>(fast_dispatch_table.data()));
         //code.mov(r12d, MJitStateReg(A32::Reg::PC));
         code.mov(r12, rbx);
