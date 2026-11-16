@@ -139,6 +139,11 @@ add_library(
     unique_function.h
     random.cpp
     random.h
+    nvnflinger/buffer_transform_flags.h
+    nvnflinger/fence.h
+    nvnflinger/hwc_layer.h
+    nvnflinger/nvdata.h
+    nvnflinger/pixel_format.h
     result.h
     uuid.cpp
     uuid.h

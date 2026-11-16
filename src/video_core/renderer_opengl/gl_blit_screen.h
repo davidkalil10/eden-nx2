@@ -7,7 +7,7 @@
 #include <memory>
 #include <span>
 
-#include "core/hle/service/nvnflinger/pixel_format.h"
+#include "common/nvnflinger/pixel_format.h"
 #include "video_core/host1x/gpu_device_memory_manager.h"
 #include "video_core/renderer_opengl/gl_resource_manager.h"
 

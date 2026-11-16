@@ -9,27 +9,4 @@
 
 #pragma once
 
-#include <array>
-
-#include "common/common_types.h"
-#include "core/hle/service/nvdrv/nvdata.h"
-
-namespace Service::android {
-
-class Fence {
-public:
-    static constexpr Fence NoFence() {
-        Fence fence{};
-        fence.fences[0].id = -1;
-        fence.fences[1].id = -1;
-        fence.fences[2].id = -1;
-        fence.fences[3].id = -1;
-        return fence;
-    }
-
-    u32 num_fences{};
-    std::array<Service::Nvidia::NvFence, 4> fences{};
-};
-static_assert(sizeof(Fence) == 36, "Fence has wrong size");
-
-} // namespace Service::android
+#include "common/nvnflinger/fence.h"

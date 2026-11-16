@@ -19,7 +19,7 @@
 #include "core/core_timing.h"
 #include "common/frontend/emu_window.h"
 #include "common/frontend/graphics_context.h"
-#include "core/hle/service/nvdrv/nvdata.h"
+#include "common/nvnflinger/nvdata.h"
 #include "core/perf_stats.h"
 #include "video_core/cdma_pusher.h"
 #include "video_core/control/channel_state.h"

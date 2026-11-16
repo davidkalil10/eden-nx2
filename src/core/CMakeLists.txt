@@ -1227,7 +1227,6 @@ target_link_libraries(core PUBLIC zstd::zstd)
 
 if (ENABLE_WEB_SERVICE)
     target_compile_definitions(core PUBLIC ENABLE_WEB_SERVICE)
-    target_link_libraries(core PUBLIC web_service)
 endif()
 
 if (HAS_NCE)

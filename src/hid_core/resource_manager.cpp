@@ -7,7 +7,6 @@
 #include "common/logging.h"
 #include "core/core.h"
 #include "core/core_timing.h"
-#include "core/hle/service/ipc_helpers.h"
 #include "core/hle/service/set/system_settings_server.h"
 #include "core/hle/service/sm/sm.h"
 #include "hid_core/hid_core.h"

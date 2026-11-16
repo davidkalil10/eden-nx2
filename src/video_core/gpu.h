@@ -10,7 +10,7 @@
 
 #include "common/bit_field.h"
 #include "common/common_types.h"
-#include "core/hle/service/nvdrv/nvdata.h"
+#include "common/nvnflinger/nvdata.h"
 #include "video_core/cdma_pusher.h"
 #include "video_core/framebuffer_config.h"
 #include "video_core/rasterizer_download_area.h"
