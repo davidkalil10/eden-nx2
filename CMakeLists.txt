@@ -17,6 +17,9 @@ set(CPM_SOURCE_CACHE ${CMAKE_SOURCE_DIR}/.cache/cpm)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
+# TEMP, remove once arch linux arm fixes their gcc build
+set(CMAKE_CXX_MODULE_STD OFF)
+
 # force cmdlines to use rsp files to avoid 8191 char limit on winblows
 if (CMAKE_GENERATOR MATCHES "Ninja" AND WIN32)
     set(CMAKE_NINJA_FORCE_RESPONSE_FILE ON)
