@@ -146,6 +146,7 @@ add_library(
     nvnflinger/pixel_format.h
     guest_memory.h
     guest_memory_access.h
+    pseudo_handle.h
     result.h
     uuid.cpp
     uuid.h

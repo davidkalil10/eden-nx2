@@ -8,11 +8,9 @@
 #include "audio_core/renderer/memory/pool_mapper.h"
 #include "common/alignment.h"
 #include "common/guest_memory_access.h"
+#include "common/pseudo_handle.h"
 
 namespace AudioCore::Renderer {
-
-// Kernel::Svc::PseudoHandle::CurrentProcess
-constexpr u32 CurrentProcessHandle = 0xFFFF8001;
 
 PoolMapper::PoolMapper(Kernel::KProcess* process_handle_, bool force_map_)
     : process_handle{process_handle_}, force_map{force_map_} {}
@@ -237,7 +235,7 @@ bool PoolMapper::InitializeSystemPool(MemoryPoolInfo& pool, const u8* memory,
         return false;
     case MemoryPoolInfo::Location::DSP:
         pool.SetCpuAddress(reinterpret_cast<u64>(memory), size_);
-        if (Map(CurrentProcessHandle, reinterpret_cast<u64>(memory), size_)) {
+        if (Map(Kernel::Svc::CurrentProcess, reinterpret_cast<u64>(memory), size_)) {
             pool.SetDspAddress(pool.GetCpuAddress());
             return true;
         }
