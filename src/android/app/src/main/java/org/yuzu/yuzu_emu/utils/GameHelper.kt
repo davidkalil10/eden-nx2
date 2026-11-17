@@ -10,8 +10,10 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.preference.PreferenceManager
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import org.yuzu.yuzu_emu.NativeLibrary
 import org.yuzu.yuzu_emu.YuzuApplication
@@ -96,6 +98,32 @@ object GameHelper {
 
         cachedGameList = games.toMutableList()
         return games.toList()
+    }
+
+    /** Restores [cachedGameList] from preferences when MainActivity never scanned the library. */
+    fun ensureCachedGameList() {
+        if (cachedGameList.isNotEmpty()) {
+            return
+        }
+        val context = YuzuApplication.appContext
+        if (!::preferences.isInitialized) {
+            preferences = PreferenceManager.getDefaultSharedPreferences(context)
+        }
+        val storedGames = preferences.getStringSet(KEY_GAMES, emptySet()) ?: return
+        if (storedGames.isEmpty()) {
+            return
+        }
+        val games = mutableListOf<Game>()
+        for (serialized in storedGames) {
+            try {
+                val game = Json.decodeFromString<Game>(serialized)
+                if (DocumentFile.fromSingleUri(context, Uri.parse(game.path))?.exists() == true) {
+                    games.add(game)
+                }
+            } catch (_: Exception) {
+            }
+        }
+        cachedGameList = games.toMutableList()
     }
 
     fun restoreContentForGame(game: Game) {

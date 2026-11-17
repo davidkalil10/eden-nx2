@@ -365,31 +365,35 @@ bool AndroidMultiplayer::NetPlayIsModerator() {
 std::vector<std::string> AndroidMultiplayer::NetPlayGetPublicRooms() {
     std::vector<std::string> room_list;
 
-    if (auto session = announce_multiplayer_session.lock()) {
-        auto rooms = session->GetRoomList();
-        for (const auto &room: rooms) {
-            room_list.push_back(room.information.name + "|" +
-                                (room.hasPassword ? "1" : "0") + "|" +
-                                std::to_string(room.information.member_slots) + "|" +
-                                room.ip + "|" +
-                                std::to_string(room.information.port) + "|" +
-                                room.information.description + "|" +
-                                room.information.host_username + "|" +
-                                std::to_string(room.information.preferred_game.id) + "|" +
-                                room.information.preferred_game.name + "|" +
-                                room.information.preferred_game.version);
+    try {
+        if (auto session = announce_multiplayer_session.lock()) {
+            auto rooms = session->GetRoomList();
+            for (const auto &room: rooms) {
+                room_list.push_back(room.information.name + "|" +
+                                    (room.hasPassword ? "1" : "0") + "|" +
+                                    std::to_string(room.information.member_slots) + "|" +
+                                    room.ip + "|" +
+                                    std::to_string(room.information.port) + "|" +
+                                    room.information.description + "|" +
+                                    room.information.host_username + "|" +
+                                    std::to_string(room.information.preferred_game.id) + "|" +
+                                    room.information.preferred_game.name + "|" +
+                                    room.information.preferred_game.version);
 
-            for (const auto &member: room.members) {
-                room_list.push_back("MEMBER|" + room.information.name + "|" +
-                                    member.nickname + "|" +
-                                    std::to_string(member.game.id) + "|" +
-                                    member.game.name);
+                for (const auto &member: room.members) {
+                    room_list.push_back("MEMBER|" + room.information.name + "|" +
+                                        member.nickname + "|" +
+                                        std::to_string(member.game.id) + "|" +
+                                        member.game.name);
+                }
             }
         }
-
+    } catch (const std::exception& e) {
+        LOG_ERROR(Network, "NetPlayGetPublicRooms: {}", e.what());
+    } catch (...) {
+        LOG_ERROR(Network, "NetPlayGetPublicRooms: unknown error");
     }
     return room_list;
-
 }
 
 std::vector<std::string> AndroidMultiplayer::NetPlayGetBanList() {

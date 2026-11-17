@@ -113,6 +113,15 @@ static EmulationSession s_instance;
 std::unique_ptr<AndroidMultiplayer> multiplayer{nullptr};
 std::shared_ptr<Core::AnnounceMultiplayerSession> announce_multiplayer_session;
 
+static void EnsureMultiplayerInitialized() {
+    if (multiplayer) {
+        return;
+    }
+    announce_multiplayer_session = std::make_shared<Core::AnnounceMultiplayerSession>();
+    multiplayer = std::make_unique<AndroidMultiplayer>(s_instance.System(), announce_multiplayer_session);
+    multiplayer->NetworkInit();
+}
+
 //Power Status default values
 std::atomic<int> g_battery_percentage = {100};
 std::atomic<bool> g_is_charging = {false};
@@ -1776,19 +1785,16 @@ Java_org_yuzu_yuzu_1emu_NativeLibrary_initJvm(JNIEnv *env, jclass clazz) {
 JNIEXPORT void JNICALL
 Java_org_yuzu_yuzu_1emu_NativeLibrary_initMultiplayer(
         JNIEnv* env, [[maybe_unused]] jobject obj) {
-    if (multiplayer) {
-        return;
-    }
-
-    announce_multiplayer_session = std::make_shared<Core::AnnounceMultiplayerSession>();
-
-    multiplayer = std::make_unique<AndroidMultiplayer>(s_instance.System(), announce_multiplayer_session);
-    multiplayer->NetworkInit();
+    EnsureMultiplayerInitialized();
 }
 
 JNIEXPORT jobjectArray JNICALL
 Java_org_yuzu_yuzu_1emu_network_NetPlayManager_netPlayGetPublicRooms(
         JNIEnv *env, [[maybe_unused]] jobject obj) {
+    EnsureMultiplayerInitialized();
+    if (!multiplayer) {
+        return Common::Android::ToJStringArray(env, std::vector<std::string>{});
+    }
     return Common::Android::ToJStringArray(env, multiplayer->NetPlayGetPublicRooms());
 }
 
