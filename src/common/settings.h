@@ -308,6 +308,7 @@ struct Values {
     SwitchableSetting<bool> sync_core_speed{linkage, false, "sync_core_speed", Category::Core,
                                             Specialization::Default};
     SwitchableSetting<bool> enable_cheats_by_default{linkage, true, "enable_cheats_by_default", Category::Core};
+    SwitchableSetting<bool> cheat_overlay{linkage, false, "cheat_overlay", Category::Core};
 
     // Cpu
     SwitchableSetting<CpuBackend, true> cpu_backend{linkage,
@@ -997,9 +998,6 @@ struct Values {
                                      Category::WebService};
     Setting<std::string> eden_username{linkage, "Eden", "eden_username",
                                        Category::WebService};
-    Setting<std::string> eden_token{linkage, "",
-                                    "eden_token", Category::WebService};
-
     // Add-Ons
     std::map<u64, std::vector<std::string>> disabled_addons;
 
