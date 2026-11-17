@@ -839,7 +839,7 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
         @Volatile
         private var processHasEmulationSession = false
         @Volatile
-        private var processSessionGame: Game? = null
+        var processSessionGame: Game? = null
 
         fun stopForegroundService(activity: Activity) {
             val startIntent = Intent(activity, ForegroundService::class.java)

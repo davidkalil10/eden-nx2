@@ -35,6 +35,7 @@ import org.yuzu.yuzu_emu.databinding.ItemTextNetplayBinding
 import org.yuzu.yuzu_emu.features.settings.model.StringSetting
 import org.yuzu.yuzu_emu.network.NetDataValidators
 import org.yuzu.yuzu_emu.network.NetPlayManager
+import org.yuzu.yuzu_emu.activities.EmulationActivity
 import org.yuzu.yuzu_emu.utils.CompatUtils
 import org.yuzu.yuzu_emu.utils.FullscreenHelper
 import org.yuzu.yuzu_emu.utils.GameHelper
@@ -91,7 +92,7 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
             else -> {
                 DialogMultiplayerConnectBinding.inflate(layoutInflater).apply {
                     setContentView(root)
-                    for (game in GameHelper.cachedGameList) {
+                    for (game in GameHelper.cachedGameList + listOfNotNull(EmulationActivity.processSessionGame)) {
                         val gameName = game.title
                         if (gameNameList.none { it[0] == gameName }) {
                             gameNameList.add(arrayOf(gameName))

@@ -82,7 +82,6 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
         ThemeHelper.ThemeChangeListener(this)
         ThemeHelper.setTheme(this)
         super.onCreate(savedInstanceState)
-        NativeLibrary.initMultiplayer()
 
         binding = ActivityMainBinding.inflate(layoutInflater)
 
