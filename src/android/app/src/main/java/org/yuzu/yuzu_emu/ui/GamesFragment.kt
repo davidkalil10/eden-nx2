@@ -6,11 +6,17 @@ package org.yuzu.yuzu_emu.ui
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.PathInterpolator
 import android.view.inputmethod.InputMethodManager
 import android.widget.PopupMenu
 import android.widget.Toast
@@ -20,6 +26,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.updatePadding
+import androidx.core.widget.ImageViewCompat
 import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -29,6 +36,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.material.color.MaterialColors
 import org.yuzu.yuzu_emu.HomeNavigationDirections
 import org.yuzu.yuzu_emu.NativeLibrary
 import org.yuzu.yuzu_emu.R
@@ -62,10 +70,17 @@ class GamesFragment : Fragment() {
     private var pendingPostReloadListSettleGeneration = 0
     private var gameListSubmitGeneration = 0
     private var committedGameListSubmitGeneration = 0
+    private var gamesSearchExpanded = false
+    private var portraitSearchLayoutShiftPx = 0f
 
     companion object {
         private const val SEARCH_TEXT = "SearchText"
         private const val PREF_SORT_TYPE = "GamesSortType"
+        private const val PREF_GAMES_SEARCH_EXPANDED = "GamesSearchExpanded"
+        private const val PREF_GAMES_SEARCH_QUERY = "GamesSearchQuery"
+        private const val SEARCH_GRID_ANIM_DURATION_MS = 380L
+        private val SEARCH_GRID_EXPAND_INTERPOLATOR = PathInterpolator(0.05f, 0.7f, 0.1f, 1f)
+        private val SEARCH_GRID_COLLAPSE_INTERPOLATOR = PathInterpolator(0.3f, 0f, 1f, 1f)
     }
 
     private val gamesViewModel: GamesViewModel by activityViewModels()
@@ -112,6 +127,10 @@ class GamesFragment : Fragment() {
 
         if (savedInstanceState != null) {
             binding.searchText.setText(savedInstanceState.getString(SEARCH_TEXT))
+            gamesSearchExpanded = savedInstanceState.getBoolean(PREF_GAMES_SEARCH_EXPANDED, false)
+        } else {
+            gamesSearchExpanded = preferences.getBoolean(PREF_GAMES_SEARCH_EXPANDED, false)
+            binding.searchText.setText(preferences.getString(PREF_GAMES_SEARCH_QUERY, ""))
         }
 
         gameAdapter = GameAdapter(
@@ -152,7 +171,7 @@ class GamesFragment : Fragment() {
             )
         }
         gamesViewModel.games.collect(viewLifecycleOwner) {
-            if (it.isNotEmpty()) {
+            if (_binding != null) {
                 setAdapter(it)
             }
         }
@@ -179,6 +198,7 @@ class GamesFragment : Fragment() {
         }
 
         setupTopView()
+        setupCollapsibleSearch()
 
         updateButtonsVisibility()
 
@@ -237,11 +257,13 @@ class GamesFragment : Fragment() {
         super.onSaveInstanceState(outState)
         if (_binding != null) {
             outState.putString(SEARCH_TEXT, binding.searchText.text.toString())
+            outState.putBoolean(PREF_GAMES_SEARCH_EXPANDED, gamesSearchExpanded)
         }
     }
 
     override fun onPause() {
         super.onPause()
+        persistGamesSearchUiState()
         if (getCurrentViewType() == GameAdapter.VIEW_TYPE_CAROUSEL) {
             gamesViewModel.lastScrollPosition = (binding.gridGames as? CarouselRecyclerView)?.getClosestChildPosition() ?: 0
         }
@@ -260,7 +282,7 @@ class GamesFragment : Fragment() {
 
     private fun setAdapter(games: List<Game>) {
         val currentSearchText = binding.searchText.text.toString()
-        val currentFilter = binding.filterButton.id
+        val currentFilter = this.currentFilter
 
         val searchChanged = currentSearchText != lastSearchText
         val filterChanged = currentFilter != lastFilter
@@ -316,18 +338,8 @@ class GamesFragment : Fragment() {
             filterAndSearch()
         }
 
-        binding.clearButton.setOnClickListener { binding.searchText.setText("") }
         binding.searchBackground.setOnClickListener { focusSearch() }
-
-        // Setup view button
-        binding.viewButton.setOnClickListener { showViewMenu(it) }
-
-        // Setup filter button
-        binding.filterButton.setOnClickListener { view ->
-            showFilterMenu(view)
-        }
-
-        // Setup settings button
+        binding.viewSortButton.setOnClickListener { showViewSortMenu(it) }
         binding.settingsButton.setOnClickListener { navigateToSettings() }
     }
 
@@ -336,21 +348,34 @@ class GamesFragment : Fragment() {
         navController.navigate(R.id.action_gamesFragment_to_homeSettingsFragment)
     }
 
-    private fun showViewMenu(anchor: View) {
+    private var currentFilter = View.NO_ID
+
+    private fun showViewSortMenu(anchor: View) {
         val popup = PopupMenu(requireContext(), anchor)
-        popup.menuInflater.inflate(R.menu.menu_game_views, popup.menu)
+        popup.menuInflater.inflate(R.menu.menu_game_view_sort, popup.menu)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            popup.menu.setGroupDividerEnabled(true)
+        }
+
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         if (!isLandscape) {
             popup.menu.findItem(R.id.view_carousel)?.isVisible = false
         }
 
-        val currentViewType = getCurrentViewType()
-        when (currentViewType) {
+        when (getCurrentViewType()) {
             GameAdapter.VIEW_TYPE_LIST -> popup.menu.findItem(R.id.view_list).isChecked = true
             GameAdapter.VIEW_TYPE_GRID_COMPACT -> popup.menu.findItem(R.id.view_grid_compact).isChecked = true
-            GameAdapter.VIEW_TYPE_GRID -> popup.menu.findItem(R.id.view_grid).isChecked = true
             GameAdapter.VIEW_TYPE_CAROUSEL -> popup.menu.findItem(R.id.view_carousel).isChecked = true
+            else -> popup.menu.findItem(R.id.view_grid).isChecked = true
         }
+
+        when (currentFilter) {
+            R.id.filter_recently_played -> popup.menu.findItem(R.id.filter_recently_played).isChecked = true
+            R.id.filter_recently_added -> popup.menu.findItem(R.id.filter_recently_added).isChecked = true
+            else -> popup.menu.findItem(R.id.alphabetical).isChecked = true
+        }
+
+        styleViewSortMenuHeadings(popup.menu, anchor)
 
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
@@ -388,6 +413,15 @@ class GamesFragment : Fragment() {
                     true
                 }
 
+                R.id.alphabetical,
+                R.id.filter_recently_played,
+                R.id.filter_recently_added -> {
+                    currentFilter = item.itemId
+                    preferences.edit { putInt(PREF_SORT_TYPE, currentFilter) }
+                    filterAndSearch()
+                    true
+                }
+
                 else -> false
             }
         }
@@ -395,32 +429,29 @@ class GamesFragment : Fragment() {
         popup.show()
     }
 
-    private fun showFilterMenu(anchor: View) {
-        val popup = PopupMenu(requireContext(), anchor)
-        popup.menuInflater.inflate(R.menu.menu_game_filters, popup.menu)
-
-        // Set checked state based on current filter
-        when (currentFilter) {
-            R.id.alphabetical -> popup.menu.findItem(R.id.alphabetical).isChecked = true
-            R.id.filter_recently_played -> popup.menu.findItem(R.id.filter_recently_played).isChecked =
-                true
-
-            R.id.filter_recently_added -> popup.menu.findItem(R.id.filter_recently_added).isChecked =
-                true
+    private fun styleViewSortMenuHeadings(menu: android.view.Menu, anchor: View) {
+        val titleColor = MaterialColors.getColor(
+            anchor,
+            com.google.android.material.R.attr.colorOnSurface
+        )
+        listOf(R.id.menu_heading_view, R.id.menu_heading_sort).forEach { id ->
+            menu.findItem(id)?.let { item ->
+                item.isEnabled = false
+                item.isCheckable = false
+                val label = item.title?.toString().orEmpty()
+                if (label.isNotEmpty()) {
+                    item.title = SpannableString(label).apply {
+                        setSpan(
+                            ForegroundColorSpan(titleColor),
+                            0,
+                            length,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+                    }
+                }
+            }
         }
-
-        popup.setOnMenuItemClickListener { item ->
-            currentFilter = item.itemId
-            preferences.edit { putInt(PREF_SORT_TYPE, currentFilter) }
-            filterAndSearch()
-            true
-        }
-
-        popup.show()
     }
-
-    // Track current filter
-    private var currentFilter = View.NO_ID
 
     private fun filterAndSearch(baseList: List<Game> = gamesViewModel.games.value) {
         val filteredList: List<Game> = when (currentFilter) {
@@ -464,6 +495,201 @@ class GamesFragment : Fragment() {
 
     private inner class ScoredGame(val score: Double, val item: Game)
 
+    private fun setupCollapsibleSearch() {
+        binding.frameSearch.visibility = View.GONE
+        binding.searchButton.setOnClickListener {
+            setGamesSearchExpanded(!gamesSearchExpanded, animated = true)
+        }
+        binding.clearButton.setOnClickListener { binding.searchText.setText("") }
+        setGamesSearchExpanded(
+            gamesSearchExpanded || binding.searchText.text.isNotEmpty(),
+            animated = false,
+        )
+    }
+
+    private fun persistGamesSearchUiState() {
+        preferences.edit {
+            putBoolean(PREF_GAMES_SEARCH_EXPANDED, gamesSearchExpanded)
+            putString(PREF_GAMES_SEARCH_QUERY, binding.searchText.text.toString())
+        }
+    }
+
+    private fun updateSearchToggleIcon() {
+        val showClose = gamesSearchExpanded
+        binding.searchButtonIcon.setImageResource(
+            if (showClose) R.drawable.ic_search_close else R.drawable.ic_search
+        )
+        val accent = MaterialColors.getColor(
+            binding.searchButtonIcon,
+            com.google.android.material.R.attr.colorSecondary
+        )
+        ImageViewCompat.setImageTintList(
+            binding.searchButtonIcon,
+            ColorStateList.valueOf(accent)
+        )
+        binding.searchButton.contentDescription = getString(
+            if (showClose) R.string.cancel else R.string.home_search_games
+        )
+    }
+
+    private fun updateInlineSearchHeaderSlot() {
+        if (resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) {
+            return
+        }
+        val spacer = binding.root.findViewById<View>(R.id.header_flex_spacer) ?: return
+        spacer.visibility = if (gamesSearchExpanded) View.GONE else View.VISIBLE
+        binding.frameSearch.visibility = if (gamesSearchExpanded) View.VISIBLE else View.GONE
+    }
+
+    private fun resetPortraitSearchMotionOffsets() {
+        binding.swipeRefresh.animate().cancel()
+        binding.frameSearch.animate().cancel()
+        binding.swipeRefresh.translationY = 0f
+        binding.frameSearch.translationY = 0f
+        binding.frameSearch.alpha = 1f
+    }
+
+    private fun portraitSearchSlideShiftPx(): Float {
+        if (portraitSearchLayoutShiftPx > 0f) {
+            return portraitSearchLayoutShiftPx
+        }
+        val bar = binding.frameSearch
+        val marginTop =
+            (bar.layoutParams as? ViewGroup.MarginLayoutParams)?.topMargin ?: 0
+        return (bar.height + marginTop).toFloat().coerceAtLeast(1f)
+    }
+
+    private fun runPortraitSearchGridAnimation(
+        expanding: Boolean,
+        slideShiftPx: Float,
+        onEnd: () -> Unit,
+    ) {
+        val list = binding.swipeRefresh
+        val bar = binding.frameSearch
+        val interpolator = if (expanding) {
+            SEARCH_GRID_EXPAND_INTERPOLATOR
+        } else {
+            SEARCH_GRID_COLLAPSE_INTERPOLATOR
+        }
+        list.animate().cancel()
+        bar.animate().cancel()
+        if (slideShiftPx <= 0f) {
+            list.translationY = 0f
+            bar.alpha = 1f
+            onEnd()
+            return
+        }
+        portraitSearchLayoutShiftPx = slideShiftPx
+        val offset = -slideShiftPx
+        val listTargetY = if (expanding) 0f else offset
+        val barTargetAlpha = if (expanding) 1f else 0f
+        list.translationY = if (expanding) offset else 0f
+        bar.alpha = if (expanding) 0f else 1f
+        var finished = 0
+        val onPartFinished = {
+            finished++
+            if (finished >= 2) {
+                onEnd()
+            }
+        }
+        list.animate()
+            .translationY(listTargetY)
+            .setDuration(SEARCH_GRID_ANIM_DURATION_MS)
+            .setInterpolator(interpolator)
+            .withEndAction(onPartFinished)
+            .start()
+        bar.animate()
+            .alpha(barTargetAlpha)
+            .setDuration(SEARCH_GRID_ANIM_DURATION_MS)
+            .setInterpolator(interpolator)
+            .withEndAction(onPartFinished)
+            .start()
+    }
+
+    private fun beginPortraitSearchExpandAnimation() {
+        val listTopBefore = binding.swipeRefresh.top
+        binding.frameSearch.visibility = View.INVISIBLE
+        binding.root.doOnPreDraw {
+            if (_binding == null || !gamesSearchExpanded) {
+                return@doOnPreDraw
+            }
+            val slideShiftPx =
+                (binding.swipeRefresh.top - listTopBefore).toFloat().coerceAtLeast(0f)
+            binding.frameSearch.visibility = View.VISIBLE
+            binding.frameSearch.translationY = 0f
+            runPortraitSearchGridAnimation(
+                expanding = true,
+                slideShiftPx = slideShiftPx,
+                onEnd = {},
+            )
+            binding.searchText.clearFocus()
+        }
+    }
+
+    private fun setGamesSearchExpanded(expanded: Boolean, animated: Boolean) {
+        if (_binding == null) {
+            return
+        }
+        if (expanded && gamesSearchExpanded && binding.frameSearch.visibility == View.VISIBLE) {
+            return
+        }
+        if (!expanded && !gamesSearchExpanded) {
+            updateSearchToggleIcon()
+            updateInlineSearchHeaderSlot()
+            return
+        }
+
+        if (!expanded) {
+            val imm = requireActivity()
+                .getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager?
+            imm?.hideSoftInputFromWindow(binding.searchText.windowToken, 0)
+
+            val applyCollapsed = {
+                if (_binding != null) {
+                    gamesSearchExpanded = false
+                    binding.frameSearch.visibility = View.GONE
+                    resetPortraitSearchMotionOffsets()
+                    binding.searchText.setText("")
+                    filterAndSearch()
+                    updateSearchToggleIcon()
+                    updateInlineSearchHeaderSlot()
+                    persistGamesSearchUiState()
+                }
+            }
+
+            if (!animated || resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                applyCollapsed()
+                return
+            }
+
+            if (_binding != null && gamesSearchExpanded) {
+                runPortraitSearchGridAnimation(
+                    expanding = false,
+                    slideShiftPx = portraitSearchSlideShiftPx(),
+                    onEnd = applyCollapsed,
+                )
+            }
+            return
+        }
+
+        gamesSearchExpanded = true
+        updateSearchToggleIcon()
+        updateInlineSearchHeaderSlot()
+        persistGamesSearchUiState()
+
+        if (resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) {
+            if (animated) {
+                beginPortraitSearchExpandAnimation()
+            } else {
+                binding.frameSearch.visibility = View.VISIBLE
+                resetPortraitSearchMotionOffsets()
+                binding.searchText.clearFocus()
+            }
+        } else {
+            binding.searchText.clearFocus()
+        }
+    }
+
     private fun focusSearch() {
         binding.searchText.requestFocus()
         val imm = requireActivity()
@@ -471,7 +697,20 @@ class GamesFragment : Fragment() {
         imm?.showSoftInput(binding.searchText, InputMethodManager.SHOW_IMPLICIT)
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (_binding == null) {
+            return
+        }
+        originalHeaderTopMargin = null
+        originalHeaderLeftMargin = null
+        originalHeaderRightMargin = null
+        setGamesSearchExpanded(gamesSearchExpanded, animated = false)
+        ViewCompat.requestApplyInsets(binding.root)
+    }
+
     override fun onDestroyView() {
+        gamesSearchExpanded = false
         super.onDestroyView()
         _binding = null
     }
