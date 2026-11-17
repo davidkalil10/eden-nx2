@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <group android:id="@+id/group_view_heading">
+        <item
+            android:id="@+id/menu_heading_view"
+            android:checkable="false"
+            android:enabled="false"
+            android:title="@string/game_menu_section_view" />
+    </group>
+
+    <group
+        android:id="@+id/group_view"
+        android:checkableBehavior="single">
+        <item
+            android:id="@+id/view_grid"
+            android:title="@string/view_grid" />
+        <item
+            android:id="@+id/view_grid_compact"
+            android:title="@string/view_grid_compact" />
+        <item
+            android:id="@+id/view_list"
+            android:title="@string/view_list" />
+        <item
+            android:id="@+id/view_carousel"
+            android:title="@string/view_carousel" />
+    </group>
+
+    <group android:id="@+id/group_sort_heading">
+        <item
+            android:id="@+id/menu_heading_sort"
+            android:checkable="false"
+            android:enabled="false"
+            android:title="@string/game_menu_section_sort" />
+    </group>
+
+    <group
+        android:id="@+id/group_sort"
+        android:checkableBehavior="single">
+        <item
+            android:id="@+id/alphabetical"
+            android:checked="true"
+            android:title="@string/alphabetical" />
+        <item
+            android:id="@+id/filter_recently_played"
+            android:title="@string/search_recently_played" />
+        <item
+            android:id="@+id/filter_recently_added"
+            android:title="@string/search_recently_added" />
+    </group>
+
+</menu>
