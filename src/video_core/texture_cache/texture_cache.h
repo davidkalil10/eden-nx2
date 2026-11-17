@@ -134,6 +134,11 @@ void TextureCache<P>::RunGarbageCollector() {
         if (True(image.flags & ImageFlagBits::IsDecoding)) {
             return false;
         }
+        // Keep recently used CostlyLoad images: re-decoding them costs more than the memory saves
+        if (aggressive_mode && True(image.flags & ImageFlagBits::CostlyLoad) &&
+            frame_tick - image.last_use_tick < COSTLY_KEEP_TICKS) {
+            return false;
+        }
         const bool must_download = IsDownloadable(image) && False(image.flags & ImageFlagBits::BadOverlap);
         if ((!aggressive_mode && True(image.flags & ImageFlagBits::CostlyLoad)) || (!high_priority_mode && must_download)) {
             return false;
@@ -2204,6 +2209,7 @@ void TextureCache<P>::RegisterImage(ImageId image_id) {
     }
     total_used_memory += Common::AlignUp(tentative_size, 1024);
     image.lru_index = lru_cache.Insert(image_id, frame_tick);
+    image.last_use_tick = frame_tick;
 
     ForEachGPUPage(image.gpu_addr, image.guest_size_bytes, [this, image_id](u64 page) {
         (*channel_state->gpu_page_table)[page].push_back(image_id);
@@ -2567,6 +2573,7 @@ void TextureCache<P>::PrepareImage(ImageId image_id, bool is_modification, bool 
         MarkModification(image);
     }
     lru_cache.Touch(image.lru_index, frame_tick);
+    image.last_use_tick = frame_tick;
 }
 
 template <class P>
