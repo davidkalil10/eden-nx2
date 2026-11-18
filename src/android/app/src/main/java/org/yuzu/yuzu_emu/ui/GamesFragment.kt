@@ -542,9 +542,8 @@ class GamesFragment : Fragment() {
     }
 
     private fun resetPortraitSearchMotionOffsets() {
-        binding.gridGames.animate().cancel()
+        binding.swipeRefresh.animate().cancel()
         binding.frameSearch.animate().cancel()
-        binding.gridGames.translationY = 0f
         binding.swipeRefresh.translationY = 0f
         binding.frameSearch.translationY = 0f
         binding.frameSearch.alpha = 1f
@@ -565,26 +564,26 @@ class GamesFragment : Fragment() {
         slideShiftPx: Float,
         onEnd: () -> Unit,
     ) {
-        val gameGrid = binding.gridGames
+        val list = binding.swipeRefresh
         val bar = binding.frameSearch
         val interpolator = if (expanding) {
             SEARCH_GRID_EXPAND_INTERPOLATOR
         } else {
             SEARCH_GRID_COLLAPSE_INTERPOLATOR
         }
-        gameGrid.animate().cancel()
+        list.animate().cancel()
         bar.animate().cancel()
         if (slideShiftPx <= 0f) {
-            gameGrid.translationY = 0f
+            list.translationY = 0f
             bar.alpha = 1f
             onEnd()
             return
         }
         portraitSearchLayoutShiftPx = slideShiftPx
         val offset = -slideShiftPx
-        val gridTargetY = if (expanding) 0f else offset
+        val listTargetY = if (expanding) 0f else offset
         val barTargetAlpha = if (expanding) 1f else 0f
-        gameGrid.translationY = if (expanding) offset else 0f
+        list.translationY = if (expanding) offset else 0f
         bar.alpha = if (expanding) 0f else 1f
         var finished = 0
         val onPartFinished = {
@@ -593,8 +592,8 @@ class GamesFragment : Fragment() {
                 onEnd()
             }
         }
-        gameGrid.animate()
-            .translationY(gridTargetY)
+        list.animate()
+            .translationY(listTargetY)
             .setDuration(SEARCH_GRID_ANIM_DURATION_MS)
             .setInterpolator(interpolator)
             .withEndAction(onPartFinished)
