@@ -108,6 +108,12 @@ public:
     }
 
     void WaitPendingFences([[maybe_unused]] bool force) {
+        // Counter reports only reach guest memory once a later fence is signalled, but the guest
+        // may wait for them before it submits anything else. Fence the ones a command list
+        // leaves behind so they cannot wait forever.
+        if (!force && query_cache.HasUnfencedReports()) {
+            SignalReference();
+        }
         if constexpr (!can_async_check) {
             TryReleasePendingFences<true>();
         } else {

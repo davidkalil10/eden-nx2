@@ -109,6 +109,9 @@ public:
 
     bool HasUncommittedFlushes() const;
 
+    /// Returns true when counter reports are queued that no fence has picked up yet
+    bool HasUnfencedReports() const;
+
     bool ShouldWaitAsyncFlushes();
 
     void PopAsyncFlushes();

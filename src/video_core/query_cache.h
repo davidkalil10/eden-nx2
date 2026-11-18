@@ -203,6 +203,13 @@ public:
         std::unique_lock lock{mutex};
         committed_flushes.push_back(uncommitted_flushes);
         uncommitted_flushes.reset();
+        has_unfenced_reports = false;
+    }
+
+    /// Returns true when counter reports are queued that no fence has picked up yet
+    bool HasUnfencedReports() const {
+        std::unique_lock lock{mutex};
+        return has_unfenced_reports;
     }
 
     bool HasUncommittedFlushes() const {
@@ -338,6 +345,7 @@ private:
             }
         });
         rasterizer.SyncOperation(std::move(operation));
+        has_unfenced_reports = true;
     }
 
     static constexpr std::uintptr_t YUZU_PAGESIZE = 4096;
@@ -356,6 +364,7 @@ private:
 
     std::shared_ptr<std::vector<AsyncJobId>> uncommitted_flushes{};
     std::list<std::shared_ptr<std::vector<AsyncJobId>>> committed_flushes;
+    bool has_unfenced_reports{};
 }; // namespace VideoCommon
 
 template <class QueryCache, class HostCounter>

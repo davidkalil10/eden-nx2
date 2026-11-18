@@ -169,6 +169,7 @@ struct QueryCacheBase<Traits>::QueryCacheBaseImpl {
     u64 streamer_mask;
     std::mutex flush_guard;
     std::deque<u64> flushes_pending;
+    bool has_unfenced_reports{};
     std::vector<QueryCacheBase<Traits>::QueryLocation> pending_unregister;
 };
 
@@ -307,6 +308,7 @@ void QueryCacheBase<Traits>::CounterReport(GPUVAddr addr, QueryType counter_type
             return;
         }
         impl->rasterizer.SyncOperation(std::move(operation));
+        impl->has_unfenced_reports = true;
     }
     if (is_synced) {
         streamer->Free(new_query_id);
@@ -463,6 +465,7 @@ template <typename Traits>
 void QueryCacheBase<Traits>::CommitAsyncFlushes() {
     // Make sure to have the results synced in Host.
     NotifyWFI();
+    impl->has_unfenced_reports = false;
 
     u64 mask{};
     {
@@ -503,6 +506,11 @@ bool QueryCacheBase<Traits>::HasUncommittedFlushes() const {
         return result;
     });
     return result;
+}
+
+template <typename Traits>
+bool QueryCacheBase<Traits>::HasUnfencedReports() const {
+    return impl->has_unfenced_reports;
 }
 
 template <typename Traits>
