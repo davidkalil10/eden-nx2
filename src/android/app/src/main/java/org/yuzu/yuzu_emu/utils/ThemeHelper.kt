@@ -14,12 +14,12 @@ import android.util.TypedValue
 import androidx.annotation.ColorInt
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
-import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
+import androidx.appcompat.view.ContextThemeWrapper
 import com.google.android.material.R as MaterialR
 import java.util.Collections
 import java.util.WeakHashMap
