@@ -496,6 +496,7 @@ class GamesFragment : Fragment() {
     private inner class ScoredGame(val score: Double, val item: Game)
 
     private fun setupCollapsibleSearch() {
+        pinHeaderAboveSearchBar()
         binding.frameSearch.visibility = View.GONE
         binding.searchButton.setOnClickListener {
             setGamesSearchExpanded(!gamesSearchExpanded, animated = true)
@@ -559,32 +560,35 @@ class GamesFragment : Fragment() {
         return (bar.height + marginTop).toFloat().coerceAtLeast(1f)
     }
 
-    private fun runPortraitSearchGridAnimation(
-        expanding: Boolean,
-        slideShiftPx: Float,
-        onEnd: () -> Unit,
-    ) {
+    private fun pinHeaderAboveSearchBar() {
+        if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            return
+        }
+        val headerElevation = 4f * resources.displayMetrics.density
+        binding.header.elevation = headerElevation
+        binding.frameSearch.elevation = 0f
+        binding.header.bringToFront()
+    }
+
+    private fun runPortraitSearchCollapseAnimation(slideShiftPx: Float, onEnd: () -> Unit) {
         val list = binding.swipeRefresh
         val bar = binding.frameSearch
-        val interpolator = if (expanding) {
-            SEARCH_GRID_EXPAND_INTERPOLATOR
-        } else {
-            SEARCH_GRID_COLLAPSE_INTERPOLATOR
-        }
+        pinHeaderAboveSearchBar()
         list.animate().cancel()
         bar.animate().cancel()
+        list.translationY = 0f
+        if (slideShiftPx > 0f) {
+            portraitSearchLayoutShiftPx = slideShiftPx
+        }
         if (slideShiftPx <= 0f) {
-            list.translationY = 0f
+            bar.translationY = 0f
             bar.alpha = 1f
             onEnd()
             return
         }
-        portraitSearchLayoutShiftPx = slideShiftPx
         val offset = -slideShiftPx
-        val listTargetY = if (expanding) 0f else offset
-        val barTargetAlpha = if (expanding) 1f else 0f
-        list.translationY = if (expanding) offset else 0f
-        bar.alpha = if (expanding) 0f else 1f
+        bar.translationY = 0f
+        bar.alpha = 1f
         var finished = 0
         val onPartFinished = {
             finished++
@@ -593,15 +597,61 @@ class GamesFragment : Fragment() {
             }
         }
         list.animate()
-            .translationY(listTargetY)
+            .translationY(offset)
             .setDuration(SEARCH_GRID_ANIM_DURATION_MS)
-            .setInterpolator(interpolator)
+            .setInterpolator(SEARCH_GRID_COLLAPSE_INTERPOLATOR)
             .withEndAction(onPartFinished)
             .start()
         bar.animate()
-            .alpha(barTargetAlpha)
+            .alpha(0f)
             .setDuration(SEARCH_GRID_ANIM_DURATION_MS)
-            .setInterpolator(interpolator)
+            .setInterpolator(SEARCH_GRID_COLLAPSE_INTERPOLATOR)
+            .withEndAction(onPartFinished)
+            .start()
+    }
+
+    private fun runPortraitSearchGridAnimation(
+        expanding: Boolean,
+        slideShiftPx: Float,
+        onEnd: () -> Unit,
+    ) {
+        if (!expanding) {
+            runPortraitSearchCollapseAnimation(slideShiftPx, onEnd)
+            return
+        }
+        val list = binding.swipeRefresh
+        val bar = binding.frameSearch
+        list.animate().cancel()
+        bar.animate().cancel()
+        if (slideShiftPx <= 0f) {
+            list.translationY = 0f
+            bar.translationY = 0f
+            bar.alpha = 1f
+            onEnd()
+            return
+        }
+        portraitSearchLayoutShiftPx = slideShiftPx
+        val offset = -slideShiftPx
+        list.translationY = offset
+        bar.translationY = 0f
+        bar.alpha = 0f
+        var finished = 0
+        val onPartFinished = {
+            finished++
+            if (finished >= 2) {
+                onEnd()
+            }
+        }
+        list.animate()
+            .translationY(0f)
+            .setDuration(SEARCH_GRID_ANIM_DURATION_MS)
+            .setInterpolator(SEARCH_GRID_EXPAND_INTERPOLATOR)
+            .withEndAction(onPartFinished)
+            .start()
+        bar.animate()
+            .alpha(1f)
+            .setDuration(SEARCH_GRID_ANIM_DURATION_MS)
+            .setInterpolator(SEARCH_GRID_EXPAND_INTERPOLATOR)
             .withEndAction(onPartFinished)
             .start()
     }
