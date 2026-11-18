@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <QApplication>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QFileDialog>
@@ -57,6 +58,11 @@ public:
             }
             return TurnPage(menu, event);
         }
+        if (event->type() == QEvent::Resize && watched->isWidgetType() &&
+            watched->property("gamescope_fit").isValid()) {
+            CountResize(static_cast<QWidget*>(watched));
+            return false;
+        }
         if (event->type() == QEvent::LayoutRequest && watched->isWidgetType() &&
             watched->property("gamescope_fit").isValid()) {
             // A message box fixes its own size on every layout change: it lays itself out, then
@@ -64,6 +70,7 @@ public:
             // (Taken over here, so the layout is activated first, as Qt would before event())
             auto* widget = static_cast<QWidget*>(watched);
             if (QLayout* layout = widget->layout()) {
+                FreeOversizedLayout(widget, layout);
                 layout->activate();
             }
             static_cast<QObject*>(widget)->event(event);
@@ -104,6 +111,61 @@ public:
     }
 
 private:
+    // A layout that needs more than the screen (a card's margins around a tall page, or a page
+    // taller than the screen) grows the dialog past it each time it lays out, and the dialog is
+    // then put back to the screen's size: with a page that keeps asking for a new layout, the
+    // dialog shook. Such a layout no longer sizes the dialog: its content gets the screen.
+    static void FreeOversizedLayout(QWidget* dialog, QLayout* layout) {
+        QScreen* screen = dialog->screen();
+        if (!screen || layout->sizeConstraint() == QLayout::SetNoConstraint) {
+            return;
+        }
+        const QSize needed = layout->totalMinimumSize();
+        const QSize room = screen->geometry().size();
+        if (needed.width() <= room.width() && needed.height() <= room.height()) {
+            return;
+        }
+        layout->setSizeConstraint(QLayout::SetNoConstraint);
+        if (Settings::values.console_debug_probes.GetValue()) {
+            LOG_INFO(Frontend,
+                     "gamescope: {} needs {}x{}, the screen is {}x{}: its layout no "
+                     "longer sizes it",
+                     dialog->metaObject()->className(), needed.width(), needed.height(),
+                     room.width(), room.height());
+        }
+    }
+
+    // Debug Probes: a fitted dialog resized more than twice in a second is logged (a dialog
+    // takes the screen once or twice as it opens; more means something keeps resizing it)
+    static void CountResize(QWidget* dialog) {
+        if (!Settings::values.console_debug_probes.GetValue()) {
+            return;
+        }
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        qint64 since = dialog->property("gamescope_resize_since").toLongLong();
+        int count = dialog->property("gamescope_resizes").toInt() + 1;
+        if (since == 0) {
+            since = now;
+        }
+        if (now - since >= 1000) {
+            if (count > 2) {
+                const QLayout* layout = dialog->layout();
+                const QSize needed = layout ? layout->totalMinimumSize() : QSize{};
+                const QSize room = dialog->screen() ? dialog->screen()->geometry().size() : QSize{};
+                LOG_INFO(Frontend,
+                         "gamescope: {} resized {} times in {} ms (now {}x{}, its layout needs "
+                         "{}x{}, the screen is {}x{})",
+                         dialog->metaObject()->className(), count, now - since, dialog->width(),
+                         dialog->height(), needed.width(), needed.height(), room.width(),
+                         room.height());
+            }
+            since = now;
+            count = 0;
+        }
+        dialog->setProperty("gamescope_resize_since", since);
+        dialog->setProperty("gamescope_resizes", count);
+    }
+
     static void FitDialog(QWidget* dialog) {
         QScreen* screen = dialog->screen() ? dialog->screen() : QGuiApplication::primaryScreen();
         if (!screen) {
