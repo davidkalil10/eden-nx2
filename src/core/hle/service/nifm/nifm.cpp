@@ -123,7 +123,7 @@ struct AccessPointDataV3 {
     u8 ssid_len;     // Length of SSID
     char ssid[0x20]; // SSID Name (not null-terminated)
     u8 unk_pad[11];  // Unk
-    u8 strength;     // 0-3 = Signal Strengh Bar
+    u8 strength;     // 0-3 = Signal Strength Bar
     u8 pad2[3];      // Unk 3 bytes
     u8 visible;      // 0 = Hidden, 1 = Shows up in UI
     u8 has_password; // 0 = Open, 1 = Password Protected
@@ -682,7 +682,7 @@ void IGeneralService::GetNetworkProfile(HLERequestContext& ctx) {
         wifi.passphrase = {"password"};
         std::memcpy(wifi.ssid.data(), net_state.ssid, wifi.ssid_length);
 
-        LOG_INFO(Service_NIFM, "ssid={} lenght={}", wifi.ssid, wifi.ssid_length);
+        LOG_INFO(Service_NIFM, "ssid={} length={}", wifi.ssid, wifi.ssid_length);
 
         return SfNetworkProfileData{
             .ip_setting_data{

@@ -7834,7 +7834,7 @@ bool MainWindow::LoadROM(const QString& filename, Service::AM::FrontendAppletPar
                "outdated format that has been superseded by others such as NCA, NAX, XCI, or "
                "NSP. Deconstructed ROM directories lack icons, metadata, and update "
                "support.<br>For an explanation of the various Switch formats Eden supports, "
-               "out our user handbook. This message will not be shown again."));
+               "check out our user handbook. This message will not be shown again."));
     }
 
     if (result != Core::SystemResultStatus::Success) {
@@ -8409,8 +8409,8 @@ static bool RomFSRawCopy(size_t total_size, size_t& read_size, QProgressDialog& 
     return true;
 }
 
-// TODO(crueter): All this can be transfered to qt_common
-// Aldoe I need to decide re: message boxes for QML
+// TODO(crueter): All this can be transferred to qt_common
+// Also I need to decide re: message boxes for QML
 // translations_common? strings_common? qt_strings? who knows
 void MainWindow::OnGameListRemoveInstalledEntry(u64 program_id,
                                                 QtCommon::Game::InstalledEntryType type) {

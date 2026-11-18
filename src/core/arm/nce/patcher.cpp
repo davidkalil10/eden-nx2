@@ -309,7 +309,7 @@ bool Patcher::RelocateAndCopy(Common::ProcessAddress load_base, const Kernel::Co
         for (const Relocation& rel : patch.m_branch_to_module_relocations_pre) {
             ApplyBranchToModuleRelocationPre(m_patch_instructions_pre.data() + rel.patch_offset / sizeof(u32), rel);
         }
-        LOG_DEBUG(Core_ARM, "aplied Pre-module {}", patch.m_branch_to_module_relocations_pre.size());
+        LOG_DEBUG(Core_ARM, "applied Pre-module {}", patch.m_branch_to_module_relocations_pre.size());
 
         for (const Relocation& rel : patch.m_branch_to_module_relocations) {
             ApplyBranchToModuleRelocationPostSplit(m_patch_instructions.data() + rel.patch_offset / sizeof(u32), rel);

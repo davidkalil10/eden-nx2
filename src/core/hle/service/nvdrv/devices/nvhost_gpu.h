@@ -145,7 +145,7 @@ private:
         u32_le num_jobs{};    // in
         u32_le flags{};       // in
         NvFence fence_out{};  // out
-        std::array<u32_le, 3> reserved{};   // in and ingored (for now) according to switch brew
+        std::array<u32_le, 3> reserved{};   // in and ignored (for now) according to switch brew
     };
     static_assert(sizeof(IoctlAllocGpfifoEx) == 32, "IoctlAllocGpfifoEx2 is incorrect size");
 

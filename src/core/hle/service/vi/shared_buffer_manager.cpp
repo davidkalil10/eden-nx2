@@ -549,7 +549,7 @@ Result SharedBufferManager::ClearAppletCaptureBuffer(s32 layer_index, u32 color)
     R_UNLESS(m_buffer_page_group != nullptr, VI::ResultNotFound);
 
     if (layer_index < 0 || layer_index >= static_cast<s32>(SharedBufferNumCaptureSlots)) {
-        LOG_WARNING(Service_VI, "Couldnt clear non-capture slot {}", layer_index);
+        LOG_WARNING(Service_VI, "Couldn't clear non-capture slot {}", layer_index);
         R_SUCCEED();
     }
 

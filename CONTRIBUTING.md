@@ -43,7 +43,7 @@ Pull requests are only to be merged by core developers when properly tested and 
 
 - The level of namespacing is generally left to the committer's choice.
 - However, we never recommend going more than two levels *except* in `hle`, in which case you may go as many as four levels depending on the specificity of your changes.
-- Ocassionally, up to two additional namespaces may be provided for more clarity.
+- Occasionally, up to two additional namespaces may be provided for more clarity.
   - Changes that affect the entire project (sans CMake changes) should be namespaced as `meta`.
 - Maintainers are permitted to change namespaces at will.
 - Commits within PRs are not required to be namespaced, but it is highly recommended.

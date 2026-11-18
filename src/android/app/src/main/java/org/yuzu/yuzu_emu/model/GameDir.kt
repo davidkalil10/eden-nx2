@@ -15,7 +15,7 @@ data class GameDir(
     var deepScan: Boolean,
     val type: DirectoryType = DirectoryType.GAME
 ) : Parcelable {
-    // Needed for JNI backward compatability
+    // Needed for JNI backward compatibility
     constructor(uriString: String, deepScan: Boolean) : this(uriString, deepScan, DirectoryType.GAME)
 }
 

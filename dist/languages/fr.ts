@@ -6612,7 +6612,7 @@ Faites glisser les points pour modifier la position ou double-cliquez sur les ce
     </message>
     <message>
         <location filename="../../src/yuzu/data_dialog.ui" line="48"/>
-        <source>Deleting ANY data is IRREVERSABLE!</source>
+        <source>Deleting ANY data is IRREVERSIBLE!</source>
         <translation>La suppression de TOUTES les données est IRRÉVERSIBLE !</translation>
     </message>
     <message>
@@ -6660,7 +6660,7 @@ Faites glisser les points pour modifier la position ou double-cliquez sur les ce
     </message>
     <message>
         <location filename="../../src/yuzu/data_widget.ui" line="106"/>
-        <source>Delete all data in this directory. THIS IS 100% IRREVERSABLE!</source>
+        <source>Delete all data in this directory. THIS IS 100% IRREVERSIBLE!</source>
         <translation>Supprimer toutes les données de ce répertoire. CECI EST 100 % IRRÉVERSIBLE !</translation>
     </message>
     <message>
@@ -8392,7 +8392,7 @@ Careful: a less popular controller could be labeled as a handheld.</source>
     </message>
     <message>
         <location filename="../../src/yuzu/main_window.cpp" line="7833"/>
-        <source>You are using the deconstructed ROM directory format for this game, which is an outdated format that has been superseded by others such as NCA, NAX, XCI, or NSP. Deconstructed ROM directories lack icons, metadata, and update support.&lt;br&gt;For an explanation of the various Switch formats Eden supports, out our user handbook. This message will not be shown again.</source>
+        <source>You are using the deconstructed ROM directory format for this game, which is an outdated format that has been superseded by others such as NCA, NAX, XCI, or NSP. Deconstructed ROM directories lack icons, metadata, and update support.&lt;br&gt;For an explanation of the various Switch formats Eden supports, check out our user handbook. This message will not be shown again.</source>
         <translation type="unfinished"/>
     </message>
     <message>

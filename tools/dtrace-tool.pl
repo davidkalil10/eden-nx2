@@ -102,7 +102,7 @@ foreach my $i (0 .. $#ARGV) {
 Usage: $0\n
 -p          Prompt for parameters\n
 -g          Generate dtrace output\n
--s          Continously generate output until Ctrl^C\n
+-s          Continuously generate output until Ctrl^C\n
 -<n>        Select dtrace type\n
             0: Profile kernel + user stacks (default)\n
             1: Trace syscall entries\n

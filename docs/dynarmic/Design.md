@@ -312,7 +312,7 @@ SetTerm(IR::Term::LinkBlockFast{next})
 ```
 
 This terminal instruction jumps to the basic block described by `next` unconditionally.
-These are guarantees that must be held at runtime - i.e that the program wont hang,
+These are guarantees that must be held at runtime - i.e. that the program won't hang,
 
 ### Terminal: PopRSBHint
 

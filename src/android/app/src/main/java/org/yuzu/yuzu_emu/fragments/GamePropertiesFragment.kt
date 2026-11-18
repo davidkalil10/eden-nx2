@@ -227,7 +227,7 @@ class GamePropertiesFragment : Fragment() {
 
                 var hasError = false
 
-                // normally cant be above 9999
+                // normally can't be above 9999
                 if (hoursValue < 0 || hoursValue > 9999) {
                     hoursLayout.error = getString(R.string.hours_must_be_between_0_and_9999)
                     hasError = true

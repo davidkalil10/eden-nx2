@@ -22,7 +22,7 @@ enum class Type : u64 {
     _UNK7 = 7,
 };
 
-/// For any would be newcomer to here: Yes - GPU dissasembly says S64 should
+/// For any would be newcomer to here: Yes - GPU disassembly says S64 should
 /// be after F16x2FTZRN. However if you do plan to revert this, you MUST test
 /// ToTK beforehand. As the game will break with the subtle change
 enum class Size : u64 {

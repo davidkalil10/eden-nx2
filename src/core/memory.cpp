@@ -628,7 +628,7 @@ struct Memory::Impl {
             HandleRasterizerDownload(addr, sizeof(T));
         }); ptr) [[likely]] {
             // It may be tempting to rewrite this particular section to use "reinterpret_cast";
-            // afterall, it's trivially copyable so surely it can be copied ov- Alignment.
+            // after all, it's trivially copyable so surely it can be copied over alignment.
             // Remember, alignment. memcpy() will deal with all the alignment extremely fast.
             T result{};
             std::memcpy(&result, ptr, sizeof(T));

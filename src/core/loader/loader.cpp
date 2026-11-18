@@ -268,7 +268,7 @@ constexpr std::array<const char*, 69> RESULT_MESSAGES{
     "There is no control data available.",
     "The NAX file has a bad header.",
     "The NAX file has incorrect size as determined by the header.",
-    "The HMAC to generated the NAX decryption keys failed.",
+    "The HMAC to generate the NAX decryption keys failed.",
     "The HMAC to validate the NAX decryption keys failed.",
     "The NAX key derivation failed.",
     "The NAX file cannot be interpreted as an NCA file.",

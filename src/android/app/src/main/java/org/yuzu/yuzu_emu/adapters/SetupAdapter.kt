@@ -61,7 +61,7 @@ class SetupAdapter(val activity: AppCompatActivity, pages: List<SetupPage>) :
 
                     binding.pageButtonContainer.addView(pageButtonView)
 
-                    // Disable buton add if its already completed
+                    // Disable button add if it's already completed
                     if (pageButton.buttonState.invoke() == ButtonState.BUTTON_ACTION_COMPLETE) {
                         onStepCompleted(pageButton.titleId, pageFullyCompleted = false)
                     }

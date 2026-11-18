@@ -240,7 +240,7 @@ void GRenderWindow::leaveEvent(QEvent* event) {
         qint32 x = qBound(rect.left(), position.x(), rect.right());
         qint32 y = qBound(rect.top(), position.y(), rect.bottom());
         // Only start the timer if the mouse has left the window bound.
-        // The leave event is also triggered when the window looses focus.
+        // The leave event is also triggered when the window loses focus.
         if (x != position.x() || y != position.y()) {
             mouse_constrain_timer.start();
         }

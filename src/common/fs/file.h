@@ -452,7 +452,7 @@ public:
     FileType file_type{};
     std::FILE* file = nullptr;
     // Any decent system should have mmap() for files
-    // Systems with artifical mmap() limitations should simply change the logic within file.cpp
+    // Systems with artificial mmap() limitations should simply change the logic within file.cpp
     // and reduce the threshold for which the mmap() is set to
 #ifdef _WIN32
     void *mapping_handle = nullptr;
