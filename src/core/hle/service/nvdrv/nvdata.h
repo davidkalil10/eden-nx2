@@ -80,7 +80,7 @@ enum class NvResult : u32 {
 };
 
 // obtained from
-// https://github.com/skyline-emu/skyline
+// https://github.com/strato-emu/strato/blob/master/app/src/main/cpp/skyline/services/nvdrv/devices/nvhost/ctrl.h#L47
 enum class EventState {
     Available = 0,
     Waiting = 1,
