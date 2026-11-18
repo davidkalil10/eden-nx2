@@ -517,7 +517,7 @@ class GamesFragment : Fragment() {
     private fun updateSearchToggleIcon() {
         val showClose = gamesSearchExpanded
         binding.searchButtonIcon.setImageResource(
-            if (showClose) R.drawable.ic_clear else R.drawable.ic_search
+            if (showClose) R.drawable.ic_search_close else R.drawable.ic_search
         )
         val accent = MaterialColors.getColor(
             binding.searchButtonIcon,
