@@ -653,9 +653,10 @@ object NativeLibrary {
      * Gets the save location for a specific game
      *
      * @param programId String representation of a game's program ID
+     * @param userIndex Index of the user profile whose save data is being accessed
      * @return Save data path that may not exist yet
      */
-    external fun getSavePath(programId: String): String
+    external fun getSavePath(programId: String, userIndex: Int): String
 
     /**
      * Gets the root save directory for the default profile as either
