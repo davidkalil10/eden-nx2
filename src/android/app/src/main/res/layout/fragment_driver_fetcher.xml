@@ -66,38 +66,6 @@
                     android:nestedScrollingEnabled="false"
                     android:overScrollMode="never" />
 
-                <include layout="@layout/list_item_driver_fetcher_header_custom" />
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/text_custom_links_empty"
-                    style="@style/TextAppearance.Material3.BodyMedium"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="@dimen/spacing_large"
-                    android:layout_marginBottom="@dimen/spacing_med"
-                    android:text="@string/custom_driver_links_empty"
-                    android:textAlignment="viewStart"
-                    android:textColor="?attr/colorOnSurfaceVariant" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/button_add_custom_link"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="@dimen/spacing_large"
-                    android:layout_marginBottom="@dimen/spacing_medlarge"
-                    android:text="@string/add_custom_driver_link"
-                    app:icon="@drawable/ic_add"
-                    app:iconGravity="textStart" />
-
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/list_custom_driver_links"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:clipToPadding="false"
-                    android:nestedScrollingEnabled="false"
-                    android:overScrollMode="never" />
-
             </LinearLayout>
 
         </androidx.core.widget.NestedScrollView>

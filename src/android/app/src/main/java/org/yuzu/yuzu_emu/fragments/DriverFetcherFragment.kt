@@ -23,25 +23,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.yuzu.yuzu_emu.R
-import org.yuzu.yuzu_emu.databinding.DialogAddCustomDriverLinkBinding
 import org.yuzu.yuzu_emu.databinding.FragmentDriverFetcherBinding
-import org.yuzu.yuzu_emu.features.fetcher.CustomDriverLink
-import org.yuzu.yuzu_emu.features.fetcher.CustomDriverLinkAdapter
-import org.yuzu.yuzu_emu.features.fetcher.CustomDriverLinkStore
-import org.yuzu.yuzu_emu.features.fetcher.isReleaseCatalogSource
-import org.yuzu.yuzu_emu.features.fetcher.DriverArtifactInstaller
-import org.yuzu.yuzu_emu.features.fetcher.DriverFetcherLinkParser
 import org.yuzu.yuzu_emu.features.fetcher.DriverGroupAdapter
-import org.yuzu.yuzu_emu.features.fetcher.DriverReleaseBackend
-import org.yuzu.yuzu_emu.features.fetcher.DriverReleaseSource
-import org.yuzu.yuzu_emu.features.fetcher.DriverReleasesCacheStore
-import org.yuzu.yuzu_emu.features.fetcher.DriverReleasesClient
-import org.yuzu.yuzu_emu.features.fetcher.DriverSourceKeys
-import org.yuzu.yuzu_emu.features.fetcher.ParsedDriverLink
-import org.yuzu.yuzu_emu.features.fetcher.resolveReleaseSource
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 import org.yuzu.yuzu_emu.model.DriverViewModel
 import org.yuzu.yuzu_emu.model.HomeViewModel
-import org.yuzu.yuzu_emu.utils.DirectoryInitialization
 import org.yuzu.yuzu_emu.utils.GpuDriverHelper
 import org.yuzu.yuzu_emu.utils.ViewUtils.updateMargins
 import java.net.URL
@@ -51,11 +41,21 @@ import java.time.ZoneId
 import kotlin.getValue
 
 class DriverFetcherFragment : Fragment() {
+
+    companion object {
+        private const val MAX_RELEASE_PAGES = 15
+        private const val RELEASE_USER_AGENT = "Eden-Android-DriverFetcher"
+    }
     private var _binding: FragmentDriverFetcherBinding? = null
     private val binding get() = _binding!!
 
     private var fetchSession = 0
     private var driversJobActive = false
+
+    private val releaseHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .build()
 
     enum class SortMode {
         Default, PublishTime,
@@ -67,7 +67,6 @@ class DriverFetcherFragment : Fragment() {
         val sort: Int = 0,
         val useTagName: Boolean = false,
         val sortMode: SortMode = SortMode.Default,
-        val releaseSource: DriverReleaseSource? = null,
     )
 
     private val repoList: List<DriverRepo> = listOf(
@@ -90,7 +89,6 @@ class DriverFetcherFragment : Fragment() {
     )
 
     private lateinit var driverGroupAdapter: DriverGroupAdapter
-    private lateinit var customDriverLinkAdapter: CustomDriverLinkAdapter
     private val homeViewModel: HomeViewModel by activityViewModels()
     private val driverViewModel: DriverViewModel by activityViewModels()
 
@@ -160,17 +158,6 @@ class DriverFetcherFragment : Fragment() {
         )
         binding.listDrivers.adapter = driverGroupAdapter
 
-        customDriverLinkAdapter = CustomDriverLinkAdapter(
-            onDownload = { link -> downloadCustomLink(link) },
-            onEdit = { link -> showCustomDriverLinkDialog(link) },
-            onDelete = { link -> confirmRemoveCustomLink(link) },
-        )
-        binding.listCustomDriverLinks.layoutManager = LinearLayoutManager(context)
-        binding.listCustomDriverLinks.adapter = customDriverLinkAdapter
-        binding.listCustomDriverLinks.isNestedScrollingEnabled = false
-        binding.buttonAddCustomLink.setOnClickListener { showCustomDriverLinkDialog() }
-        refreshCustomDriverLinks()
-
         setInsets()
 
         fetchDrivers()
@@ -183,138 +170,18 @@ class DriverFetcherFragment : Fragment() {
         _binding = null
     }
 
-    private fun refreshCustomDriverLinks() {
-        val binding = _binding ?: return
-        if (DirectoryInitialization.userDirectory == null) {
-            customDriverLinkAdapter.submitList(emptyList())
-            binding.textCustomLinksEmpty.isVisible = true
-            binding.listCustomDriverLinks.isVisible = false
-            return
-        }
-        val links = CustomDriverLinkStore.load(requireContext())
-        customDriverLinkAdapter.submitList(links)
-        binding.textCustomLinksEmpty.isVisible = links.isEmpty()
-        binding.listCustomDriverLinks.isVisible = links.isNotEmpty()
-    }
-
-    private fun showCustomDriverLinkDialog(existing: CustomDriverLink? = null) {
-        val editing = existing != null
-        val dialogBinding = DialogAddCustomDriverLinkBinding.inflate(layoutInflater)
-        existing?.let {
-            dialogBinding.inputLabel.setText(it.label)
-            dialogBinding.inputUrl.setText(it.url)
-        }
-        val dialog = MaterialAlertDialogBuilder(requireActivity())
-            .setTitle(
-                if (editing) {
-                    R.string.edit_custom_driver_link
-                } else {
-                    R.string.add_custom_driver_link
-                },
-            )
-            .setView(dialogBinding.root)
-            .setNegativeButton(R.string.cancel, null)
-            .setPositiveButton(R.string.save, null)
-            .create()
-
-        dialog.setOnShowListener {
-            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                dialogBinding.layoutLabel.error = null
-                dialogBinding.layoutUrl.error = null
-
-                val label = dialogBinding.inputLabel.text?.toString()?.trim().orEmpty()
-                val url = dialogBinding.inputUrl.text?.toString()?.trim().orEmpty()
-
-                if (label.isEmpty()) {
-                    dialogBinding.layoutLabel.error =
-                        getString(R.string.custom_driver_link_label_required)
-                    return@setOnClickListener
-                }
-
-                val parsed = DriverFetcherLinkParser.parse(url)
-                if (parsed is ParsedDriverLink.Invalid) {
-                    dialogBinding.layoutUrl.error = getString(R.string.invalid_custom_driver_link_url)
-                    return@setOnClickListener
-                }
-
-                val existingLinks = CustomDriverLinkStore.load(requireContext())
-                val builtinKeys = DriverSourceKeys.builtinGithubKeys(repoList.map { it.path })
-                if (DriverSourceKeys.isDuplicate(
-                        parsed,
-                        existingLinks,
-                        builtinKeys,
-                        exceptLinkId = existing?.id,
-                    )
-                ) {
-                    dialogBinding.layoutUrl.error = getString(R.string.driver_source_already_added)
-                    return@setOnClickListener
-                }
-
-                val wasCatalog = existing?.isReleaseCatalogSource() == true
-                if (editing) {
-                    CustomDriverLinkStore.updateParsed(requireContext(), existing!!.id, label, parsed)
-                } else {
-                    CustomDriverLinkStore.addParsed(requireContext(), label, parsed)
-                }
-                refreshCustomDriverLinks()
-                val isCatalog = parsed is ParsedDriverLink.ReleaseRepo
-                if (wasCatalog || isCatalog) {
-                    reloadDriverSourceCatalog()
-                }
-                dialog.dismiss()
-            }
-        }
-        dialog.show()
-    }
-
-    private fun confirmRemoveCustomLink(link: CustomDriverLink) {
-        MaterialAlertDialogBuilder(requireActivity())
-            .setTitle(R.string.remove_custom_driver_link)
-            .setMessage(getString(R.string.remove_custom_driver_link_message, link.label))
-            .setNegativeButton(R.string.cancel, null)
-            .setPositiveButton(R.string.delete) { _, _ ->
-                val wasCatalog = link.isReleaseCatalogSource()
-                CustomDriverLinkStore.remove(requireContext(), link.id)
-                refreshCustomDriverLinks()
-                if (wasCatalog) {
-                    reloadDriverSourceCatalog()
-                }
-            }
-            .show()
-    }
-
-    private fun reloadDriverSourceCatalog() {
-        if (_binding == null || !isAdded) {
-            return
-        }
-        fetchDrivers()
-    }
-
-    private fun githubReleaseSource(path: String): DriverReleaseSource =
-        DriverReleaseSource(
-            DriverReleaseBackend.GITHUB,
-            path,
-            "https://api.github.com",
-            "https://github.com/$path",
-        )
-
-    private fun useKimchiTagNames(path: String): Boolean = path.contains("K11MCH1")
-
     private fun driverGroup(
         driver: DriverRepo,
         releases: ArrayList<Release>,
-    ): DriverGroup {
-        val source = driver.releaseSource
-            ?: error("releaseSource required")
-        return DriverGroup(
+    ): DriverGroup =
+        DriverGroup(
             name = driver.name,
             sort = driver.sort,
-            source = source,
+            repoPath = driver.path,
             useTagName = driver.useTagName,
             sortMode = driver.sortMode,
             releases = releases,
         )
-    }
 
     private fun showFetchErrorDialog(repoName: String, message: String?) {
         if (!isAdded) {
@@ -327,30 +194,6 @@ class DriverFetcherFragment : Fragment() {
             .show()
     }
 
-    private fun downloadCustomLink(link: CustomDriverLink) {
-        if (link.resolveReleaseSource() != null) {
-            return
-        }
-        val fileName = CustomDriverLinkStore.fileNameForLink(link)
-        val normalized = DriverFetcherLinkParser.normalizeUrlInput(link.url)
-        try {
-            DriverArtifactInstaller.installFromUrl(
-                requireActivity(),
-                driverViewModel,
-                URL(normalized),
-                fileName,
-            ) {
-                refreshCustomDriverLinks()
-            }
-        } catch (e: Exception) {
-            MaterialAlertDialogBuilder(requireActivity())
-                .setTitle(R.string.driver_failed_title)
-                .setMessage(e.message)
-                .setPositiveButton(R.string.ok, null)
-                .show()
-        }
-    }
-
     private fun fetchDrivers() {
         val binding = _binding ?: return
         binding.loadingIndicator.isVisible = true
@@ -358,33 +201,17 @@ class DriverFetcherFragment : Fragment() {
             driverGroupAdapter.updateDriverGroups(emptyList())
         }
 
-        val customCatalog = CustomDriverLinkStore.loadReleaseCatalogLinks(requireContext())
-        val customRepos = customCatalog.mapIndexedNotNull { index, link ->
-            val source = link.resolveReleaseSource() ?: return@mapIndexedNotNull null
-            DriverRepo(
-                name = link.label,
-                sort = 1000 + index,
-                useTagName = source.backend == DriverReleaseBackend.GITHUB &&
-                    useKimchiTagNames(source.repoPath),
-                sortMode = SortMode.PublishTime,
-                releaseSource = source,
-            )
-        }
-
-        val builtIn = repoList.map {
-            it.copy(releaseSource = githubReleaseSource(it.path))
-        }
-
-        val allRepos = builtIn + customRepos
+        val allRepos = repoList
         val session = ++fetchSession
         driversJobActive = true
         val driverGroups = arrayListOf<DriverGroup>()
-        val appContext = requireContext().applicationContext
 
         fun mergeGroup(group: DriverGroup) {
             synchronized(driverGroups) {
-                val key = DriverSourceKeys.key(group.source)
-                val index = driverGroups.indexOfFirst { DriverSourceKeys.key(it.source) == key }
+                val key = group.repoPath.lowercase()
+                val index = driverGroups.indexOfFirst {
+                    it.repoPath.lowercase() == key
+                }
                 if (index >= 0) {
                     driverGroups[index] = group
                 } else {
@@ -406,45 +233,24 @@ class DriverFetcherFragment : Fragment() {
         }
 
         allRepos.forEach { driver ->
-            val source = driver.releaseSource ?: return@forEach
-
             viewLifecycleOwner.lifecycleScope.launch {
                 if (!driversJobActive || session != fetchSession) {
                     return@launch
                 }
 
-                val cached = withContext(Dispatchers.IO) {
-                    DriverReleasesCacheStore.readReleases(
-                        appContext,
-                        source,
+                var releases = arrayListOf<Release>()
+                var fetchFailed = false
+                try {
+                    releases = fetchGitHubReleases(
+                        driver.path,
                         driver.useTagName,
                         driver.sortMode,
                     )
-                }
-                if (!cached.isNullOrEmpty()) {
-                    mergeGroup(driverGroup(driver, cached))
-                    publishGroups()
-                }
-
-                var releases = arrayListOf<Release>()
-                var fetchFailed = false
-                withContext(Dispatchers.IO) {
-                    try {
-                        releases = DriverReleasesClient.fetchAllReleasesRespectingCache(
-                            appContext,
-                            source,
-                            driver.useTagName,
-                            driver.sortMode,
-                        )
-                    } catch (e: Exception) {
-                        fetchFailed = true
-                        releases = cached ?: arrayListOf()
-                        withContext(Dispatchers.Main) {
-                            if (isAdded && driversJobActive && session == fetchSession &&
-                                releases.isEmpty()
-                            ) {
-                                showFetchErrorDialog(driver.name, e.message)
-                            }
+                } catch (e: Exception) {
+                    fetchFailed = true
+                    withContext(Dispatchers.Main) {
+                        if (isAdded && driversJobActive && session == fetchSession) {
+                            showFetchErrorDialog(driver.name, e.message)
                         }
                     }
                 }
@@ -453,16 +259,55 @@ class DriverFetcherFragment : Fragment() {
                     return@launch
                 }
 
-                val publish = !fetchFailed || releases.isNotEmpty() ||
-                    driverGroups.none {
-                        DriverSourceKeys.key(it.source) == DriverSourceKeys.key(source)
-                    }
-                if (publish) {
+                if (!fetchFailed || releases.isNotEmpty()) {
                     mergeGroup(driverGroup(driver, releases))
                     publishGroups()
                 }
             }
         }
+    }
+
+    private suspend fun fetchGitHubReleases(
+        repoPath: String,
+        useTagName: Boolean,
+        sortMode: SortMode,
+    ): ArrayList<Release> = withContext(Dispatchers.IO) {
+        Release.fromJsonArray(fetchGitHubReleasesJson(repoPath), useTagName, sortMode)
+    }
+
+    private fun fetchGitHubReleasesJson(repoPath: String): String {
+        val merged = JSONArray()
+        var page = 1
+        while (page <= MAX_RELEASE_PAGES) {
+            val request = Request.Builder()
+                .url(
+                    "https://api.github.com/repos/$repoPath/releases?per_page=100&page=$page",
+                )
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", RELEASE_USER_AGENT)
+                .build()
+            val body = releaseHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("HTTP ${response.code} for $repoPath page $page")
+                }
+                response.body?.string().orEmpty()
+            }
+            if (body.isBlank()) {
+                break
+            }
+            val pageArray = JSONArray(body)
+            if (pageArray.length() == 0) {
+                break
+            }
+            for (i in 0 until pageArray.length()) {
+                merged.put(pageArray.getJSONObject(i))
+            }
+            if (pageArray.length() < 100) {
+                break
+            }
+            page++
+        }
+        return merged.toString()
     }
 
     private fun setInsets() {
@@ -595,7 +440,7 @@ class DriverFetcherFragment : Fragment() {
     data class DriverGroup(
         val name: String,
         val sort: Int,
-        val source: DriverReleaseSource,
+        val repoPath: String,
         val useTagName: Boolean = false,
         val sortMode: SortMode = SortMode.Default,
         val releases: ArrayList<Release> = arrayListOf(),

@@ -6,10 +6,10 @@ package org.yuzu.yuzu_emu.features.fetcher
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.view.isVisible
-import org.yuzu.yuzu_emu.R
 import androidx.fragment.app.FragmentActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import org.yuzu.yuzu_emu.R
 import org.yuzu.yuzu_emu.databinding.ItemDriverGroupBinding
 import org.yuzu.yuzu_emu.fragments.DriverFetcherFragment.DriverGroup
 import org.yuzu.yuzu_emu.model.DriverViewModel
@@ -21,9 +21,8 @@ class DriverGroupAdapter(
     private var driverGroups: List<DriverGroup> = emptyList()
     private val expandedKeys = mutableSetOf<String>()
 
-
     fun updateDriverGroups(newDriverGroups: List<DriverGroup>) {
-        val keys = newDriverGroups.map { DriverSourceKeys.key(it.source) }.toSet()
+        val keys = newDriverGroups.map { it.repoPath.lowercase() }.toSet()
         expandedKeys.retainAll(keys)
         driverGroups = newDriverGroups
         notifyDataSetChanged()
@@ -34,7 +33,7 @@ class DriverGroupAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(group: DriverGroup) {
-            val key = DriverSourceKeys.key(group.source)
+            val key = group.repoPath.lowercase()
             binding.textGroupName.text = group.name
             binding.progressGroupReleases.isVisible = false
 
