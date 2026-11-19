@@ -18,6 +18,8 @@ import org.yuzu.yuzu_emu.YuzuApplication
 import org.yuzu.yuzu_emu.activities.EmulationActivity
 import org.yuzu.yuzu_emu.utils.DirectoryInitialization
 import org.yuzu.yuzu_emu.utils.FileUtil
+import org.yuzu.yuzu_emu.utils.SaveDataUserUtil
+import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -54,19 +56,23 @@ class Game(
             }
         }
 
-    val saveDir: String
-        get() = NativeLibrary.getSavePath(programId)
+    fun saveDir(userIndex: Int): String = NativeLibrary.getSavePath(programId, userIndex)
 
-    val saveZipName: String
-        get() {
-            val label = YuzuApplication.appContext.getString(R.string.save_data).lowercase()
-            val date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-            val user = NativeLibrary.getCurrentUser()
-                ?.let { NativeLibrary.getUserUsername(it) }
-                ?.takeIf { it.isNotEmpty() }
-            val name = if (user != null) "$title $user $label $date" else "$title $label $date"
-            return "$name.zip".replace(Regex("[\\\\/:*?\"<>|]"), "_")
-        }
+    fun saveZipName(userIndex: Int): String {
+        val label = YuzuApplication.appContext.getString(R.string.save_data).lowercase()
+        val date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+        val profile = ProfileUtils.usernameForIndex(userIndex).ifEmpty { "User" }
+        val raw = "$title $profile $label $date.zip"
+        return raw.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+    }
+
+    fun defaultSaveUserIndex(): Int =
+        SaveDataUserUtil.saveUserIndices().firstOrNull { File(saveDir(it)).exists() }
+            ?: ProfileUtils.soleRegisteredUserIndex()
+            ?: SaveDataUserUtil.effectiveUserIndex()
+
+    fun hasSaveDataForAnyUser(): Boolean =
+        SaveDataUserUtil.saveUserIndices().any { File(saveDir(it)).exists() }
 
     val addonDir: String
         get() = DirectoryInitialization.userDirectory + "/load/" + programIdHex + "/"

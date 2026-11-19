@@ -965,6 +965,10 @@
     <string name="addons_game">Addons: %1$s</string>
     <string name="save_data">Save data</string>
     <string name="save_data_description">Manage save data specific to this game</string>
+    <string name="save_data_select_user">Select user profile</string>
+    <string name="save_data_select_user_export_description">Choose which user\'s save data to export</string>
+    <string name="save_data_select_user_import_description">Choose which user\'s save data to import</string>
+    <string name="save_data_select_user_delete_description">Choose which user\'s save data to delete</string>
     <string name="delete_save_data">Delete save data</string>
     <string name="delete_save_data_description">Removes all save data specific to this game</string>
     <string name="delete_save_data_warning_description">This irrecoverably removes all of this game\'s save data. Are you sure you want to continue?</string>
@@ -1403,6 +1407,7 @@
     <string name="enable_overlay_description">Enables Horizon\'s built-in overlay applet. Press and hold the home button for 1 second to show it.</string>
 
     <!-- Profile Management -->
+    <string name="profile_no_users_message">No user profiles are available.</string>
     <string name="profile_manager">Profile Manager</string>
     <string name="profile_manager_description">Manage user profiles</string>
     <string name="profile_add_user">Add User</string>

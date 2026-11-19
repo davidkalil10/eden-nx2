@@ -5,6 +5,7 @@ package org.yuzu.yuzu_emu.model
 
 import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
+import org.yuzu.yuzu_emu.NativeLibrary
 
 @Parcelize
 data class UserProfile(
@@ -14,8 +15,37 @@ data class UserProfile(
 ) : Parcelable
 
 object ProfileUtils {
-    fun generateRandomUUID(): String {
-        val uuid = java.util.UUID.randomUUID()
-        return uuid.toString().replace("-", "")
+    fun generateRandomUUID(): String =
+        java.util.UUID.randomUUID().toString().replace("-", "")
+
+    fun loadRegisteredProfiles(): List<UserProfile> {
+        val userUuids = NativeLibrary.getAllUsers() ?: return emptyList()
+        return userUuids.mapNotNull { uuid ->
+            if (uuid.isEmpty()) {
+                return@mapNotNull null
+            }
+            val username = NativeLibrary.getUserUsername(uuid) ?: return@mapNotNull null
+            if (username.isEmpty()) {
+                return@mapNotNull null
+            }
+            UserProfile(uuid, username, NativeLibrary.getUserImagePath(uuid).orEmpty())
+        }
+    }
+
+    fun soleRegisteredUserIndex(): Int? {
+        val profiles = loadRegisteredProfiles()
+        if (profiles.size != 1) {
+            return null
+        }
+        val userUuids = NativeLibrary.getAllUsers() ?: return null
+        return userUuids.indexOfFirst { it == profiles[0].uuid }.takeIf { it >= 0 }
+    }
+
+    fun shouldPromptForProfileSelection(): Boolean = loadRegisteredProfiles().size > 1
+
+    fun usernameForIndex(index: Int): String {
+        val uuid = NativeLibrary.getAllUsers()?.getOrNull(index)?.takeIf { it.isNotEmpty() }
+            ?: return ""
+        return NativeLibrary.getUserUsername(uuid).orEmpty()
     }
 }

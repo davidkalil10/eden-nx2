@@ -741,6 +741,18 @@ const char* fallback_cpu_detection() {
     return s_result.c_str();
 }
 
+std::string SaveHostPath(const std::filesystem::path& save_dir, std::string_view rel_path) {
+    std::string rel(rel_path);
+    while (!rel.empty() && rel.front() == '/') {
+        rel.erase(rel.begin());
+    }
+    if (rel.empty()) {
+        return Common::FS::PathToUTF8String(save_dir);
+    }
+    return Common::FS::PathToUTF8String(
+        Common::FS::ConcatPathSafe(save_dir, std::filesystem::path{rel}));
+}
+
 } // namespace
 
 extern "C" {
@@ -1668,7 +1680,7 @@ jint Java_org_yuzu_yuzu_1emu_NativeLibrary_verifyGameContents(JNIEnv* env, jobje
 }
 
 jstring Java_org_yuzu_yuzu_1emu_NativeLibrary_getSavePath(JNIEnv* env, jobject jobj,
-                                                          jstring jprogramId) {
+                                                          jstring jprogramId, jint juserIndex) {
     auto program_id = EmulationSession::GetProgramId(env, jprogramId);
     if (program_id == 0) {
         return Common::Android::ToJString(env, "");
@@ -1677,26 +1689,29 @@ jstring Java_org_yuzu_yuzu_1emu_NativeLibrary_getSavePath(JNIEnv* env, jobject j
     Service::Account::ProfileManager manager;
     manager.ResetUserSaveFile();
 
-    const auto user_id = manager.GetUser(static_cast<std::size_t>(0));
+    const auto user_id = manager.GetUser(static_cast<std::size_t>(juserIndex));
     if (!user_id) {
         return Common::Android::ToJString(env, "");
     }
 
     const auto save_dir = Common::FS::GetEdenPath(Common::FS::EdenPath::SaveDir);
+
+    Common::UUID uuid{};
+    std::memcpy(uuid.uuid.data(), user_id->AsU128().data(), sizeof(Common::UUID));
+
     auto& system = EmulationSession::GetInstance().System();
     auto vfs_save_dir = system.GetFilesystem()->OpenDirectory(Common::FS::PathToUTF8String(save_dir),
-                                                            FileSys::OpenMode::Read);
+                                                              FileSys::OpenMode::Read);
 
-    const auto vfs_path = FileSys::SaveDataFactory::GetFullPath(
+    const auto vfs_save_path = FileSys::SaveDataFactory::GetFullPath(
         {}, vfs_save_dir, FileSys::SaveDataSpaceId::User, FileSys::SaveDataType::Account,
         program_id, user_id->AsU128(), 0);
-
-    std::string rel(vfs_path);
-    while (!rel.empty() && rel.front() == '/') {
-        rel.erase(rel.begin());
-    }
-    const auto host = Common::FS::PathToUTF8String(
-        Common::FS::ConcatPathSafe(save_dir, std::filesystem::path{rel}));
+    const auto legacy_host = SaveHostPath(save_dir, vfs_save_path);
+    const auto future_rel =
+        std::format("user/save/account/{}/{:016X}/0", uuid.RawString(), program_id);
+    const auto future_host = SaveHostPath(save_dir, future_rel);
+    const auto& host =
+        Common::FS::Exists(std::filesystem::path{future_host}) ? future_host : legacy_host;
     return Common::Android::ToJString(env, host);
 }
 

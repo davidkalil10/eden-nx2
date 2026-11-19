@@ -42,6 +42,7 @@ import org.yuzu.yuzu_emu.model.GameProperty
 import org.yuzu.yuzu_emu.model.GamesViewModel
 import org.yuzu.yuzu_emu.model.HomeViewModel
 import org.yuzu.yuzu_emu.model.InstallableProperty
+import org.yuzu.yuzu_emu.model.ProfileUtils
 import org.yuzu.yuzu_emu.model.SubMenuPropertySecondaryAction
 import org.yuzu.yuzu_emu.model.SubmenuProperty
 import org.yuzu.yuzu_emu.model.TaskState
@@ -51,6 +52,7 @@ import org.yuzu.yuzu_emu.utils.GameHelper
 import org.yuzu.yuzu_emu.utils.GameIconUtils
 import org.yuzu.yuzu_emu.utils.GpuDriverHelper
 import org.yuzu.yuzu_emu.utils.MemoryUtil
+import org.yuzu.yuzu_emu.utils.SaveDataUserUtil
 import org.yuzu.yuzu_emu.utils.ViewUtils.marquee
 import org.yuzu.yuzu_emu.utils.ViewUtils.updateMargins
 import org.yuzu.yuzu_emu.utils.collect
@@ -68,11 +70,23 @@ class GamePropertiesFragment : Fragment() {
 
     private val args by navArgs<GamePropertiesFragmentArgs>()
 
+    private var selectedSaveUserIndex = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true)
         returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false)
         reenterTransition = MaterialSharedAxis(MaterialSharedAxis.X, false)
+
+        childFragmentManager.setFragmentResultListener(
+            SaveDataUserSelectDialogFragment.REQUEST_KEY,
+            this
+        ) { _, bundle ->
+            runSaveDataAction(
+                bundle.getString(SaveDataUserSelectDialogFragment.RESULT_ACTION).orEmpty(),
+                bundle.getInt(SaveDataUserSelectDialogFragment.RESULT_USER_INDEX)
+            )
+        }
     }
 
     override fun onCreateView(
@@ -423,42 +437,31 @@ class GamePropertiesFragment : Fragment() {
                         R.string.save_data_description,
                         R.drawable.ic_save,
                         {
-                            MessageDialogFragment.newInstance(
-                                requireActivity(),
-                                titleId = R.string.import_save_warning,
-                                descriptionId = R.string.import_save_warning_description,
-                                positiveAction = { homeViewModel.setOpenImportSaves(true) }
-                            ).show(parentFragmentManager, MessageDialogFragment.TAG)
+                            showSaveDataUserSelect(
+                                R.string.save_data_select_user_import_description,
+                                SaveDataUserSelectDialogFragment.ACTION_IMPORT
+                            )
                         },
                         {
-                            exportSaves.launch(args.game.saveZipName)
+                            showSaveDataUserSelect(
+                                R.string.save_data_select_user_export_description,
+                                SaveDataUserSelectDialogFragment.ACTION_EXPORT
+                            )
                         }
                     )
                 )
 
-                if (File(args.game.saveDir).exists()) {
+                if (args.game.hasSaveDataForAnyUser()) {
                     add(
                         SubmenuProperty(
                             R.string.delete_save_data,
                             R.string.delete_save_data_description,
                             R.drawable.ic_delete,
                             action = {
-                                MessageDialogFragment.newInstance(
-                                    requireActivity(),
-                                    titleId = R.string.delete_save_data,
-                                    descriptionId = R.string.delete_save_data_warning_description,
-                                    positiveButtonTitleId = android.R.string.cancel,
-                                    negativeButtonTitleId = android.R.string.ok,
-                                    negativeAction = {
-                                        File(args.game.saveDir).deleteRecursively()
-                                        Toast.makeText(
-                                            YuzuApplication.appContext,
-                                            R.string.save_data_deleted_successfully,
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        homeViewModel.reloadPropertiesList(true)
-                                    }
-                                ).show(parentFragmentManager, MessageDialogFragment.TAG)
+                                showSaveDataUserSelect(
+                                    R.string.save_data_select_user_delete_description,
+                                    SaveDataUserSelectDialogFragment.ACTION_DELETE
+                                )
                             }
                         )
                     )
@@ -591,13 +594,57 @@ class GamePropertiesFragment : Fragment() {
             windowInsets
         }
 
+    private fun showSaveDataUserSelect(titleId: Int, action: String) {
+        val defaultUserIndex = args.game.defaultSaveUserIndex()
+        if (!ProfileUtils.shouldPromptForProfileSelection()) {
+            runSaveDataAction(action, defaultUserIndex)
+            return
+        }
+        SaveDataUserSelectDialogFragment.newInstance(titleId, defaultUserIndex, action)
+            .show(childFragmentManager, SaveDataUserSelectDialogFragment.TAG)
+    }
+
+    private fun runSaveDataAction(action: String, userIndex: Int) {
+        selectedSaveUserIndex = userIndex
+        when (action) {
+            SaveDataUserSelectDialogFragment.ACTION_EXPORT ->
+                exportSaves.launch(args.game.saveZipName(userIndex))
+
+            SaveDataUserSelectDialogFragment.ACTION_IMPORT ->
+                MessageDialogFragment.newInstance(
+                    requireActivity(),
+                    titleId = R.string.import_save_warning,
+                    descriptionId = R.string.import_save_warning_description,
+                    positiveAction = { homeViewModel.setOpenImportSaves(true) }
+                ).show(parentFragmentManager, MessageDialogFragment.TAG)
+
+            SaveDataUserSelectDialogFragment.ACTION_DELETE ->
+                MessageDialogFragment.newInstance(
+                    requireActivity(),
+                    titleId = R.string.delete_save_data,
+                    descriptionId = R.string.delete_save_data_warning_description,
+                    positiveButtonTitleId = android.R.string.cancel,
+                    negativeButtonTitleId = android.R.string.ok,
+                    negativeAction = {
+                        File(args.game.saveDir(selectedSaveUserIndex)).deleteRecursively()
+                        Toast.makeText(
+                            YuzuApplication.appContext,
+                            R.string.save_data_deleted_successfully,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        homeViewModel.reloadPropertiesList(true)
+                    }
+                ).show(parentFragmentManager, MessageDialogFragment.TAG)
+        }
+    }
+
     private val importSaves =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { result ->
             if (result == null) {
                 return@registerForActivityResult
             }
 
-            val savesFolder = File(args.game.saveDir)
+            val savesFolder = File(args.game.saveDir(selectedSaveUserIndex))
             val cacheSaveDir = File("${requireContext().cacheDir.path}/saves/")
             cacheSaveDir.mkdir()
 
@@ -671,7 +718,7 @@ class GamePropertiesFragment : Fragment() {
             R.string.save_files_exporting,
             false
         ) { _, _ ->
-            val saveLocation = args.game.saveDir
+            val saveLocation = args.game.saveDir(selectedSaveUserIndex)
             if (!File(saveLocation).exists()) {
                 return@newInstance getString(R.string.no_save_data_found)
             }
