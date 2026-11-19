@@ -183,6 +183,8 @@ void AndroidKeyboard::ShowInlineKeyboard(
              appear_parameters.key_top_as_floating, appear_parameters.enable_backspace_button,
              appear_parameters.enable_return_button, appear_parameters.disable_cancel_button);
 
+    // Clear previous text and initialize with requested initial text
+    m_current_text = parameters.initial_text;
     // Pivot to a new thread, as we cannot call GetEnvForThread() from a Fiber.
     m_is_inline_active = true;
     std::thread([&] {
@@ -207,6 +209,8 @@ void AndroidKeyboard::InlineTextChanged(
              "\ncursor_position={}",
              Common::UTF16ToUTF8(text_parameters.input_text), text_parameters.cursor_position);
 
+    // Keep it synced
+    m_current_text = text_parameters.input_text;
     submit_inline_callback(Service::AM::Frontend::SwkbdReplyType::ChangedString,
                            text_parameters.input_text, text_parameters.cursor_position);
 }

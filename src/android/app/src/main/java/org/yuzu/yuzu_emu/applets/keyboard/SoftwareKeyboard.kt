@@ -12,7 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
-import android.view.WindowInsets
+import androidx.core.view.WindowInsetsCompat
 import android.view.inputmethod.InputMethodManager
 import androidx.annotation.Keep
 import androidx.core.view.ViewCompat
@@ -43,24 +43,38 @@ object SoftwareKeyboard {
         im.restartInput(overlayView)
         im.showSoftInput(overlayView, InputMethodManager.SHOW_FORCED)
 
-        // There isn't a good way to know that the IMM is dismissed, so poll every 500ms to submit inline keyboard result.
+        // There isn't a good way to know that the IMM is dismissed, however...
         val handler = Handler(Looper.myLooper()!!)
-        val delayMs = 500
+        val delayMs = 250L
+        var hasKeyboardBeenShown = false
+        var retryCount = 0
+        // Keeps retrying till 3 seconds timeout
+        val maxRetriesBeforeShown = 12
+
         handler.postDelayed(
             object : Runnable {
                 override fun run() {
                     val insets = ViewCompat.getRootWindowInsets(overlayView)
-                    val isKeyboardVisible = insets!!.isVisible(WindowInsets.Type.ime())
+                    val isKeyboardVisible = insets!!.isVisible(WindowInsetsCompat.Type.ime())
                     if (isKeyboardVisible) {
-                        handler.postDelayed(this, delayMs.toLong())
+                        hasKeyboardBeenShown = true
+                        handler.postDelayed(this, delayMs)
                         return
                     }
 
-                    // No longer visible, submit the result.
+                    if (!hasKeyboardBeenShown) {
+                        retryCount++
+                        if (retryCount < maxRetriesBeforeShown) {
+                            handler.postDelayed(this, delayMs)
+                            return
+                        }
+                    }
+
+                    // Keyboard was visible and is now dismissed (or failed to show within timeout)
                     NativeLibrary.submitInlineKeyboardInput(KeyEvent.KEYCODE_ENTER)
                 }
             },
-            delayMs.toLong()
+            delayMs
         )
     }
 
