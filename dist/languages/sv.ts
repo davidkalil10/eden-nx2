@@ -6655,7 +6655,7 @@ Dra punkterna för att ändra position, eller dubbelklicka på tabellcellerna f�
     </message>
     <message>
         <location filename="../../src/yuzu/data_dialog.ui" line="48"/>
-        <source>Deleting ANY data is IRREVERSIBLE!</source>
+        <source>Deleting ANY data is IRREVERSABLE!</source>
         <translation>Borttagning av VALFRITT data går INTE ATT ÅNGRA!</translation>
     </message>
     <message>
@@ -6703,7 +6703,7 @@ Dra punkterna för att ändra position, eller dubbelklicka på tabellcellerna f�
     </message>
     <message>
         <location filename="../../src/yuzu/data_widget.ui" line="106"/>
-        <source>Delete all data in this directory. THIS IS 100% IRREVERSIBLE!</source>
+        <source>Delete all data in this directory. THIS IS 100% IRREVERSABLE!</source>
         <translation>Ta bort allt data i denna katalog. DETTA GÅR INTE ATT ÅNGRA!</translation>
     </message>
     <message>
@@ -8438,7 +8438,7 @@ Observera: en mindre vanlig styrenhet kan felaktigt märkas som en handhållen e
     </message>
     <message>
         <location filename="../../src/yuzu/main_window.cpp" line="7833"/>
-        <source>You are using the deconstructed ROM directory format for this game, which is an outdated format that has been superseded by others such as NCA, NAX, XCI, or NSP. Deconstructed ROM directories lack icons, metadata, and update support.&lt;br&gt;For an explanation of the various Switch formats Eden supports, check out our user handbook. This message will not be shown again.</source>
+        <source>You are using the deconstructed ROM directory format for this game, which is an outdated format that has been superseded by others such as NCA, NAX, XCI, or NSP. Deconstructed ROM directories lack icons, metadata, and update support.&lt;br&gt;For an explanation of the various Switch formats Eden supports, out our user handbook. This message will not be shown again.</source>
         <translation>Du använder det dekonstruerade ROM-katalogformatet för detta spel, vilket är ett föråldrat format som har ersatts av andra format såsom NCA, NAX, XCI eller NSP. Dekonstruerade ROM-kataloger saknar ikoner, metadata och uppdateringsstöd.&lt;br&gt; För en förklaring av de olika Switch-format som Eden har stöd för, se vår användarhandbok. Detta meddelande kommer inte att visas igen.</translation>
     </message>
     <message>

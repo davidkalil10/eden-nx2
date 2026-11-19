@@ -580,7 +580,7 @@ Harap dicatat ini juga mengurangi akurasi instruksi titik mengambang tertentu.</
     <message>
         <location filename="../../src/qt_common/config/shared_translation.cpp" line="168"/>
         <source>Disable address space checks</source>
-        <translation>Matikan pengecekan address space</translation>
+        <translation>Matikan pengecekan adress space</translation>
     </message>
     <message>
         <location filename="../../src/qt_common/config/shared_translation.cpp" line="169"/>
@@ -6577,7 +6577,7 @@ Drag points to change position, or double-click table cells to edit values.</sou
     </message>
     <message>
         <location filename="../../src/yuzu/data_dialog.ui" line="48"/>
-        <source>Deleting ANY data is IRREVERSIBLE!</source>
+        <source>Deleting ANY data is IRREVERSABLE!</source>
         <translation type="unfinished"/>
     </message>
     <message>
@@ -6625,7 +6625,7 @@ Drag points to change position, or double-click table cells to edit values.</sou
     </message>
     <message>
         <location filename="../../src/yuzu/data_widget.ui" line="106"/>
-        <source>Delete all data in this directory. THIS IS 100% IRREVERSIBLE!</source>
+        <source>Delete all data in this directory. THIS IS 100% IRREVERSABLE!</source>
         <translation type="unfinished"/>
     </message>
     <message>
@@ -8353,7 +8353,7 @@ Careful: a less popular controller could be labeled as a handheld.</source>
     </message>
     <message>
         <location filename="../../src/yuzu/main_window.cpp" line="7833"/>
-        <source>You are using the deconstructed ROM directory format for this game, which is an outdated format that has been superseded by others such as NCA, NAX, XCI, or NSP. Deconstructed ROM directories lack icons, metadata, and update support.&lt;br&gt;For an explanation of the various Switch formats Eden supports, check out our user handbook. This message will not be shown again.</source>
+        <source>You are using the deconstructed ROM directory format for this game, which is an outdated format that has been superseded by others such as NCA, NAX, XCI, or NSP. Deconstructed ROM directories lack icons, metadata, and update support.&lt;br&gt;For an explanation of the various Switch formats Eden supports, out our user handbook. This message will not be shown again.</source>
         <translation type="unfinished"/>
     </message>
     <message>
