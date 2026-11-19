@@ -8410,7 +8410,7 @@ static bool RomFSRawCopy(size_t total_size, size_t& read_size, QProgressDialog& 
 }
 
 // TODO(crueter): All this can be transferred to qt_common
-// Also I need to decide re: message boxes for QML
+// Although I need to decide re: message boxes for QML
 // translations_common? strings_common? qt_strings? who knows
 void MainWindow::OnGameListRemoveInstalledEntry(u64 program_id,
                                                 QtCommon::Game::InstalledEntryType type) {
