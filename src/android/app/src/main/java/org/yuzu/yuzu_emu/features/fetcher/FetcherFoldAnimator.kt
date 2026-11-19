@@ -84,7 +84,7 @@ object FetcherFoldAnimator {
         onEnd: (() -> Unit)? = null,
     ) {
         var pinned = false
-        if (releaseCount >= FetcherCatalogPolicy.LARGE_CATALOG_THRESHOLD && releasesList.isVisible) {
+        if (releaseCount >= DriverGroupAdapter.LARGE_CATALOG_THRESHOLD && releasesList.isVisible) {
             releasesList.stopScroll()
             releasesList.height.takeIf { it > 0 }?.let { px ->
                 val lp = releasesList.layoutParams

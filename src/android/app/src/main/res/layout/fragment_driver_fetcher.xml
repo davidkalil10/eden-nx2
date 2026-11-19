@@ -56,7 +56,18 @@
                     android:id="@+id/card_device_summary"
                     layout="@layout/card_driver_fetcher_summary" />
 
-                <include layout="@layout/list_item_driver_fetcher_header" />
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/text_header_sources"
+                    style="@style/TextAppearance.Material3.TitleSmall"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="@dimen/spacing_large"
+                    android:layout_marginBottom="@dimen/spacing_med"
+                    android:paddingTop="@dimen/spacing_small"
+                    android:text="@string/driver_fetcher_sources"
+                    android:textAlignment="viewStart"
+                    android:textColor="?attr/colorPrimary"
+                    android:textStyle="bold" />
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/list_drivers"

@@ -18,6 +18,13 @@ class DriverGroupAdapter(
     private val activity: FragmentActivity,
     private val driverViewModel: DriverViewModel,
 ) : RecyclerView.Adapter<DriverGroupAdapter.DriverGroupViewHolder>() {
+
+    companion object {
+        const val LARGE_CATALOG_THRESHOLD = 8
+        const val SCROLLABLE_RELEASE_THRESHOLD = 4
+        const val INITIAL_VISIBLE_RELEASES = 10
+    }
+
     private var driverGroups: List<DriverGroup> = emptyList()
     private val expandedKeys = mutableSetOf<String>()
 
@@ -50,18 +57,18 @@ class DriverGroupAdapter(
             }
 
             val releaseCount = group.releases.size
-            val scrollableCatalog = releaseCount >= FetcherCatalogPolicy.SCROLLABLE_RELEASE_THRESHOLD
+            val scrollableCatalog = releaseCount >= SCROLLABLE_RELEASE_THRESHOLD
             binding.recyclerReleases.isNestedScrollingEnabled = scrollableCatalog
 
             val expanded = expandedKeys.contains(key)
             binding.recyclerReleases.isVisible = expanded
             binding.imageDropdownArrow.rotation = if (expanded) 180f else 0f
 
-            val largeCatalog = releaseCount >= FetcherCatalogPolicy.LARGE_CATALOG_THRESHOLD
+            val largeCatalog = releaseCount >= LARGE_CATALOG_THRESHOLD
 
             fun attachReleaseAdapter(group: DriverGroup, staged: Boolean) {
                 val limit = if (staged) {
-                    FetcherCatalogPolicy.INITIAL_VISIBLE_RELEASES
+                    INITIAL_VISIBLE_RELEASES
                 } else {
                     null
                 }
