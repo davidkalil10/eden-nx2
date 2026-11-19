@@ -130,8 +130,8 @@ class DriverFetcherFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentDriverFetcherBinding.inflate(inflater)
-        binding.badgeRecommendedDriver.text = recommendedDriver
-        binding.badgeGpuModel.text = gpuModel
+        binding.cardDeviceSummary.badgeRecommendedDriver.text = recommendedDriver
+        binding.cardDeviceSummary.badgeGpuModel.text = gpuModel ?: getString(R.string.unknown)
 
         return binding.root
     }
@@ -229,12 +229,10 @@ class DriverFetcherFragment : Fragment() {
         val rightInsets = barInsets.right + cutoutInsets.right
 
         binding.toolbarDrivers.updateMargins(left = leftInsets, right = rightInsets)
-        binding.listDrivers.updateMargins(left = leftInsets, right = rightInsets)
-
-        binding.listDrivers.updatePadding(
-            bottom = barInsets.bottom + resources.getDimensionPixelSize(
-                R.dimen.spacing_bottom_list_fab
-            )
+        binding.scrollDriverFetcher.updatePadding(
+            left = leftInsets,
+            right = rightInsets,
+            bottom = barInsets.bottom + resources.getDimensionPixelSize(R.dimen.spacing_large)
         )
 
         windowInsets

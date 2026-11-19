@@ -152,7 +152,12 @@ class ReleaseAdapter(
                     false
                 }
 
-                val button = MaterialButton(binding.root.context).apply {
+                val margin = (binding.root.resources.displayMetrics.density * 6).toInt()
+                val button = MaterialButton(
+                    binding.root.context,
+                    null,
+                    com.google.android.material.R.attr.materialButtonOutlinedStyle
+                ).apply {
                     text = if (alreadyInstalled) {
                         context.getString(R.string.installed_label, artifact.name)
                     } else {
@@ -162,11 +167,6 @@ class ReleaseAdapter(
                         com.google.android.material.R.style.TextAppearance_Material3_LabelLarge
                     )
                     textAlignment = MaterialButton.TEXT_ALIGNMENT_VIEW_START
-                    setBackgroundColor(
-                        context.getColor(
-                            com.google.android.material.R.color.m3_button_background_color_selector
-                        )
-                    )
                     setIconResource(if (alreadyInstalled) R.drawable.ic_check else R.drawable.ic_import)
                     iconTint = ColorStateList.valueOf(
                         MaterialColors.getColor(
@@ -174,12 +174,15 @@ class ReleaseAdapter(
                             com.google.android.material.R.attr.colorPrimary
                         )
                     )
-
-                    elevation = 6f
-                    layoutParams = ViewGroup.LayoutParams(
+                    iconGravity = MaterialButton.ICON_GRAVITY_START
+                    elevation = 0f
+                    stateListAnimator = null
+                    layoutParams = ViewGroup.MarginLayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
+                    ).apply {
+                        bottomMargin = margin
+                    }
                     isEnabled = !alreadyInstalled
                     setOnClickListener {
                         // Double-check just before starting (race-proof)

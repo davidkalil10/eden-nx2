@@ -76,8 +76,7 @@ class DriverGroupAdapter(
                 binding.imageDropdownArrow.rotation = if (isVisible) 0f else 180f
             }
 
-            binding.textGroupName.setOnClickListener { onClick() }
-            binding.imageDropdownArrow.setOnClickListener { onClick() }
+            binding.root.setOnClickListener { onClick() }
         }
 
         fun clear() {
