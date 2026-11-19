@@ -430,16 +430,13 @@ class GamePropertiesFragment : Fragment() {
                                 positiveAction = { homeViewModel.setOpenImportSaves(true) }
                             ).show(parentFragmentManager, MessageDialogFragment.TAG)
                         },
-                        if (File(args.game.saveDir).exists()) {
-                            { exportSaves.launch(args.game.saveZipName) }
-                        } else {
-                            null
+                        {
+                            exportSaves.launch(args.game.saveZipName)
                         }
                     )
                 )
 
-                val saveDirFile = File(args.game.saveDir)
-                if (saveDirFile.exists()) {
+                if (File(args.game.saveDir).exists()) {
                     add(
                         SubmenuProperty(
                             R.string.delete_save_data,
@@ -675,6 +672,9 @@ class GamePropertiesFragment : Fragment() {
             false
         ) { _, _ ->
             val saveLocation = args.game.saveDir
+            if (!File(saveLocation).exists()) {
+                return@newInstance getString(R.string.no_save_data_found)
+            }
             val zipResult = FileUtil.zipFromInternalStorage(
                 File(saveLocation),
                 saveLocation.replaceAfterLast("/", ""),

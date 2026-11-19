@@ -18,7 +18,6 @@ import org.yuzu.yuzu_emu.YuzuApplication
 import org.yuzu.yuzu_emu.activities.EmulationActivity
 import org.yuzu.yuzu_emu.utils.DirectoryInitialization
 import org.yuzu.yuzu_emu.utils.FileUtil
-import org.yuzu.yuzu_emu.utils.NativeConfig
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -55,13 +54,19 @@ class Game(
             }
         }
 
-    val saveZipName: String
-        get() = "$title ${YuzuApplication.appContext.getString(R.string.save_data).lowercase()} - ${
-        LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-        }.zip"
-
     val saveDir: String
-        get() = NativeConfig.getSaveDir() + NativeLibrary.getSavePath(programId)
+        get() = NativeLibrary.getSavePath(programId)
+
+    val saveZipName: String
+        get() {
+            val label = YuzuApplication.appContext.getString(R.string.save_data).lowercase()
+            val date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+            val user = NativeLibrary.getCurrentUser()
+                ?.let { NativeLibrary.getUserUsername(it) }
+                ?.takeIf { it.isNotEmpty() }
+            val name = if (user != null) "$title $user $label $date" else "$title $label $date"
+            return "$name.zip".replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        }
 
     val addonDir: String
         get() = DirectoryInitialization.userDirectory + "/load/" + programIdHex + "/"

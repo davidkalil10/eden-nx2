@@ -1674,21 +1674,30 @@ jstring Java_org_yuzu_yuzu_1emu_NativeLibrary_getSavePath(JNIEnv* env, jobject j
         return Common::Android::ToJString(env, "");
     }
 
-    auto& system = EmulationSession::GetInstance().System();
-
     Service::Account::ProfileManager manager;
-    // TODO: Pass in a selected user once we get the relevant UI working
-    const auto user_id = manager.GetUser(static_cast<std::size_t>(0));
-    ASSERT(user_id);
+    manager.ResetUserSaveFile();
 
-    const auto saveDir = Common::FS::GetEdenPath(Common::FS::EdenPath::SaveDir);
-    auto vfsSaveDir = system.GetFilesystem()->OpenDirectory(Common::FS::PathToUTF8String(saveDir),
+    const auto user_id = manager.GetUser(static_cast<std::size_t>(0));
+    if (!user_id) {
+        return Common::Android::ToJString(env, "");
+    }
+
+    const auto save_dir = Common::FS::GetEdenPath(Common::FS::EdenPath::SaveDir);
+    auto& system = EmulationSession::GetInstance().System();
+    auto vfs_save_dir = system.GetFilesystem()->OpenDirectory(Common::FS::PathToUTF8String(save_dir),
                                                             FileSys::OpenMode::Read);
 
-    const auto user_save_data_path = FileSys::SaveDataFactory::GetFullPath(
-        {}, vfsSaveDir, FileSys::SaveDataSpaceId::User, FileSys::SaveDataType::Account, program_id,
-        user_id->AsU128(), 0);
-    return Common::Android::ToJString(env, user_save_data_path);
+    const auto vfs_path = FileSys::SaveDataFactory::GetFullPath(
+        {}, vfs_save_dir, FileSys::SaveDataSpaceId::User, FileSys::SaveDataType::Account,
+        program_id, user_id->AsU128(), 0);
+
+    std::string rel(vfs_path);
+    while (!rel.empty() && rel.front() == '/') {
+        rel.erase(rel.begin());
+    }
+    const auto host = Common::FS::PathToUTF8String(
+        Common::FS::ConcatPathSafe(save_dir, std::filesystem::path{rel}));
+    return Common::Android::ToJString(env, host);
 }
 
 jstring Java_org_yuzu_yuzu_1emu_NativeLibrary_getDefaultProfileSaveDataRoot(JNIEnv* env,

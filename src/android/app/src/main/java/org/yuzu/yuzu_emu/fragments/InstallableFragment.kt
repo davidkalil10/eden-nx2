@@ -293,9 +293,7 @@ class InstallableFragment : Fragment() {
                                     continue
                                 }
 
-                                val internalSaveFolder = File(
-                                    "${NativeConfig.getSaveDir()}$baseSaveDir"
-                                )
+                                val internalSaveFolder = File(baseSaveDir)
                                 internalSaveFolder.deleteRecursively()
                                 internalSaveFolder.mkdir()
                                 file.copyRecursively(target = internalSaveFolder, overwrite = true)
