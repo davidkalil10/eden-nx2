@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2025 Eden Emulator Project
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 package org.yuzu.yuzu_emu.features.fetcher
@@ -16,13 +16,13 @@ import org.yuzu.yuzu_emu.model.DriverViewModel
 
 class DriverGroupAdapter(
     private val activity: FragmentActivity,
-    private val driverViewModelProvider: () -> DriverViewModel,
+    private val driverViewModel: DriverViewModel,
 ) : RecyclerView.Adapter<DriverGroupAdapter.DriverGroupViewHolder>() {
     private var driverGroups: List<DriverGroup> = emptyList()
     private val expandedKeys = mutableSetOf<String>()
 
     fun updateDriverGroups(newDriverGroups: List<DriverGroup>) {
-        val keys = newDriverGroups.map { it.repoPath.lowercase() }.toSet()
+        val keys = newDriverGroups.map { it.name.lowercase() }.toSet()
         expandedKeys.retainAll(keys)
         driverGroups = newDriverGroups
         notifyDataSetChanged()
@@ -33,7 +33,7 @@ class DriverGroupAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(group: DriverGroup) {
-            val key = group.repoPath.lowercase()
+            val key = group.name.lowercase()
             binding.textGroupName.text = group.name
             binding.progressGroupReleases.isVisible = false
 
@@ -68,7 +68,7 @@ class DriverGroupAdapter(
                 val adapter = ReleaseAdapter(
                     group.releases,
                     activity,
-                    driverViewModelProvider(),
+                    driverViewModel,
                     limit,
                 )
                 binding.recyclerReleases.adapter = adapter

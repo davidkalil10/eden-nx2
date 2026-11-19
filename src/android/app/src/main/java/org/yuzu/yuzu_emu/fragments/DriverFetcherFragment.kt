@@ -18,22 +18,20 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.transition.MaterialSharedAxis
-import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.yuzu.yuzu_emu.R
 import org.yuzu.yuzu_emu.databinding.FragmentDriverFetcherBinding
 import org.yuzu.yuzu_emu.features.fetcher.DriverGroupAdapter
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONArray
-import java.io.IOException
-import java.util.concurrent.TimeUnit
 import org.yuzu.yuzu_emu.model.DriverViewModel
 import org.yuzu.yuzu_emu.model.HomeViewModel
 import org.yuzu.yuzu_emu.utils.GpuDriverHelper
 import org.yuzu.yuzu_emu.utils.ViewUtils.updateMargins
+import java.io.IOException
 import java.net.URL
 import java.time.Instant
 import java.time.LocalDateTime
@@ -41,21 +39,19 @@ import java.time.ZoneId
 import kotlin.getValue
 
 class DriverFetcherFragment : Fragment() {
-
-    companion object {
-        private const val MAX_RELEASE_PAGES = 15
-        private const val RELEASE_USER_AGENT = "Eden-Android-DriverFetcher"
-    }
     private var _binding: FragmentDriverFetcherBinding? = null
     private val binding get() = _binding!!
 
-    private var fetchSession = 0
-    private var driversJobActive = false
+    private val client = OkHttpClient()
 
-    private val releaseHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
+    private val gpuModel: String?
+        get() = GpuDriverHelper.hookLibPath?.let { GpuDriverHelper.getGpuModel(hookLibPath = it) }
+
+    private val adrenoModel: Int
+        get() = parseAdrenoModel()
+
+    private val recommendedDriver: String
+        get() = driverMap.firstOrNull { adrenoModel in it.first }?.second ?: "Unsupported"
 
     enum class SortMode {
         Default, PublishTime,
@@ -66,7 +62,7 @@ class DriverFetcherFragment : Fragment() {
         val path: String = "",
         val sort: Int = 0,
         val useTagName: Boolean = false,
-        val sortMode: SortMode = SortMode.Default,
+        val sortMode: SortMode = SortMode.Default
     )
 
     private val repoList: List<DriverRepo> = listOf(
@@ -79,43 +75,45 @@ class DriverFetcherFragment : Fragment() {
 
     private val driverMap = listOf(
         IntRange(Integer.MIN_VALUE, 9) to "Unsupported",
-        IntRange(10, 99) to "KIMCHI Latest",
+        IntRange(10, 99) to "KIMCHI Latest", // Special case for Adreno Axx
         IntRange(100, 599) to "Unsupported",
         IntRange(600, 639) to "Mr. Purple EOL-24.3.4",
         IntRange(640, 699) to "Mr. Purple T19",
         IntRange(700, 710) to "Mr. Purple T29",
         IntRange(711, 899) to "Mr. Purple T30",
-        IntRange(900, Int.MAX_VALUE) to "Unsupported",
+        IntRange(900, Int.MAX_VALUE) to "Unsupported"
     )
 
     private lateinit var driverGroupAdapter: DriverGroupAdapter
-    private val homeViewModel: HomeViewModel by activityViewModels()
     private val driverViewModel: DriverViewModel by activityViewModels()
+    private val homeViewModel: HomeViewModel by activityViewModels()
 
-    private fun recommendedDriverFor(gpuModel: String?): String {
-        val adrenoModel = parseAdrenoModel(gpuModel)
-        return driverMap.firstOrNull { adrenoModel in it.first }?.second ?: "Unsupported"
-    }
-
-    private fun parseAdrenoModel(gpuModel: String?): Int {
+    private fun parseAdrenoModel(): Int {
         if (gpuModel == null) {
             return 0
         }
 
-        val modelList = gpuModel.split(" ")
+        val modelList = gpuModel!!.split(" ")
+
+        // format: Adreno (TM) <ModelNumber>
         if (modelList.size < 3 || modelList[0] != "Adreno") {
             return 0
         }
 
         val model = modelList[2]
-        return try {
+
+        try {
+            // special case for Axx GPUs (e.g. AYANEO Pocket S2)
+            // driverMap has specific ranges for this
             if (model.startsWith("A")) {
-                model.substring(1).toInt()
-            } else {
-                model.toInt()
+                return model.substring(1).toInt()
             }
-        } catch (_: Exception) {
-            0
+
+            return model.toInt()
+        } catch (e: Exception) {
+            // Model parse error, just say unsupported
+            e.printStackTrace()
+            return 0
         }
     }
 
@@ -132,9 +130,8 @@ class DriverFetcherFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentDriverFetcherBinding.inflate(inflater)
-        val gpuModel = GpuDriverHelper.tryGetGpuModel()
-        binding.cardDeviceSummary.badgeRecommendedDriver.text = recommendedDriverFor(gpuModel)
-        binding.cardDeviceSummary.badgeGpuModel.text = gpuModel ?: getString(R.string.unknown)
+        binding.cardDeviceSummary.badgeRecommendedDriver.text = recommendedDriver
+        binding.cardDeviceSummary.badgeGpuModel.text = gpuModel
 
         return binding.root
     }
@@ -152,10 +149,7 @@ class DriverFetcherFragment : Fragment() {
         binding.listDrivers.isNestedScrollingEnabled = false
         binding.listDrivers.setHasFixedSize(false)
         binding.listDrivers.itemAnimator = null
-        driverGroupAdapter = DriverGroupAdapter(
-            requireActivity(),
-            driverViewModelProvider = { driverViewModel },
-        )
+        driverGroupAdapter = DriverGroupAdapter(requireActivity(), driverViewModel)
         binding.listDrivers.adapter = driverGroupAdapter
 
         setInsets()
@@ -164,150 +158,75 @@ class DriverFetcherFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        driversJobActive = false
-        fetchSession++
         super.onDestroyView()
         _binding = null
     }
 
-    private fun driverGroup(
-        driver: DriverRepo,
-        releases: ArrayList<Release>,
-    ): DriverGroup =
-        DriverGroup(
-            name = driver.name,
-            sort = driver.sort,
-            repoPath = driver.path,
-            useTagName = driver.useTagName,
-            sortMode = driver.sortMode,
-            releases = releases,
-        )
-
-    private fun showFetchErrorDialog(repoName: String, message: String?) {
-        if (!isAdded) {
-            return
-        }
-        MaterialAlertDialogBuilder(requireActivity())
-            .setTitle(getString(R.string.error_during_fetch))
-            .setMessage("${getString(R.string.failed_to_fetch)} $repoName:\n$message")
-            .setPositiveButton(getString(R.string.ok)) { dialog, _ -> dialog.cancel() }
-            .show()
-    }
-
     private fun fetchDrivers() {
-        val binding = _binding ?: return
         binding.loadingIndicator.isVisible = true
-        if (::driverGroupAdapter.isInitialized) {
-            driverGroupAdapter.updateDriverGroups(emptyList())
-        }
 
-        val allRepos = repoList
-        val session = ++fetchSession
-        driversJobActive = true
         val driverGroups = arrayListOf<DriverGroup>()
 
-        fun mergeGroup(group: DriverGroup) {
-            synchronized(driverGroups) {
-                val key = group.repoPath.lowercase()
-                val index = driverGroups.indexOfFirst {
-                    it.repoPath.lowercase() == key
-                }
-                if (index >= 0) {
-                    driverGroups[index] = group
-                } else {
-                    driverGroups.add(group)
-                }
-                driverGroups.sortBy { it.sort }
-            }
-        }
+        repoList.forEach { driver ->
+            val name = driver.name
+            val path = driver.path
+            val useTagName = driver.useTagName
+            val sortMode = driver.sortMode
+            val sort = driver.sort
 
-        fun publishGroups() {
-            val binding = _binding ?: return
-            if (!driversJobActive || session != fetchSession) {
-                return
-            }
-            driverGroupAdapter.updateDriverGroups(driverGroups.toList())
-            if (driverGroups.size >= allRepos.size) {
-                binding.loadingIndicator.isVisible = false
-            }
-        }
+            CoroutineScope(Dispatchers.Main).launch {
+                val request =
+                    Request.Builder().url("https://api.github.com/repos/$path/releases").build()
 
-        allRepos.forEach { driver ->
-            viewLifecycleOwner.lifecycleScope.launch {
-                if (!driversJobActive || session != fetchSession) {
-                    return@launch
-                }
+                withContext(Dispatchers.IO) {
+                    var releases: ArrayList<Release>
+                    try {
+                        client.newCall(request).execute().use { response ->
+                            if (!response.isSuccessful) {
+                                throw IOException(response.body.toString())
+                            }
 
-                var releases = arrayListOf<Release>()
-                var fetchFailed = false
-                try {
-                    releases = fetchGitHubReleases(
-                        driver.path,
-                        driver.useTagName,
-                        driver.sortMode,
+                            val body = response.body?.string() ?: return@withContext
+                            releases = Release.fromJsonArray(body, useTagName, sortMode)
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            MaterialAlertDialogBuilder(requireActivity()).setTitle(
+                                getString(R.string.error_during_fetch)
+                            )
+                                .setMessage(
+                                    "${getString(R.string.failed_to_fetch)} $name:\n${e.message}"
+                                )
+                                .setPositiveButton(getString(R.string.ok)) { dialog, _ -> dialog.cancel() }
+                                .show()
+
+                            releases = ArrayList()
+                        }
+                    }
+
+                    val group = DriverGroup(
+                        name,
+                        releases,
+                        sort
                     )
-                } catch (e: Exception) {
-                    fetchFailed = true
+
+                    synchronized(driverGroups) {
+                        driverGroups.add(group)
+                        driverGroups.sortBy {
+                            it.sort
+                        }
+                    }
+
                     withContext(Dispatchers.Main) {
-                        if (isAdded && driversJobActive && session == fetchSession) {
-                            showFetchErrorDialog(driver.name, e.message)
+                        driverGroupAdapter.updateDriverGroups(driverGroups)
+
+                        if (driverGroups.size >= repoList.size) {
+                            binding.loadingIndicator.isVisible = false
                         }
                     }
                 }
-
-                if (!driversJobActive || session != fetchSession || _binding == null) {
-                    return@launch
-                }
-
-                if (!fetchFailed || releases.isNotEmpty()) {
-                    mergeGroup(driverGroup(driver, releases))
-                    publishGroups()
-                }
             }
         }
-    }
-
-    private suspend fun fetchGitHubReleases(
-        repoPath: String,
-        useTagName: Boolean,
-        sortMode: SortMode,
-    ): ArrayList<Release> = withContext(Dispatchers.IO) {
-        Release.fromJsonArray(fetchGitHubReleasesJson(repoPath), useTagName, sortMode)
-    }
-
-    private fun fetchGitHubReleasesJson(repoPath: String): String {
-        val merged = JSONArray()
-        var page = 1
-        while (page <= MAX_RELEASE_PAGES) {
-            val request = Request.Builder()
-                .url(
-                    "https://api.github.com/repos/$repoPath/releases?per_page=100&page=$page",
-                )
-                .header("Accept", "application/vnd.github+json")
-                .header("User-Agent", RELEASE_USER_AGENT)
-                .build()
-            val body = releaseHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IOException("HTTP ${response.code} for $repoPath page $page")
-                }
-                response.body?.string().orEmpty()
-            }
-            if (body.isBlank()) {
-                break
-            }
-            val pageArray = JSONArray(body)
-            if (pageArray.length() == 0) {
-                break
-            }
-            for (i in 0 until pageArray.length()) {
-                merged.put(pageArray.getJSONObject(i))
-            }
-            if (pageArray.length() < 100) {
-                break
-            }
-            page++
-        }
-        return merged.toString()
     }
 
     private fun setInsets() {
@@ -387,40 +306,34 @@ class DriverFetcherFragment : Fragment() {
             }
 
             private fun fromJson(node: JsonNode, useTagName: Boolean): Release {
-                return try {
-                    val tagName = node.path("tag_name").asText("")
-                    val body = node.path("body").asText("")
-                    val prerelease = node.path("prerelease").asBoolean(false)
-                    val titleName = node.path("name").asText(tagName)
+                try {
+                    val tagName = node.get("tag_name").toString().removeSurrounding("\"")
+                    val body = node.get("body").toString().removeSurrounding("\"")
+                    val prerelease = node.get("prerelease").toString().toBoolean()
+                    val titleName = node.get("name").toString().removeSurrounding("\"")
 
-                    val published = node.path("published_at").asText("")
-                    val localTime = try {
-                        if (published.isNotBlank()) {
-                            Instant.parse(published)
-                                .atZone(ZoneId.systemDefault())
-                                .toLocalDateTime()
-                        } else {
-                            LocalDateTime.now()
-                        }
-                    } catch (_: Exception) {
-                        LocalDateTime.now()
-                    }
+                    val published = node.get("published_at").toString().removeSurrounding("\"")
+                    val instantTime: Instant? = Instant.parse(published)
+                    val localTime = instantTime?.atZone(ZoneId.systemDefault())?.toLocalDateTime() ?: LocalDateTime.now()
 
                     val title = if (useTagName) tagName else titleName
 
+                    val assets = node.get("assets")
                     val artifacts = ArrayList<Artifact>()
-                    val assets = node.path("assets")
-                    if (assets.isArray) {
+                    if (assets?.isArray == true) {
                         assets.forEach { subNode ->
-                            val urlStr = subNode.path("browser_download_url").asText("")
-                            val name = subNode.path("name").asText("")
-                            if (urlStr.isNotBlank() && name.isNotBlank()) {
-                                artifacts.add(Artifact(URL(urlStr), name))
-                            }
+                            val urlStr = subNode.get("browser_download_url").toString()
+                                .removeSurrounding("\"")
+
+                            val url = URL(urlStr)
+                            val name = subNode.get("name").toString().removeSurrounding("\"")
+
+                            val artifact = Artifact(url, name)
+                            artifacts.add(artifact)
                         }
                     }
 
-                    Release(
+                    return Release(
                         tagName,
                         titleName,
                         title,
@@ -428,21 +341,21 @@ class DriverFetcherFragment : Fragment() {
                         artifacts,
                         prerelease,
                         false,
-                        localTime,
+                        localTime
                     )
-                } catch (_: Exception) {
-                    Release()
+                } catch (e: Exception) {
+                    // TODO: handle malformed input.
+                    e.printStackTrace()
                 }
+
+                return Release()
             }
         }
     }
 
     data class DriverGroup(
         val name: String,
-        val sort: Int,
-        val repoPath: String,
-        val useTagName: Boolean = false,
-        val sortMode: SortMode = SortMode.Default,
-        val releases: ArrayList<Release> = arrayListOf(),
+        val releases: ArrayList<Release>,
+        val sort: Int
     )
 }

@@ -81,14 +81,14 @@ class DriverViewModel : ViewModel() {
 
     fun updateDriverList() {
         val selectedDriver = GpuDriverHelper.customDriverSettingData
-        val systemDriverData = GpuDriverHelper.tryGetSystemDriverInfo()
+        val systemDriverData = GpuDriverHelper.getSystemDriverInfo()
         val systemDriverTitle = YuzuApplication.appContext.getString(R.string.system_gpu_driver)
         val newDriverList = mutableListOf(
             Driver(
                 selectedDriver == GpuDriverMetadata(),
                 systemDriverTitle,
                 //systemDriverData?.get(0) ?: "",
-                NativeLibrary.getVulkanDriverVersionOrNull() ?: systemDriverTitle,
+                NativeLibrary.getVulkanDriverVersion().takeIf { !it.isNullOrEmpty() } ?: systemDriverTitle,
                 systemDriverData?.get(1) ?: ""
             )
         )
@@ -262,8 +262,7 @@ class DriverViewModel : ViewModel() {
     private fun updateName() {
         val systemDriverTitle = YuzuApplication.appContext.getString(R.string.system_gpu_driver)
         //val systemDriverVersion = GpuDriverHelper.getSystemDriverInfo()?.get(0) ?: systemDriverTitle //title as fallback just in case
-        val systemDriverVersion =
-            NativeLibrary.getVulkanDriverVersionOrNull() ?: systemDriverTitle
+        val systemDriverVersion = NativeLibrary.getVulkanDriverVersion().takeIf { !it.isNullOrEmpty() } ?: systemDriverTitle
         val customDriver = GpuDriverHelper.customDriverSettingData
 
         _selectedDriverTitle.value = customDriver.name

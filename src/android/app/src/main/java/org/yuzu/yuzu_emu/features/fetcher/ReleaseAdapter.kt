@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2025 Eden Emulator Project
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 package org.yuzu.yuzu_emu.features.fetcher
@@ -224,12 +224,10 @@ class ReleaseAdapter(
                                 dialogBinding.status.text = context.getString(R.string.installing)
 
                                 val driverData = GpuDriverHelper.getMetadataFromZip(file)
-                                val storageRoot = GpuDriverHelper.driverStoragePath
-                                    ?: throw IOException(
-                                        context.getString(R.string.driver_failed_title)
-                                    )
                                 val driverPath =
-                                    "$storageRoot${FileUtil.getFilename(file.toUri())}"
+                                    "${GpuDriverHelper.driverStoragePath}${FileUtil.getFilename(
+                                        file.toUri()
+                                    )}"
 
                                 if (GpuDriverHelper.copyDriverToInternalStorage(file.toUri())) {
                                     driverViewModel.onDriverAdded(Pair(driverPath, driverData))
