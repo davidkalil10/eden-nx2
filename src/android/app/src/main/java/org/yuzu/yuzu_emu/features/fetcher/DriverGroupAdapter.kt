@@ -3,85 +3,148 @@
 
 package org.yuzu.yuzu_emu.features.fetcher
 
-import android.annotation.SuppressLint
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.isVisible
+import org.yuzu.yuzu_emu.R
+import androidx.fragment.app.FragmentActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import org.yuzu.yuzu_emu.databinding.ItemDriverGroupBinding
 import org.yuzu.yuzu_emu.fragments.DriverFetcherFragment.DriverGroup
-import androidx.core.view.isVisible
-import androidx.fragment.app.FragmentActivity
-import androidx.transition.ChangeBounds
-import androidx.transition.Fade
-import androidx.transition.TransitionManager
-import androidx.transition.TransitionSet
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.yuzu.yuzu_emu.model.DriverViewModel
 
 class DriverGroupAdapter(
     private val activity: FragmentActivity,
-    private val driverViewModel: DriverViewModel
+    private val driverViewModelProvider: () -> DriverViewModel,
 ) : RecyclerView.Adapter<DriverGroupAdapter.DriverGroupViewHolder>() {
     private var driverGroups: List<DriverGroup> = emptyList()
-    private val adapterJobs = mutableMapOf<Int, Job>()
+    private val expandedKeys = mutableSetOf<String>()
+
+
+    fun updateDriverGroups(newDriverGroups: List<DriverGroup>) {
+        val keys = newDriverGroups.map { DriverSourceKeys.key(it.source) }.toSet()
+        expandedKeys.retainAll(keys)
+        driverGroups = newDriverGroups
+        notifyDataSetChanged()
+    }
 
     inner class DriverGroupViewHolder(
-        private val binding: ItemDriverGroupBinding
+        private val binding: ItemDriverGroupBinding,
     ) : RecyclerView.ViewHolder(binding.root) {
+
         fun bind(group: DriverGroup) {
+            val key = DriverSourceKeys.key(group.source)
             binding.textGroupName.text = group.name
+            binding.progressGroupReleases.isVisible = false
 
             if (binding.recyclerReleases.layoutManager == null) {
-                binding.recyclerReleases.layoutManager = LinearLayoutManager(activity)
+                val layoutManager = LinearLayoutManager(activity)
+                layoutManager.initialPrefetchItemCount = 4
+                binding.recyclerReleases.layoutManager = layoutManager
+                binding.recyclerReleases.itemAnimator = null
                 binding.recyclerReleases.addItemDecoration(
                     SpacingItemDecoration(
-                        (activity.resources.displayMetrics.density * 8).toInt()
-                    )
+                        (activity.resources.displayMetrics.density * 6).toInt(),
+                    ),
                 )
             }
 
-            val onClick = {
-                adapterJobs[bindingAdapterPosition]?.cancel()
+            val releaseCount = group.releases.size
+            val scrollableCatalog = releaseCount >= FetcherCatalogPolicy.SCROLLABLE_RELEASE_THRESHOLD
+            binding.recyclerReleases.isNestedScrollingEnabled = scrollableCatalog
 
-                TransitionManager.beginDelayedTransition(
-                    binding.root,
-                    TransitionSet().addTransition(Fade()).addTransition(ChangeBounds())
-                        .setDuration(200)
+            val expanded = expandedKeys.contains(key)
+            binding.recyclerReleases.isVisible = expanded
+            binding.imageDropdownArrow.rotation = if (expanded) 180f else 0f
+
+            val largeCatalog = releaseCount >= FetcherCatalogPolicy.LARGE_CATALOG_THRESHOLD
+
+            fun attachReleaseAdapter(group: DriverGroup, staged: Boolean) {
+                val limit = if (staged) {
+                    FetcherCatalogPolicy.INITIAL_VISIBLE_RELEASES
+                } else {
+                    null
+                }
+                val adapter = ReleaseAdapter(
+                    group.releases,
+                    activity,
+                    driverViewModelProvider(),
+                    limit,
                 )
+                binding.recyclerReleases.adapter = adapter
+                if (staged) {
+                    binding.recyclerReleases.post { adapter.revealFullCatalog() }
+                }
+            }
 
-                val isVisible = binding.recyclerReleases.isVisible
+            if (expanded && group.releases.isNotEmpty()) {
+                val existing = binding.recyclerReleases.adapter as? ReleaseAdapter
+                if (existing == null || existing.releaseCount != group.releases.size) {
+                    attachReleaseAdapter(group, staged = largeCatalog)
+                }
+            } else if (!expanded) {
+                binding.recyclerReleases.adapter = null
+            }
 
-                if (!isVisible && binding.recyclerReleases.adapter == null) {
-                    val job = CoroutineScope(Dispatchers.Main).launch {
-                        // It prevents blocking the ui thread.
-                        var adapter: ReleaseAdapter?
-
-                        withContext(Dispatchers.IO) {
-                            adapter = ReleaseAdapter(group.releases, activity, driverViewModel)
-                        }
-
-                        binding.recyclerReleases.adapter = adapter
-                    }
-
-                    adapterJobs[bindingAdapterPosition] = job
+            fun toggleExpanded() {
+                if (bindingAdapterPosition == RecyclerView.NO_POSITION) {
+                    return
+                }
+                val willExpand = !expandedKeys.contains(key)
+                if (willExpand) {
+                    expandedKeys.add(key)
+                } else {
+                    expandedKeys.remove(key)
                 }
 
-                binding.recyclerReleases.visibility = if (isVisible) View.GONE else View.VISIBLE
-                binding.imageDropdownArrow.rotation = if (isVisible) 0f else 180f
+                if (willExpand) {
+                    if (largeCatalog && group.releases.isNotEmpty()) {
+                        FetcherFoldAnimator.pinReleaseListToMaxHeight(
+                            binding.recyclerReleases,
+                            binding.root.resources.getDimensionPixelSize(
+                                R.dimen.driver_group_releases_max_height,
+                            ),
+                        )
+                        binding.recyclerReleases.adapter = null
+                        binding.progressGroupReleases.isVisible = true
+                        FetcherFoldAnimator.beginFold(
+                            binding.root,
+                            binding.imageDropdownArrow,
+                            onEnd = afterExpand@{
+                                if (!binding.root.isAttachedToWindow) {
+                                    return@afterExpand
+                                }
+                                binding.progressGroupReleases.isVisible = false
+                                attachReleaseAdapter(group, staged = true)
+                                FetcherFoldAnimator.resetReleaseListHeight(binding.recyclerReleases)
+                            },
+                        )
+                    } else {
+                        if (group.releases.isNotEmpty() && binding.recyclerReleases.adapter == null) {
+                            attachReleaseAdapter(group, staged = false)
+                        }
+                        FetcherFoldAnimator.beginFold(
+                            binding.root,
+                            binding.imageDropdownArrow,
+                        )
+                    }
+                    binding.recyclerReleases.isVisible = true
+                } else {
+                    FetcherFoldAnimator.beginGroupCollapse(
+                        anchor = binding.root,
+                        releasesList = binding.recyclerReleases,
+                        releaseCount = releaseCount,
+                        binding.imageDropdownArrow,
+                        onEnd = { binding.recyclerReleases.adapter = null },
+                    )
+                    binding.recyclerReleases.isVisible = false
+                }
+
+                FetcherFoldAnimator.animateChevron(binding.imageDropdownArrow, willExpand)
             }
 
-            binding.root.setOnClickListener { onClick() }
-        }
-
-        fun clear() {
-            adapterJobs[bindingAdapterPosition]?.cancel()
-            adapterJobs.remove(bindingAdapterPosition)
+            binding.root.setOnClickListener { toggleExpanded() }
         }
     }
 
@@ -89,7 +152,7 @@ class DriverGroupAdapter(
         val binding = ItemDriverGroupBinding.inflate(
             LayoutInflater.from(parent.context),
             parent,
-            false
+            false,
         )
         return DriverGroupViewHolder(binding)
     }
@@ -99,10 +162,4 @@ class DriverGroupAdapter(
     }
 
     override fun getItemCount(): Int = driverGroups.size
-
-    @SuppressLint("NotifyDataSetChanged")
-    fun updateDriverGroups(newDriverGroups: List<DriverGroup>) {
-        driverGroups = newDriverGroups
-        notifyDataSetChanged()
-    }
 }

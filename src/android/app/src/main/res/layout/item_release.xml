@@ -14,8 +14,10 @@
     app:strokeWidth="1dp">
 
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/release_content"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:animateLayoutChanges="false"
         android:paddingHorizontal="14dp"
         android:paddingVertical="12dp">
 

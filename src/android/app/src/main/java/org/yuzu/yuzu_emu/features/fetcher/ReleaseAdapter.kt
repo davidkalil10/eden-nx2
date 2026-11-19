@@ -3,7 +3,6 @@
 
 package org.yuzu.yuzu_emu.features.fetcher
 
-import android.animation.LayoutTransition
 import android.content.res.ColorStateList
 import android.text.Html
 import android.text.Html.FROM_HTML_MODE_COMPACT
@@ -19,10 +18,6 @@ import org.yuzu.yuzu_emu.R
 import org.yuzu.yuzu_emu.databinding.ItemReleaseBinding
 import org.yuzu.yuzu_emu.fragments.DriverFetcherFragment.Release
 import androidx.core.net.toUri
-import androidx.transition.ChangeBounds
-import androidx.transition.Fade
-import androidx.transition.TransitionManager
-import androidx.transition.TransitionSet
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.CoroutineScope
@@ -44,8 +39,23 @@ import java.io.IOException
 class ReleaseAdapter(
     private val releases: List<Release>,
     private val activity: FragmentActivity,
-    private val driverViewModel: DriverViewModel
+    private val driverViewModel: DriverViewModel,
+    private var displayLimit: Int? = null,
 ) : RecyclerView.Adapter<ReleaseAdapter.ReleaseViewHolder>() {
+
+    val releaseCount: Int get() = releases.size
+
+    fun revealFullCatalog() {
+        val limit = displayLimit ?: return
+        if (limit >= releases.size) {
+            displayLimit = null
+            return
+        }
+        displayLimit = null
+        notifyItemRangeInserted(limit, releases.size - limit)
+    }
+
+    private val downloadsExpandedKeys = mutableSetOf<String>()
 
     inner class ReleaseViewHolder(
         private val binding: ItemReleaseBinding
@@ -55,20 +65,9 @@ class ReleaseAdapter(
         private val markdownParser = Parser.builder().build()
         private val htmlRenderer = HtmlRenderer.builder().build()
 
-        init {
-            binding.root.let { root ->
-                val layoutTransition = root.layoutTransition ?: LayoutTransition().apply {
-                    enableTransitionType(LayoutTransition.CHANGING)
-                    setDuration(125)
-                }
-                root.layoutTransition = layoutTransition
-            }
-
-            (binding.textBody.parent as ViewGroup).isTransitionGroup = false
-            binding.containerDownloads.isTransitionGroup = false
-        }
-
         fun bind(release: Release) {
+            val releaseKey = releaseFoldKey(release)
+
             binding.textReleaseName.text = release.title
             binding.badgeLatest.isVisible = release.latest
 
@@ -80,14 +79,11 @@ class ReleaseAdapter(
                 bodyPreview.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\n", "<br>")
 
             binding.textBody.text = Html.fromHtml(body, FROM_HTML_MODE_COMPACT)
+            isPreview = true
+            binding.textBody.maxLines = 3
+            binding.textBody.ellipsize = TextUtils.TruncateAt.END
 
             binding.textBody.setOnClickListener {
-                TransitionManager.beginDelayedTransition(
-                    binding.root,
-                    TransitionSet().addTransition(Fade()).addTransition(ChangeBounds())
-                        .setDuration(100)
-                )
-
                 isPreview = !isPreview
                 if (isPreview) {
                     val body = bodyPreview.replace("\\r\\n", "\n").replace("\\n", "\n")
@@ -111,33 +107,6 @@ class ReleaseAdapter(
                     binding.textBody.maxLines = Integer.MAX_VALUE
                     binding.textBody.ellipsize = null
                 }
-            }
-
-            val onDownloadsClick = {
-                val isVisible = binding.containerDownloads.isVisible
-                TransitionManager.beginDelayedTransition(
-                    binding.root,
-                    TransitionSet().addTransition(Fade()).addTransition(ChangeBounds())
-                        .setDuration(100)
-                )
-
-                binding.containerDownloads.isVisible = !isVisible
-
-                binding.imageDownloadsArrow.rotation = if (isVisible) 0f else 180f
-                binding.buttonToggleDownloads.text =
-                    if (isVisible) {
-                        activity.getString(R.string.show_downloads)
-                    } else {
-                        activity.getString(R.string.hide_downloads)
-                    }
-            }
-
-            binding.buttonToggleDownloads.setOnClickListener {
-                onDownloadsClick()
-            }
-
-            binding.imageDownloadsArrow.setOnClickListener {
-                onDownloadsClick()
             }
 
             binding.containerDownloads.removeAllViews()
@@ -255,10 +224,12 @@ class ReleaseAdapter(
                                 dialogBinding.status.text = context.getString(R.string.installing)
 
                                 val driverData = GpuDriverHelper.getMetadataFromZip(file)
+                                val storageRoot = GpuDriverHelper.driverStoragePath
+                                    ?: throw IOException(
+                                        context.getString(R.string.driver_failed_title)
+                                    )
                                 val driverPath =
-                                    "${GpuDriverHelper.driverStoragePath}${FileUtil.getFilename(
-                                        file.toUri()
-                                    )}"
+                                    "$storageRoot${FileUtil.getFilename(file.toUri())}"
 
                                 if (GpuDriverHelper.copyDriverToInternalStorage(file.toUri())) {
                                     driverViewModel.onDriverAdded(Pair(driverPath, driverData))
@@ -300,8 +271,43 @@ class ReleaseAdapter(
                 }
                 binding.containerDownloads.addView(button)
             }
+
+            val downloadsExpanded = downloadsExpandedKeys.contains(releaseKey)
+            applyDownloadsPanel(release, downloadsExpanded, animate = false)
+
+            val onDownloadsClick = {
+                val willExpand = !downloadsExpandedKeys.contains(releaseKey)
+                if (willExpand) {
+                    downloadsExpandedKeys.add(releaseKey)
+                } else {
+                    downloadsExpandedKeys.remove(releaseKey)
+                }
+
+                applyDownloadsPanel(release, willExpand, animate = true)
+            }
+
+            binding.buttonToggleDownloads.setOnClickListener { onDownloadsClick() }
+            binding.imageDownloadsArrow.setOnClickListener { onDownloadsClick() }
+        }
+
+        private fun applyDownloadsPanel(release: Release, expanded: Boolean, animate: Boolean) {
+            binding.containerDownloads.isVisible = expanded
+            if (animate) {
+                FetcherFoldAnimator.animateChevron(binding.imageDownloadsArrow, expanded)
+            } else {
+                binding.imageDownloadsArrow.rotation = if (expanded) 180f else 0f
+            }
+            binding.buttonToggleDownloads.text =
+                if (expanded) {
+                    activity.getString(R.string.hide_downloads)
+                } else {
+                    activity.getString(R.string.show_downloads)
+                }
         }
     }
+
+    private fun releaseFoldKey(release: Release): String =
+        "${release.tagName}:${release.titleName}:${release.title}"
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ReleaseViewHolder {
         val binding = ItemReleaseBinding.inflate(
@@ -316,5 +322,12 @@ class ReleaseAdapter(
         holder.bind(releases[position])
     }
 
-    override fun getItemCount(): Int = releases.size
+    override fun getItemCount(): Int {
+        val limit = displayLimit
+        return if (limit != null) {
+            minOf(limit, releases.size)
+        } else {
+            releases.size
+        }
+    }
 }

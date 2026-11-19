@@ -25,7 +25,8 @@ object GpuDriverHelper {
     var driverInstallationPath: String? = null
     internal var hookLibPath: String? = null
 
-    val driverStoragePath get() = DirectoryInitialization.userDirectory!! + "/gpu_drivers/"
+    val driverStoragePath: String?
+        get() = DirectoryInitialization.userDirectory?.let { "$it/gpu_drivers/" }
 
     fun initializeFreedrenoConfigEarly() {
         NativeFreedrenoConfig.setFreedrenoBasePath(YuzuApplication.appContext.cacheDir.absolutePath)
@@ -60,7 +61,8 @@ object GpuDriverHelper {
     }
 
     fun getDrivers(): MutableList<Pair<String, GpuDriverMetadata>> {
-        val driverZips = File(driverStoragePath).listFiles()
+        val storageRoot = driverStoragePath ?: return mutableListOf()
+        val driverZips = File(storageRoot).listFiles()
         val drivers: MutableList<Pair<String, GpuDriverMetadata>> =
             driverZips
                 ?.mapNotNull {
@@ -84,8 +86,9 @@ object GpuDriverHelper {
         initializeDirectories()
 
         // Copy the zip file URI to user data
+        val storageRoot = driverStoragePath ?: return false
         val copiedFile =
-            FileUtil.copyUriToInternalStorage(driverUri, driverStoragePath) ?: return false
+            FileUtil.copyUriToInternalStorage(driverUri, storageRoot) ?: return false
 
         // Validate driver
         val metadata = getMetadataFromZip(copiedFile)
@@ -113,8 +116,9 @@ object GpuDriverHelper {
         initializeDirectories()
 
         // Copy the zip file URI to user data
+        val storageRoot = driverStoragePath ?: return false
         val copiedFile =
-            FileUtil.copyUriToInternalStorage(driverUri, driverStoragePath) ?: return false
+            FileUtil.copyUriToInternalStorage(driverUri, storageRoot) ?: return false
 
         // Validate driver
         val metadata = getMetadataFromZip(copiedFile)
@@ -210,13 +214,31 @@ object GpuDriverHelper {
 
     external fun getSystemDriverInfo(
         surface: Surface = Surface(SurfaceTexture(true)),
-        hookLibPath: String = GpuDriverHelper.hookLibPath!!
+        hookLibPath: String,
     ): Array<String>?
+
+    fun tryGetSystemDriverInfo(): Array<String>? {
+        val path = hookLibPath ?: return null
+        return try {
+            getSystemDriverInfo(hookLibPath = path)
+        } catch (_: Throwable) {
+            null
+        }
+    }
 
     external fun getGpuModel(
         surface: Surface = Surface(SurfaceTexture(true)),
-        hookLibPath: String
+        hookLibPath: String,
     ): String?
+
+    fun tryGetGpuModel(): String? {
+        val path = hookLibPath ?: return null
+        return try {
+            getGpuModel(hookLibPath = path)
+        } catch (_: Throwable) {
+            null
+        }
+    }
 
     fun isAdrenoGpu(): Boolean {
         return try {
@@ -245,7 +267,8 @@ object GpuDriverHelper {
             driverInstallationDir.mkdirs()
         }
         // Ensure the driver storage directory exists
-        val driverStorageDirectory = File(driverStoragePath)
+        val storageRoot = driverStoragePath ?: return
+        val driverStorageDirectory = File(storageRoot)
         if (!driverStorageDirectory.exists()) {
             driverStorageDirectory.mkdirs()
         }
@@ -256,10 +279,11 @@ object GpuDriverHelper {
      * internal driver storage directory. Validation requires a readable meta.json with a name.
      */
     fun isDriverZipInstalledByName(fileName: String): Boolean {
+        val storageRoot = driverStoragePath ?: return false
         // Normalize separators in case upstream sent a path
         val baseName = fileName.substringAfterLast('/')
             .substringAfterLast('\\')
-        val candidate = File("$driverStoragePath$baseName")
+        val candidate = File(storageRoot + baseName)
         if (!candidate.exists() || candidate.length() == 0L) return false
         val metadata = getMetadataFromZip(candidate)
         return metadata.name != null

@@ -273,6 +273,14 @@ object NativeLibrary {
     external fun getVulkanApiVersion(): String
     external fun getGpuModel(): String
 
+    /** Vulkan queries can abort when no graphics context is ready (e.g. driver fetcher entry). */
+    fun getVulkanDriverVersionOrNull(): String? =
+        try {
+            getVulkanDriverVersion().takeIf { it.isNotEmpty() && it != "N/A" }
+        } catch (_: Throwable) {
+            null
+        }
+
     /**
      * Returns a summary of detailed information about the CPU.
      */

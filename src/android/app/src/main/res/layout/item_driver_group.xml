@@ -27,6 +27,8 @@
             style="@style/TextAppearance.Material3.TitleMedium"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:clickable="false"
+            android:focusable="false"
             android:textAlignment="viewStart"
             android:textColor="?attr/colorOnSurface"
             app:layout_constraintEnd_toStartOf="@id/image_dropdown_arrow"
@@ -38,24 +40,40 @@
             android:id="@+id/image_dropdown_arrow"
             android:layout_width="28dp"
             android:layout_height="28dp"
+            android:clickable="false"
             android:contentDescription="@string/show_releases"
+            android:focusable="false"
             android:src="@drawable/ic_dropdown_arrow"
             app:layout_constraintBottom_toBottomOf="@id/text_group_name"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="@id/text_group_name"
             app:tint="?attr/colorPrimary" />
 
+        <com.google.android.material.progressindicator.LinearProgressIndicator
+            android:id="@+id/progress_group_releases"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_small"
+            android:indeterminate="true"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/text_group_name"
+            tools:visibility="visible" />
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recycler_releases"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/spacing_med"
+            android:clipToPadding="true"
+            android:maxHeight="@dimen/driver_group_releases_max_height"
             android:nestedScrollingEnabled="false"
             android:overScrollMode="never"
             android:visibility="gone"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/text_group_name" />
+            app:layout_constraintTop_toBottomOf="@id/progress_group_releases" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
