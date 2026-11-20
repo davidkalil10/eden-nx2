@@ -5,7 +5,11 @@
 
 #include <mutex>
 
+#ifdef __SWITCH2__
+#include "dynarmic/backend/arm64/switch2_code_block.h"
+#else
 #include <oaknut/code_block.hpp>
+#endif
 #include <oaknut/oaknut.hpp>
 
 #include "dynarmic/backend/arm64/abi.h"
@@ -42,7 +46,11 @@ struct SpinLockImpl {
 
     void Initialize();
 
+#ifdef __SWITCH2__
+    Backend::Arm64::Switch2CodeBlock mem;
+#else
     oaknut::CodeBlock mem;
+#endif
     oaknut::CodeGenerator code;
 
     void (*lock)(volatile int*);
@@ -54,7 +62,11 @@ SpinLockImpl impl;
 
 SpinLockImpl::SpinLockImpl()
         : mem{4096}
+#ifdef __SWITCH2__
+        , code{mem.rw_ptr(), mem.ptr()} {}
+#else
         , code{mem.ptr(), mem.ptr()} {}
+#endif
 
 void SpinLockImpl::Initialize() {
     mem.unprotect();
@@ -68,7 +80,11 @@ void SpinLockImpl::Initialize() {
     code.RET();
 
     mem.protect();
+#ifdef __SWITCH2__
+    mem.invalidate(mem.ptr(), static_cast<std::size_t>(code.offset()));
+#else
     mem.invalidate_all();
+#endif
 }
 
 }  // namespace
