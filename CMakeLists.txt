@@ -101,6 +101,7 @@ if (NINTENDO_SWITCH2)
     set(YUZU_USE_BUNDLED_FFMPEG OFF CACHE BOOL "" FORCE)
     set(YUZU_USE_BUNDLED_OPENSSL OFF CACHE BOOL "" FORCE)
     add_compile_definitions(__SWITCH2__=1 __SWITCH__=1 BOOST_HAS_PTHREADS=1)
+    include_directories(BEFORE SYSTEM "${CMAKE_SOURCE_DIR}/src/common/switch2_compat")
 endif()
 
 # qt stuff
