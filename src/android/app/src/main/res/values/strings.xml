@@ -1396,6 +1396,13 @@
 
     <string name="swkbd_applet">Software Keyboard</string>
 
+    <!-- Controller modes -->
+    <string name="controller_mode">Controller mode</string>
+    <string name="controller_mode_description">Modern Console and Handheld Console give each controller that connects the next player, with its standard mapping. Handheld Console: the device\'s own controls come last, so a connected controller is Player 1. Manual uses the players you set up yourself; the console modes never change them.</string>
+    <string name="controller_mode_manual">Manual</string>
+    <string name="controller_mode_modern">Modern Console</string>
+    <string name="controller_mode_handheld">Handheld Console</string>
+
     <string name="airplane_mode">Airplane Mode</string>
     <string name="airplane_mode_description">Passes Airplane Mode to the Switch OS</string>
 

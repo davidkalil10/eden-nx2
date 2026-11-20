@@ -25,6 +25,7 @@ import org.yuzu.yuzu_emu.NativeLibrary
 import java.io.IOException
 import org.yuzu.yuzu_emu.R
 import org.yuzu.yuzu_emu.databinding.ActivitySettingsBinding
+import org.yuzu.yuzu_emu.features.input.ConsoleMode
 import org.yuzu.yuzu_emu.features.input.NativeInput
 import org.yuzu.yuzu_emu.features.settings.utils.SettingsFile
 import org.yuzu.yuzu_emu.fragments.ResetSettingsDialogFragment
@@ -141,6 +142,9 @@ class SettingsActivity : AppCompatActivity() {
         if (isFinishing) {
             NativeInput.reloadInputDevices()
             NativeLibrary.applySettings()
+            // Both reloaded the Manual players after the game resumed: the console modes
+            // assign theirs again
+            ConsoleMode.apply(force = true)
             if (args.game == null) {
                 NativeConfig.saveGlobalConfig()
             } else if (NativeConfig.isPerGameConfigLoaded()) {

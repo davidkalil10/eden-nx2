@@ -578,6 +578,19 @@
         <item>1</item>
     </integer-array>
 
+    <string-array name="controllerModeEntries">
+        <item>@string/controller_mode_manual</item>
+        <item>@string/controller_mode_modern</item>
+        <item>@string/controller_mode_handheld</item>
+    </string-array>
+
+    <!-- Settings::AppletMode: Manual = HLE (the default), ConsoleMode, HandheldConsoleMode -->
+    <integer-array name="controllerModeValues">
+        <item>0</item>
+        <item>3</item>
+        <item>4</item>
+    </integer-array>
+
     <string-array name="gpuEntries">
         <item>@string/fast_gpu_normal</item>
         <item>@string/fast_gpu_medium</item>

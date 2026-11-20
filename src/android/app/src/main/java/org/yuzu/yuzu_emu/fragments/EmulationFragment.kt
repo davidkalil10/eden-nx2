@@ -75,6 +75,7 @@ import org.yuzu.yuzu_emu.databinding.DialogOverlayAdjustBinding
 import org.yuzu.yuzu_emu.databinding.DialogListBinding
 import org.yuzu.yuzu_emu.databinding.FragmentEmulationBinding
 import org.yuzu.yuzu_emu.dialogs.QuickSettings
+import org.yuzu.yuzu_emu.features.input.ConsoleMode
 import org.yuzu.yuzu_emu.features.input.NativeInput
 import org.yuzu.yuzu_emu.features.settings.model.BooleanSetting
 import org.yuzu.yuzu_emu.features.settings.model.IntSetting
@@ -1046,6 +1047,9 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
                 ViewUtils.hideView(binding.loadingSwitchAnimation)
 
                 emulationState.updateSurface()
+
+                // The boot reloaded the Manual players: the console modes assign theirs again
+                ConsoleMode.apply(force = true)
 
                 updateCheatsMenuEntry()
                 updateShowStatsOverlay()

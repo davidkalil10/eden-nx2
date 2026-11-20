@@ -10,6 +10,7 @@ import org.yuzu.yuzu_emu.NativeLibrary
 import org.yuzu.yuzu_emu.R
 import org.yuzu.yuzu_emu.YuzuApplication
 import org.yuzu.yuzu_emu.activities.EmulationActivity
+import org.yuzu.yuzu_emu.features.input.ConsoleMode
 import org.yuzu.yuzu_emu.features.input.NativeInput
 import org.yuzu.yuzu_emu.features.input.model.AnalogDirection
 import org.yuzu.yuzu_emu.features.input.model.NativeAnalog
@@ -666,6 +667,13 @@ class SettingsFragmentPresenter(
 
     private fun addInputSettings(sl: ArrayList<SettingsItem>) {
         settingsViewModel.currentDevice = 0
+
+        // Modern Console / Handheld Console assign the players themselves: the Manual
+        // players' pages stay hidden so nothing edits them meanwhile
+        sl.add(IntSetting.CONTROLLER_APPLET.key)
+        if (ConsoleMode.isOn()) {
+            return
+        }
 
         if (NativeConfig.isPerGameConfigLoaded()) {
             NativeInput.loadInputProfiles()

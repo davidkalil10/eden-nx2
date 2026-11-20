@@ -1123,6 +1123,16 @@ abstract class SettingsItem(
             }
             put(SwitchSetting(fastmem, R.string.fastmem))
 
+            put(
+                SingleChoiceSetting(
+                    IntSetting.CONTROLLER_APPLET,
+                    titleId = R.string.controller_mode,
+                    descriptionId = R.string.controller_mode_description,
+                    choicesId = R.array.controllerModeEntries,
+                    valuesId = R.array.controllerModeValues
+                )
+            )
+
             // Applet Settings
             put(
                 SingleChoiceSetting(

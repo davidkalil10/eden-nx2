@@ -50,6 +50,7 @@ import org.yuzu.yuzu_emu.R
 import org.yuzu.yuzu_emu.YuzuApplication
 import org.yuzu.yuzu_emu.databinding.ActivityEmulationBinding
 import org.yuzu.yuzu_emu.dialogs.NetPlayDialog
+import org.yuzu.yuzu_emu.features.input.ConsoleMode
 import org.yuzu.yuzu_emu.features.input.NativeInput
 import org.yuzu.yuzu_emu.features.settings.model.BooleanSetting
 import org.yuzu.yuzu_emu.features.settings.model.IntSetting
@@ -135,7 +136,10 @@ class EmulationActivity : AppCompatActivity(), SensorEventListener, InputManager
                 hasConfiguredControllers = true
             }
         }
-        if (!hasConfiguredControllers && InputHandler.androidControllers.isNotEmpty()) {
+        // (Manual only: the console modes never write the Manual players)
+        if (!ConsoleMode.isOn() && !hasConfiguredControllers &&
+            InputHandler.androidControllers.isNotEmpty()
+        ) {
             var params: ParamPackage? = null
             for (controller in InputHandler.registeredControllers) {
                 if (controller.get("port", -1) == 0) {

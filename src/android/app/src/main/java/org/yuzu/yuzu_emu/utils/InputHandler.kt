@@ -9,6 +9,7 @@ package org.yuzu.yuzu_emu.utils
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
+import org.yuzu.yuzu_emu.features.input.ConsoleMode
 import org.yuzu.yuzu_emu.features.input.NativeInput
 import org.yuzu.yuzu_emu.features.input.YuzuInputOverlayDevice
 import org.yuzu.yuzu_emu.features.input.YuzuPhysicalDevice
@@ -161,6 +162,9 @@ object InputHandler {
             registeredControllers.add(ParamPackage(it))
         }
         registeredControllers.sortBy { it.get("port", 0) }
+
+        // Modern Console / Handheld Console reassign the players (nothing in Manual)
+        ConsoleMode.apply()
     }
 
     fun InputDevice.getGUID(): String = String.format("%016x%016x", productId, vendorId)
