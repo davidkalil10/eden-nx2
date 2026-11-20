@@ -16,7 +16,7 @@ JOBS="${JOBS:-$(nproc)}"
 
 SDL_REPOSITORY="https://github.com/devkitPro/SDL.git"
 SDL_REVISION="c329016c0e338ab4397ad930f83330c9fe058348"
-SDL_STAMP="eden-switch2-sdl3-v2 ${SDL_REVISION}"
+SDL_STAMP="eden-switch2-sdl3-v3 ${SDL_REVISION}"
 
 if [[ ! -f "${TOOLCHAIN_FILE}" ]]; then
     echo "ERROR: Switch2.cmake not found at ${TOOLCHAIN_FILE}" >&2
@@ -33,6 +33,10 @@ if [[ ! -f "${SDL_PREFIX}/.eden-switch2-sdl3" ]] || [[ "$(<"${SDL_PREFIX}/.eden-
     rm -rf "${SDL_SOURCE_DIR}" "${SDL_BUILD_DIR}" "${SDL_PREFIX}"
     git clone --no-checkout "${SDL_REPOSITORY}" "${SDL_SOURCE_DIR}"
     git -C "${SDL_SOURCE_DIR}" checkout --detach "${SDL_REVISION}"
+    # devkitPro SDL's Switch video driver is EGL-only and its sources lack SDL_internal.h
+    # (compiled as empty files), so drop it and use SDL's dummy video driver instead.
+    sed -i 's/#ifdef SDL_VIDEO_DRIVER_SWITCH/#if 0/' "${SDL_SOURCE_DIR}/src/video/SDL_video.c"
+    grep -rn "SWITCH_bootstrap" "${SDL_SOURCE_DIR}/src" --include=*.c --include=*.h | grep -v "src/video/switch/" || true
     cmake -S "${SDL_SOURCE_DIR}" -B "${SDL_BUILD_DIR}" -G Ninja \
         -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
         -DCMAKE_BUILD_TYPE=Release \
@@ -40,6 +44,9 @@ if [[ ! -f "${SDL_PREFIX}/.eden-switch2-sdl3" ]] || [[ "$(<"${SDL_PREFIX}/.eden-
         -DCMAKE_PREFIX_PATH="${OUNCEVK_PREFIX}" \
         -DOpenGL_DIR="${OUNCEVK_PREFIX}/lib/cmake/OpenGL" \
         -DSDL_SHARED=OFF \
+        -DSDL_OPENGL=OFF \
+        -DSDL_OPENGLES=OFF \
+        -DSDL_DUMMYVIDEO=ON \
         -DSDL_STATIC=ON \
         -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON \
         -DSDL_TESTS=OFF \
@@ -74,8 +81,6 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \
     -DCMAKE_PREFIX_PATH="${SDL_PREFIX};${OUNCEVK_PREFIX};${DEVKITPRO}/portlibs/switch" \
     -DSDL3_DIR="${SDL_PREFIX}/lib/cmake/SDL3" \
     -DNINTENDO_SWITCH2=ON \
-    -DCMAKE_CXX_STANDARD_LIBRARIES="-ldav1d -lz" \
-    -DCMAKE_EXE_LINKER_FLAGS_INIT="-Wl,--allow-multiple-definition" \
     -DCMAKE_C_FLAGS_INIT="-mcpu=cortex-a78c+crypto -O2 -D__SWITCH2__=1 -D__SWITCH__=1" \
     -DCMAKE_CXX_FLAGS_INIT="-mcpu=cortex-a78c+crypto -O2 -D__SWITCH2__=1 -D__SWITCH__=1" \
     -DENABLE_QT=OFF \

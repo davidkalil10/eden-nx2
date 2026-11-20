@@ -103,6 +103,9 @@ if (NINTENDO_SWITCH2)
     add_compile_definitions(__SWITCH2__=1 __SWITCH__=1 BOOST_HAS_PTHREADS=1
         BOOST_ASIO_DISABLE_SERIAL_PORT=1)
     include_directories(BEFORE SYSTEM "${CMAKE_SOURCE_DIR}/src/common/switch2_compat")
+    # FFmpeg static libs need dav1d/zlib after them; the toolchain overrides -D standard libs.
+    string(APPEND CMAKE_CXX_STANDARD_LIBRARIES " -ldav1d -lz -lm -lnx")
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--allow-multiple-definition")
 endif()
 
 # qt stuff
