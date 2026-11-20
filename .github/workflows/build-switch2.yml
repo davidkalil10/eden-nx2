@@ -31,7 +31,7 @@ jobs:
       - name: Install host build tools, CMake 3.31.6, Switch portlibs & ounce-devkit (20261115b)
         run: |
           apt-get update && apt-get install -y --no-install-recommends \
-            ninja-build perl python3 pkg-config curl ca-certificates xz-utils bzip2 zstd patch bison flex glslang-tools
+            ninja-build ccache perl python3 pkg-config curl ca-certificates xz-utils bzip2 zstd patch bison flex glslang-tools
           curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz \
             | tar -xz --strip-components=1 -C /usr/local
           cmake --version
@@ -60,10 +60,30 @@ jobs:
           restore-keys: |
             eden-nx2-deps-v1-
 
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: eden-nx2-ccache-${{ github.sha }}
+          restore-keys: |
+            eden-nx2-ccache-
+
       - name: Configure, build and package Switch 2 NRO
         env:
           EDEN_SWITCH2_TARGET: ${{ github.event.inputs.target || 'yuzu-cmd' }}
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_MAXSIZE: 1500M
+          CCACHE_COMPILERCHECK: content
+          CCACHE_SLOPPINESS: time_macros,include_file_mtime,include_file_ctime,pch_defines
+          EDEN_USE_CCACHE: "1"
         run: bash scripts/build-switch2.sh
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: eden-nx2-ccache-${{ github.sha }}
 
       - name: Upload Switch 2 NRO artifact
         if: ${{ hashFiles('dist/eden-switch2.nro') != '' }}

@@ -57,7 +57,13 @@ echo "CMake: $(cmake --version | head -n1)"
 echo "Compiler: $(aarch64-none-elf-g++ --version | head -n1)"
 echo "Target: ${TARGET}"
 
+CCACHE_ARGS=()
+if [[ "${EDEN_USE_CCACHE:-0}" == "1" ]] && command -v ccache >/dev/null; then
+    CCACHE_ARGS=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+fi
+
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \
+    "${CCACHE_ARGS[@]}" \
     -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH="${SDL_PREFIX};${OUNCEVK_PREFIX};${DEVKITPRO}/portlibs/switch" \
