@@ -253,7 +253,7 @@ FileType IOFile::GetType() const {
     return file_type;
 }
 
-#if defined(__unix__)
+#if defined(__unix__) && !defined(__SWITCH2__)
 static int PlatformMapReadOnly(IOFile& io, const char* path) {
     io.mmap_fd = open(path, O_RDONLY);
     if (io.mmap_fd > 0) {
@@ -320,7 +320,7 @@ static void PlatformUnmap(IOFile& io) {
         io.mmap_fd = -1;
     }
 }
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) || defined(__SWITCH2__)
 // NO IMPLEMENTATION YET
 #else
 static int PlatformMapReadOnly(IOFile& io, const wchar_t* path) {
@@ -394,7 +394,7 @@ void IOFile::Open(const fs::path& path, FileAccessMode mode, FileType type, File
     } else {
         file = std::fopen(path.c_str(), AccessModeToStr(mode, type));
     }
-#elif defined(__HAIKU__) || defined(__managarm__) || defined(__OPENORBIS__) || defined(__APPLE__)
+#elif defined(__HAIKU__) || defined(__managarm__) || defined(__OPENORBIS__) || defined(__APPLE__) || defined(__SWITCH2__)
     file = std::fopen(path.c_str(), AccessModeToStr(mode, type));
 #elif defined(__unix__)
     if (type == FileType::BinaryFile && mode == FileAccessMode::Read) {
@@ -417,7 +417,7 @@ void IOFile::Open(const fs::path& path, FileAccessMode mode, FileType type, File
 }
 
 void IOFile::Close() {
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__SWITCH2__)
     // NO IMPLEMENTATION YET
 #else
     PlatformUnmap(*this);
