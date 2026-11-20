@@ -14,7 +14,7 @@
 #include "core/internal_network/socket_proxy.h"
 #include "network/network.h"
 
-#ifdef __unix__
+#if defined(__unix__) || defined(__SWITCH2__)
 #include <sys/socket.h>
 #endif
 
