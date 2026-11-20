@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build-switch2"
 DEVKITPRO="${DEVKITPRO:-/opt/devkitpro}"
-TOOLCHAIN_FILE="${DEVKITPRO}/cmake/Switch2.cmake"
+TOOLCHAIN_FILE="${DEVKITPRO}/libounce/cmake/Switch2.cmake"
+OUNCEVK_PREFIX="${DEVKITPRO}/portlibs/switch2"
 TARGET="${EDEN_SWITCH2_TARGET:-common}"
 
 if [[ ! -f "${TOOLCHAIN_FILE}" ]]; then
@@ -12,8 +13,8 @@ if [[ ! -f "${TOOLCHAIN_FILE}" ]]; then
     exit 1
 fi
 
-export PATH="${DEVKITPRO}/tools/bin:${DEVKITPRO}/devkitA64/bin:${PATH}"
-export PKG_CONFIG_PATH="${DEVKITPRO}/portlibs/switch/lib/pkgconfig:${DEVKITPRO}/libnx/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+export PATH="${DEVKITPRO}/tools/bin:${DEVKITPRO}/devkitA64/bin:${OUNCEVK_PREFIX}/bin:${DEVKITPRO}/portlibs/switch/bin:${PATH}"
+export PKG_CONFIG_PATH="${OUNCEVK_PREFIX}/lib/pkgconfig:${DEVKITPRO}/portlibs/switch/lib/pkgconfig:${DEVKITPRO}/libounce/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
 echo "=== Eden-NX2 Switch 2 Build ==="
 echo "CMake: $(cmake --version | head -n1)"
