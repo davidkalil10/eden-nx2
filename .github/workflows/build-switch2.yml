@@ -31,7 +31,7 @@ jobs:
       - name: Install host build tools, CMake 3.31.6, Switch portlibs & ounce-devkit (20261115b)
         run: |
           apt-get update && apt-get install -y --no-install-recommends \
-            ninja-build perl python3 pkg-config curl ca-certificates xz-utils bzip2 zstd patch bison flex
+            ninja-build perl python3 pkg-config curl ca-certificates xz-utils bzip2 zstd patch bison flex glslang-tools
           curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz \
             | tar -xz --strip-components=1 -C /usr/local
           cmake --version
