@@ -34,7 +34,6 @@
 #include "debugger/controller.h"
 
 #include "about_dialog.h"
-#include "backup_manager.h"
 #include "data_dialog.h"
 #include "deps_dialog.h"
 #include "install_dialog.h"
@@ -74,6 +73,7 @@
 // Qt Stuff //
 #define QT_NO_OPENGL
 
+#include <QThreadPool>
 #include <QHelpEvent>
 #include <QMenuBar>
 #include <QStyleHints>
@@ -131,6 +131,7 @@
 #include "qt_common/qt_common.h"
 #include "qt_common/qt_string_lookup.h"
 
+#include "qt_common/util/backup_manager.h"
 #include "qt_common/util/content.h"
 #include "qt_common/util/fs.h"
 #include "qt_common/util/meta.h"
@@ -10007,15 +10008,10 @@ void MainWindow::OnBackupSettings() {
         backup_now_btn->setEnabled(false);
         backup_now_btn->setText(tr("Backing up..."));
         backup_manager->BackupAll(true);
-
-        // re-enable after backup finishes
-        auto conn = std::make_shared<QMetaObject::Connection>();
-        *conn = connect(backup_manager.get(), &BackupManager::BackupFinished, this,
-                        [backup_now_btn, conn](bool /*success*/, const QString& /*msg*/) {
-                            backup_now_btn->setEnabled(true);
-                            backup_now_btn->setText(tr("Backup Now"));
-                            disconnect(*conn);
-                        });
+    });
+    connect(backup_manager.get(), &BackupManager::BackupFinished, &dialog, [backup_now_btn] {
+        backup_now_btn->setEnabled(true);
+        backup_now_btn->setText(tr("Backup Now"));
     });
 
     connect(close_btn, &QPushButton::clicked, &dialog, &QDialog::accept);
@@ -10661,6 +10657,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     if (backup_manager && backup_manager->IsAutoEnabled()) {
         LOG_INFO(Frontend, "Running automatic save backup on exit");
         backup_manager->BackupAll();
+        QThreadPool::globalInstance()->waitForDone();
     }
 
     UpdateUISettings();
