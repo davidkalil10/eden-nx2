@@ -20,6 +20,8 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "managarm")
     set(MANAGARM ON)
 elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Haiku")
     set(HAIKUOS ON)
+elseif (NINTENDO_SWITCH2)
+    set(SWITCH2 ON)
 endif()
 
 # BSD

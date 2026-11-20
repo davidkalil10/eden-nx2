@@ -12,7 +12,12 @@
 #include <windows.h>
 #include "common/dynamic_library.h"
 
-#else // ^^^ Windows ^^^ vvv POSIX vvv
+#elif defined(__SWITCH2__)
+
+#include <cstdlib>
+#include <malloc.h>
+
+#else // ^^^ Switch 2 ^^^ vvv POSIX vvv
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -404,7 +409,11 @@ private:
 #elif defined(__OPENORBIS__) || defined(__managarm__)
 // None of the luxuries of POSIX, all of the suffering
 // For managarm: see https://github.com/managarm/managarm/issues/1370
-#else // ^^^ Windows ^^^ vvv POSIX vvv
+#elif defined(__SWITCH2__)
+
+class HostMemory::Impl {};
+
+#else // ^^^ Switch 2 ^^^ vvv POSIX vvv
 
 #ifndef MAP_NOCORE
 #define MAP_NOCORE 0
@@ -708,7 +717,13 @@ HostMemory::HostMemory(size_t backing_size_, size_t virtual_size_)
     : backing_size(backing_size_)
     , virtual_size(virtual_size_)
 {
-#if defined(__OPENORBIS__) || defined(__managarm__)
+#if defined(__SWITCH2__)
+    LOG_WARNING(HW_Memory, "Switch 2 userland: using non-fastmem aligned backing buffer ({} MiB)",
+                backing_size >> 20);
+    fallback_buffer = true;
+    backing_base = static_cast<u8*>(memalign(PageAlignment, AlignUp(backing_size, PageAlignment)));
+    virtual_base = nullptr;
+#elif defined(__OPENORBIS__) || defined(__managarm__)
     LOG_WARNING(HW_Memory, "Platform doesn't support fastmem");
     backing_base = static_cast<u8*>(mmap(nullptr, backing_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
     virtual_base = nullptr;
@@ -738,6 +753,11 @@ HostMemory::~HostMemory() {
     if (fallback_buffer) {
         VirtualFree(backing_base, backing_size, MEM_RELEASE);
     }
+#elif defined(__SWITCH2__)
+    if (fallback_buffer && backing_base) {
+        free(backing_base);
+        backing_base = nullptr;
+    }
 #else
     if (fallback_buffer) {
         munmap(backing_base, backing_size);
@@ -750,7 +770,7 @@ HostMemory::HostMemory(HostMemory&&) noexcept = default;
 HostMemory& HostMemory::operator=(HostMemory&&) noexcept = default;
 
 void HostMemory::Map(size_t virtual_offset, size_t host_offset, size_t length, MemoryPermission perms, bool separate_heap) {
-#if !(defined(__OPENORBIS__) || defined(__managarm__))
+#if !(defined(__OPENORBIS__) || defined(__managarm__) || defined(__SWITCH2__))
     ASSERT(virtual_offset % PageAlignment == 0);
     ASSERT(host_offset % PageAlignment == 0);
     ASSERT(length % PageAlignment == 0);
@@ -764,7 +784,7 @@ void HostMemory::Map(size_t virtual_offset, size_t host_offset, size_t length, M
 }
 
 void HostMemory::Unmap(size_t virtual_offset, size_t length, bool separate_heap) {
-#if !(defined(__OPENORBIS__) || defined(__managarm__))
+#if !(defined(__OPENORBIS__) || defined(__managarm__) || defined(__SWITCH2__))
     ASSERT(virtual_offset % PageAlignment == 0);
     ASSERT(length % PageAlignment == 0);
     ASSERT(virtual_offset + length <= virtual_size);
@@ -776,7 +796,7 @@ void HostMemory::Unmap(size_t virtual_offset, size_t length, bool separate_heap)
 }
 
 void HostMemory::Protect(size_t virtual_offset, size_t length, MemoryPermission perm) {
-#if !(defined(__OPENORBIS__) || defined(__managarm__))
+#if !(defined(__OPENORBIS__) || defined(__managarm__) || defined(__SWITCH2__))
     ASSERT(virtual_offset % PageAlignment == 0);
     ASSERT(length % PageAlignment == 0);
     ASSERT(virtual_offset + length <= virtual_size);
@@ -795,7 +815,7 @@ void HostMemory::ClearBackingRegion(size_t physical_offset, size_t length, u32 f
 }
 
 void HostMemory::EnableDirectMappedAddress() {
-#if !(defined(__OPENORBIS__) || defined(__managarm__))
+#if !(defined(__OPENORBIS__) || defined(__managarm__) || defined(__SWITCH2__))
     if (impl) {
         impl->EnableDirectMappedAddress();
         virtual_size += reinterpret_cast<uintptr_t>(virtual_base);

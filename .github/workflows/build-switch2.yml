@@ -1,0 +1,64 @@
+name: Build Eden-NX2 (Nintendo Switch 2)
+
+on:
+  push:
+    branches: [ master, main ]
+    tags: [ "v*" ]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "CMake target(s) to build (e.g. common, dynarmic, core, yuzu-cmd)"
+        required: false
+        default: "common"
+
+jobs:
+  build-switch2:
+    name: Switch 2 Bring-Up (ounce-devkit + OunceVK + kaiHEN)
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkita64:20260219
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure git safe.directory
+        run: git config --global --add safe.directory '*'
+
+      - name: Install host build tools, CMake 3.31.6, Switch portlibs & ounce-devkit (20261115b)
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            ninja-build perl python3 pkg-config curl ca-certificates xz-utils bzip2 zstd patch bison flex
+          curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz \
+            | tar -xz --strip-components=1 -C /usr/local
+          cmake --version
+          for attempt in 1 2 3 4 5; do
+            if dkp-pacman -Sy --noconfirm --needed \
+              switch-dev switch-portlibs switch-zlib switch-libzstd switch-lz4 \
+              switch-libopus switch-ffmpeg switch-mbedtls switch-libpng switch-freetype; then
+              break
+            fi
+            echo "dkp-pacman attempt $attempt failed; retrying in $((attempt * 10))s..."
+            sleep $((attempt * 10))
+          done
+          sdk="$(mktemp -d)"
+          git clone https://github.com/ouncebrew/ounce-devkit.git "$sdk"
+          git -C "$sdk" checkout 0f38ba80d7ee768c5749278f127749d14ece2036
+          bash "$sdk/install.sh" "20261115b"
+          rm -rf "$sdk"
+
+      - name: Cache CPM packages
+        uses: actions/cache@v4
+        with:
+          path: .cache/cpm
+          key: eden-nx2-cpm-v1-${{ hashFiles('cpmfile.json') }}
+          restore-keys: |
+            eden-nx2-cpm-v1-
+
+      - name: Configure and build Phase 1 target
+        env:
+          EDEN_SWITCH2_TARGET: ${{ github.event.inputs.target || 'common' }}
+        run: bash scripts/build-switch2.sh

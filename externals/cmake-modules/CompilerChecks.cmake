@@ -20,8 +20,8 @@ if (id MATCHES "AppleClang")
         "(brew install llvm) instead.")
 endif()
 
-# GCC must be 16+
-if (id MATCHES "GNU" AND ver VERSION_LESS 16)
+# GCC must be 16+ (relaxed for devkitA64 cross-compilation on Nintendo Switch 2)
+if (id MATCHES "GNU" AND ver VERSION_LESS 16 AND NOT NINTENDO_SWITCH2)
     message(FATAL_ERROR "Unsupported GCC version ${ver}. Only 16 and up "
         "are supported.")
 endif()

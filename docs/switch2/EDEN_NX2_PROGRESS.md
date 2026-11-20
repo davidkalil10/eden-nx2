@@ -18,7 +18,7 @@
 | **Port Maintainer** | **David Kalil Braga (`@davidkalil10`)** — Ko-fi: `https://ko-fi.com/davidkalil10` |
 | **Target Platform** | Nintendo Switch 2 (`aarch64-none-elf`, `-mcpu=cortex-a78c+crypto`, `OUN0` NRO, `ounce-devkit` `20261115b`) |
 | **Graphics / JIT Stack** | **OunceVK** (static Vulkan 1.4 + `VK_NN_vi_surface`) + **kaiHEN** (`jitCreate` / `kaihenJitPublishRanges`) |
-| **Current Phase** | **Phase 0 Complete (Audit & Repo Setup) → Ready for Phase 1 (Switch 2 Toolchain, CMake & CI)** |
+| **Current Phase** | **Phase 1 In Progress (Switch 2 CMake Platform, `HostMemory`, CI Bring-Up)** |
 
 ---
 
@@ -83,9 +83,10 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 - [x] Create living tracker `docs/switch2/EDEN_NX2_PROGRESS.md`
 
 ### Phase 1 — Switch 2 Toolchain, CMake Platform Support & First CI Build (`common` + `core` + `dynarmic`)
-- [ ] Add `SWITCH2` / `__SWITCH2__` detection to CMake platform/architecture modules (`CMakeLists.txt`, `externals/cmake-modules/DetectPlatform.cmake`, `DetectArchitecture.cmake`)
-- [ ] Create `scripts/build-switch2.sh`, `tools/verify_switch2_package.py`, and `.github/workflows/build-switch2.yml` (installing CMake 3.31+, `ounce-devkit` `20261115b`, Switch portlibs, and Switch 2 SDL3)
-- [ ] Port POSIX/OS shims in `src/common/` for `libnx`/`newlib` (`host_memory.cpp`, `dynamic_library.cpp`, `thread.cpp`, `fs/path_util.cpp`, `network/`, `microprofile` / `signal` / `sys/mman.h` guards)
+- [x] Add `SWITCH2` / `__SWITCH2__` detection to CMake platform/architecture modules (`CMakeLists.txt`, `externals/cmake-modules/DetectPlatform.cmake`, `CompilerChecks.cmake`)
+- [x] Create `scripts/build-switch2.sh`, `tools/verify_switch2_package.py`, and `.github/workflows/build-switch2.yml` (CMake 3.31.6 + `ounce-devkit` `20261115b` + Switch portlibs + CPM cache)
+- [x] Port `src/common/host_memory.cpp` to Switch 2 non-fastmem `memalign` backing buffer
+- [ ] Fix remaining POSIX/OS shims in `src/common/` for `libnx`/`newlib` discovered during CI bring-up
 - [ ] Get `common` + `dynarmic` + `shader_recompiler` + `core` compiling cleanly in GitHub Actions
 
 ### Phase 2 — `kaiHEN` ARM64 JIT Backend in `Dynarmic`
@@ -115,4 +116,5 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 
 | Date | Milestone | Commit / CI | Notes |
 | :--- | :--- | :--- | :--- |
-| **2026-11-20** | **Phase 0 Complete** | `56e628ad` (baseline) | Repo cleaned (1 branch `master`, 0 tags), Switch 2 Bible copied to `docs/switch2/`, full audit of `HostMemory`, `Dynarmic/oaknut`, `Vulkan`, and `CMakeLists.txt` completed. |
+| **2026-11-20** | **Phase 0 Complete** | `6bb33b3d` | Repo cleaned (1 branch `master`, 0 tags), Switch 2 Bible copied to `docs/switch2/`, full audit of `HostMemory`, `Dynarmic/oaknut`, `Vulkan`, and `CMakeLists.txt` completed. |
+| **2026-11-20** | **Phase 1 Started (CI Bring-Up #1)** | pending push | Added `NINTENDO_SWITCH2` / `SWITCH2` CMake platform support, relaxed `CompilerChecks.cmake` for devkitA64 GCC, added `__SWITCH2__` non-fastmem path in `host_memory.cpp`, created `scripts/build-switch2.sh`, `tools/verify_switch2_package.py`, and `.github/workflows/build-switch2.yml`. |
