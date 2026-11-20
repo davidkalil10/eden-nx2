@@ -440,8 +440,13 @@ set(BUILD_TESTING OFF)
 set(ENABLE_TESTING OFF)
 
 # boost
-set(BOOST_INCLUDE_LIBRARIES algorithm icl pool container heap asio headers
-    process filesystem crc variant pfr)
+if (SWITCH2)
+    set(BOOST_INCLUDE_LIBRARIES algorithm icl pool container heap asio headers
+        filesystem crc variant pfr)
+else()
+    set(BOOST_INCLUDE_LIBRARIES algorithm icl pool container heap asio headers
+        process filesystem crc variant pfr)
+endif()
 
 AddJsonPackage(boost)
 

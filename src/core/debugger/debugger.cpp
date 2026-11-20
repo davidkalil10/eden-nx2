@@ -4,6 +4,31 @@
 // SPDX-FileCopyrightText: Copyright 2022 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#ifdef __SWITCH2__
+
+#include "core/debugger/debugger.h"
+
+namespace Core {
+
+class DebuggerImpl {};
+
+Debugger::Debugger(Core::System&, u16) {}
+Debugger::~Debugger() = default;
+
+bool Debugger::NotifyThreadStopped(Kernel::KThread*) {
+    return false;
+}
+
+bool Debugger::NotifyThreadWatchpoint(Kernel::KThread*, const Kernel::DebugWatchpoint&) {
+    return false;
+}
+
+void Debugger::NotifyShutdown() {}
+
+} // namespace Core
+
+#else // !__SWITCH2__
+
 #include <mutex>
 #include <utility>
 #include <type_traits>
@@ -400,3 +425,5 @@ void Debugger::NotifyShutdown() {
 }
 
 } // namespace Core
+
+#endif // !__SWITCH2__
