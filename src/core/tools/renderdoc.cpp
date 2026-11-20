@@ -12,7 +12,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#else
+#elif !defined(__SWITCH2__)
 #include <dlfcn.h>
 #endif
 
@@ -28,8 +28,8 @@ RenderdocAPI::RenderdocAPI() {
             ASSERT(ret == 1);
         }
     }
-#elif defined(__HAIKU__)
-    // no rtld on haiku
+#elif defined(__HAIKU__) || defined(__SWITCH2__)
+    // no rtld on haiku or Switch 2
 #else
 #ifdef __ANDROID__
     static constexpr const char RENDERDOC_LIB[] = "libVkLayer_GLES_RenderDoc.so";
