@@ -122,8 +122,6 @@ struct UserCallbacks {
     virtual void InstructionCacheOperationRaised(InstructionCacheOperation /*op*/, VAddr /*value*/) {}
     virtual void InstructionSynchronizationBarrierRaised() {}
 
-    /// Around the compile of a block the running code needs: host-only work the guest must not
-    /// see.
     virtual void CompileBegin() {}
     virtual void CompileEnd() {}
 

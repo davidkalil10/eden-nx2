@@ -358,7 +358,6 @@ HaltReason ArmDynarmic64::RunThread(Kernel::KThread* thread) {
         return TranslateHaltReason(m_jit->Run());
     }
     while (true) {
-        // No guest code while another core does host-only work.
         while (m_gate->stalls.load(std::memory_order_acquire) != 0) {
 #if defined(__x86_64__) || defined(_M_X64)
             _mm_pause();
