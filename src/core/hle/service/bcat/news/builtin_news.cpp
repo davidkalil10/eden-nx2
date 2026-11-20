@@ -290,6 +290,17 @@ static inline u64 ParseIsoTimestamp(const std::string& iso) {
 
 #ifdef _WIN32
     return static_cast<u64>(_mkgmtime(&tm));
+#elif defined(__SWITCH2__)
+    s64 y = static_cast<s64>(tm.tm_year) + 1900;
+    const unsigned m = static_cast<unsigned>(tm.tm_mon) + 1;
+    const unsigned d = static_cast<unsigned>(tm.tm_mday);
+    y -= m <= 2;
+    const s64 era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = static_cast<unsigned>(y - era * 400);
+    const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    const s64 days = era * 146097 + static_cast<s64>(doe) - 719468;
+    return static_cast<u64>(days * 86400 + tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec);
 #else
     return static_cast<u64>(timegm(&tm));
 #endif
