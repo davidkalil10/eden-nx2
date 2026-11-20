@@ -11,7 +11,7 @@ SDL_PREFIX="${DEPS_DIR}/sdl-prefix"
 DEVKITPRO="${DEVKITPRO:-/opt/devkitpro}"
 TOOLCHAIN_FILE="${DEVKITPRO}/libounce/cmake/Switch2.cmake"
 OUNCEVK_PREFIX="${DEVKITPRO}/portlibs/switch2"
-TARGET="${EDEN_SWITCH2_TARGET:-dynarmic shader_recompiler core}"
+TARGET="${EDEN_SWITCH2_TARGET:-yuzu-cmd}"
 JOBS="${JOBS:-$(nproc)}"
 
 SDL_REPOSITORY="https://github.com/devkitPro/SDL.git"
@@ -82,3 +82,20 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \
 
 cmake --build "${BUILD_DIR}" --target ${TARGET} --parallel "${JOBS}"
 echo "=== Built target(s): ${TARGET} ==="
+
+ELF_PATH=""
+if [[ -f "${BUILD_DIR}/bin/yuzu-cmd" ]]; then
+    ELF_PATH="${BUILD_DIR}/bin/yuzu-cmd"
+elif [[ -f "${BUILD_DIR}/bin/yuzu-cmd.elf" ]]; then
+    ELF_PATH="${BUILD_DIR}/bin/yuzu-cmd.elf"
+fi
+
+if [[ -n "${ELF_PATH}" ]]; then
+    echo "=== Packaging dist/eden-switch2.nro from ${ELF_PATH} ==="
+    mkdir -p "${ROOT_DIR}/dist"
+    NACP_PATH="${BUILD_DIR}/eden-switch2.nacp"
+    NRO_PATH="${ROOT_DIR}/dist/eden-switch2.nro"
+    nacptool --create "Eden-NX2" "davidkalil10 (ko-fi.com/davidkalil10)" "0.1.0" "${NACP_PATH}"
+    elf2nro "${ELF_PATH}" "${NRO_PATH}" --nacp="${NACP_PATH}"
+    python3 "${ROOT_DIR}/tools/verify_switch2_package.py" "${NRO_PATH}"
+fi

@@ -10,7 +10,7 @@ on:
       target:
         description: "CMake target(s) to build (e.g. common, dynarmic, core, yuzu-cmd)"
         required: false
-        default: "dynarmic shader_recompiler core"
+        default: "yuzu-cmd"
 
 jobs:
   build-switch2:
@@ -60,7 +60,15 @@ jobs:
           restore-keys: |
             eden-nx2-deps-v1-
 
-      - name: Configure and build Phase 1 target
+      - name: Configure, build and package Switch 2 NRO
         env:
-          EDEN_SWITCH2_TARGET: ${{ github.event.inputs.target || 'dynarmic shader_recompiler core' }}
+          EDEN_SWITCH2_TARGET: ${{ github.event.inputs.target || 'yuzu-cmd' }}
         run: bash scripts/build-switch2.sh
+
+      - name: Upload Switch 2 NRO artifact
+        if: ${{ hashFiles('dist/eden-switch2.nro') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: eden-switch2-nro
+          path: dist/eden-switch2.nro
+          if-no-files-found: error

@@ -9,6 +9,12 @@
 #include <mutex>
 #include <regex>
 #include <string>
+#ifdef __SWITCH2__
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
+#include "dynarmic/backend/arm64/switch2_code_block.h"
+#endif
 #include "common/settings_enums.h"
 #include "core/launch_params.h"
 #ifdef __EMSCRIPTEN__
@@ -197,12 +203,34 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 
     Core::ApplyLaunchParams(lp);
 
+#ifdef __SWITCH2__
+    {
+        std::error_code ec;
+        std::filesystem::create_directories("sdmc:/switch/eden-nx2/roms", ec);
+        Settings::values.renderer_backend.SetValue(Settings::RendererBackend::Vulkan);
+        lp.fullscreen = true;
+        if (lp.filepath.empty() && std::filesystem::exists("sdmc:/switch/eden-nx2/roms", ec)) {
+            for (const auto& entry : std::filesystem::directory_iterator("sdmc:/switch/eden-nx2/roms", ec)) {
+                if (!entry.is_regular_file(ec)) {
+                    continue;
+                }
+                std::string ext = entry.path().extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (ext == ".nsp" || ext == ".xci" || ext == ".nro") {
+                    lp.filepath = entry.path().string();
+                    break;
+                }
+            }
+        }
+    }
+#endif
+
     if (lp.print_help || lp.print_version) {
         return SDL_APP_SUCCESS;
     }
 
     if (lp.filepath.empty()) {
-        LOG_CRITICAL(Frontend, "Failed to load ROM: No ROM specified");
+        LOG_CRITICAL(Frontend, "Failed to load ROM: No ROM specified (place a .nsp/.xci in sdmc:/switch/eden-nx2/roms)");
         return SDL_APP_FAILURE;
     }
 
@@ -345,6 +373,9 @@ extern "C" void SDL_AppQuit(void *appstate, SDL_AppResult result) {
         state->system.ShutdownMainProcess();
     }
     delete state;
+#ifdef __SWITCH2__
+    Dynarmic::Backend::Arm64::Switch2JitPool::Shutdown();
+#endif
 }
 
 #define VMA_IMPLEMENTATION

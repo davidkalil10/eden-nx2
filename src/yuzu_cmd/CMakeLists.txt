@@ -34,9 +34,11 @@ add_executable(yuzu-cmd
     sdl_config.cpp
     sdl_config.h
     yuzu.cpp
-    yuzu.rc
     ${OPENGL_SOURCES}
 )
+if (WIN32)
+    target_sources(yuzu-cmd PRIVATE yuzu.rc)
+endif()
 
 target_link_libraries(yuzu-cmd PRIVATE common core input_common frontend_common video_core)
 if (ENABLE_OPENGL)

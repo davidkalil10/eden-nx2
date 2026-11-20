@@ -18,7 +18,7 @@
 | **Port Maintainer** | **David Kalil Braga (`@davidkalil10`)** — Ko-fi: `https://ko-fi.com/davidkalil10` |
 | **Target Platform** | Nintendo Switch 2 (`aarch64-none-elf`, `-mcpu=cortex-a78c+crypto`, `OUN0` NRO, `ounce-devkit` `20261115b`) |
 | **Graphics / JIT Stack** | **OunceVK** (static Vulkan 1.4 + `VK_NN_vi_surface`) + **kaiHEN** (`jitCreate` / `kaihenJitPublishRanges`) |
-| **Current Phase** | **Phase 1 In Progress (Switch 2 CMake Platform, `HostMemory`, CI Bring-Up)** |
+| **Current Phase** | **Phase 4 In Progress (`yuzu-cmd` + `eden-switch2.nro` Packaging & Link)** |
 
 ---
 
@@ -87,7 +87,7 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 - [x] Create `scripts/build-switch2.sh`, `tools/verify_switch2_package.py`, and `.github/workflows/build-switch2.yml` (CMake 3.31.6 + `ounce-devkit` `20261115b` + Switch portlibs + CPM cache)
 - [x] Port `src/common/host_memory.cpp` to Switch 2 non-fastmem `memalign` backing buffer
 - [x] Port POSIX/OS shims in `src/common/` for `libnx`/`newlib` (`host_memory.cpp`, `dynamic_library.cpp`, `fs/file.cpp`, `fs/path_util.cpp`, `sparse_large_vector`, `multi_level_page_table.inc`, `signal_chain` skip, `thread.cpp`, `sys/resource.h`) — **`libcommon.a` compiled 100% green!**
-- [ ] Get `dynarmic` + `shader_recompiler` + `core` compiling cleanly in GitHub Actions
+- [x] Get `dynarmic` + `shader_recompiler` + `core` compiling cleanly in GitHub Actions
 
 ### Phase 2 — `kaiHEN` ARM64 JIT Backend in `Dynarmic`
 - [x] Implement `Switch2JitPool` (`jitCreate` single shared 96 MiB pool, `Alloc`/`Free`/`Publish`/`Shutdown`) in `src/dynarmic/src/dynarmic/backend/arm64/switch2_code_block.h/.cpp`
@@ -102,9 +102,9 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 - [ ] Verify full `video_core` + `yuzu-cmd` link against `libvulkan.a` (`OunceVK`) without duplicate symbols
 
 ### Phase 4 — Minimal Switch 2 Frontend (`eden-switch2.nro`)
-- [ ] Adapt `src/yuzu_cmd/` (SDL3 window, libnx/SDL3 gamepad input, Switch 2 SD paths `sdmc:/switch/eden-nx2/`)
+- [x] Adapt `src/yuzu_cmd/` (`emu_window_sdl3_vk.cpp` `nwindowGetDefault()`, `yuzu.cpp` Vulkan + SD `roms/` scan + `Switch2JitPool::Shutdown()`, `CMakeLists.txt` `WIN32` guard on `yuzu.rc`)
 - [ ] Add minimal controller-friendly ROM picker + status/log screen (so it boots cleanly even before a game is selected)
-- [ ] Package `eden-switch2.nro` with `elf2nro` + `OUN0` verification + `kaiHEN` symbol check
+- [x] Wire `eden-switch2.nro` packaging (`nacptool` + `elf2nro` + `verify_switch2_package.py`) and CI artifact upload in `scripts/build-switch2.sh` & `.github/workflows/build-switch2.yml`
 
 ### Phase 5 — Real Switch 2 Hardware Bring-Up
 - [ ] Boot `eden-switch2.nro` on real Switch 2 (verify launcher + `OunceVK` device enumeration + clean exit to `hbmenu`)
@@ -121,4 +121,5 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 | **2026-11-20** | **Phase 1 Started (CI Bring-Up #1–#11)** | `ff64743c`..`43a2cb2c` | Full CMake configure green (`devkitPro/SDL3` + `glslang-tools`), **OpenSSL 3.6.2** (`libcrypto.a`/`libssl.a`), **Boost 1.92** (`boost_container` `HAVE_MMAP=0`, `BOOST_HAS_PTHREADS=1`, `sys/resource.h` shim for `boost_context`), `jacinth`, and `hydrocarbon` all compiled green for Switch 2. |
 | **2026-11-20** | **Phase 1 `src/common/` Complete!** | `32f6f4e4` ([Run #44736441818](https://github.com/davidkalil10/eden-nx2/actions/runs/44736441818)) | **`libcommon.a` compiled 100% green** for Switch 2 (`file.cpp` `fopen`, `signal_chain` skipped, `thread.cpp` priority/name guarded). Advancing CI target to `dynarmic shader_recompiler core`. |
 | **2026-11-20** | **Phase 2 `kaiHEN` JIT Wired in `Dynarmic`** | `f33bf253` | Disabled `boost_process` (`debugger.cpp` stubbed on `__SWITCH2__`), implemented `Switch2CodeBlock` + `Switch2JitPool` (96 MiB shared `kaiHEN` pool + `kaihenJitPublishRanges`) replacing `oaknut::CodeBlock` (`sys/mman.h`) across `AddressSpace` / `A64AddressSpace` / `A32AddressSpace` / `spin_lock_arm64.cpp`. |
-| **2026-11-20** | **`core` / `audio_core` / `hid_core` / `network` Passed! Phase 3 `OunceVK` Wired** | pending push | [Run #44753977095](https://github.com/davidkalil10/eden-nx2/actions/runs/44753977095) passed `core` and reached `video_core/renderer_vulkan` (`X11/Xlib.h`). Wired `VK_USE_PLATFORM_VI_NN`, static `&::vkGetInstanceProcAddr`, and `WindowSystemType::Switch2` (`vkCreateViSurfaceNN`). |
+| **2026-11-20** | **`core` / `audio_core` / `hid_core` / `network` Passed! Phase 3 `OunceVK` Wired** | `d4ef421a` ([Run #44759350095](https://github.com/davidkalil10/eden-nx2/actions/runs/44759350095)) | All core emulator libraries (`common`, `dynarmic`, `shader_recompiler`, `video_core`, `audio_core`, `hid_core`, `network`, `core`) compiled **100% green** in ~33m! |
+| **2026-11-20** | **Phase 4 `yuzu-cmd` & `eden-switch2.nro` Packaging Wired** | pending push | Updated `emu_window_sdl3_vk.cpp`, `yuzu.cpp`, `src/yuzu_cmd/CMakeLists.txt`, `scripts/build-switch2.sh`, and `build-switch2.yml` to build `yuzu-cmd`, package `dist/eden-switch2.nro` (`OUN0`), verify it, and upload as CI artifact. |

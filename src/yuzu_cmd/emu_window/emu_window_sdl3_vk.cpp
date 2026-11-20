@@ -19,6 +19,10 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_properties.h>
 
+#ifdef __SWITCH2__
+extern "C" void* nwindowGetDefault(void);
+#endif
+
 EmuWindow_SDL3_VK::EmuWindow_SDL3_VK(InputCommon::InputSubsystem* input_subsystem_,
                                      Core::System& system_, bool fullscreen)
     : EmuWindow_SDL3{input_subsystem_, system_} {
@@ -27,9 +31,13 @@ EmuWindow_SDL3_VK::EmuWindow_SDL3_VK(InputCommon::InputSubsystem* input_subsyste
                                                  std::string_view{Common::g_scm_branch},
                                                  std::string_view{Common::g_scm_desc});
     render_window =
+#ifdef __SWITCH2__
+        SDL_CreateWindow(window_title.c_str(), 1280, 720, SDL_WINDOW_FULLSCREEN);
+#else
         SDL_CreateWindow(window_title.c_str(), Layout::ScreenUndocked::Width,
                          Layout::ScreenUndocked::Height,
                          SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+#endif
 
     const SDL_PropertiesID window_props = SDL_GetWindowProperties(render_window);
 
@@ -40,6 +48,10 @@ EmuWindow_SDL3_VK::EmuWindow_SDL3_VK(InputCommon::InputSubsystem* input_subsyste
         ShowCursor(false);
     }
 
+#ifdef __SWITCH2__
+    window_info.type = Core::Frontend::WindowSystemType::Switch2;
+    window_info.render_surface = nwindowGetDefault();
+#else
     if (void* hwnd =
             SDL_GetPointerProperty(window_props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr)) {
         window_info.type = Core::Frontend::WindowSystemType::Windows;
@@ -84,6 +96,7 @@ EmuWindow_SDL3_VK::EmuWindow_SDL3_VK(InputCommon::InputSubsystem* input_subsyste
         LOG_CRITICAL(Frontend, "Unable to determine native window backend from SDL properties");
         std::exit(EXIT_FAILURE);
     }
+#endif
 
     OnResize();
     OnMinimalClientAreaChangeRequest(GetActiveConfig().min_client_area_size);
