@@ -38,10 +38,12 @@ AddressSpace::AddressSpace(std::size_t code_cache_size)
 {
     ASSERT(code_cache_size <= 128 * 1024 * 1024 && "code_cache_size > 128 MiB not currently supported");
 
+#ifndef __SWITCH2__
     exception_handler.Register(mem, code_cache_size);
     exception_handler.SetFastmemCallback([this](u64 host_pc) {
         return FastmemCallback(host_pc);
     });
+#endif
 }
 
 AddressSpace::~AddressSpace() = default;
