@@ -16,7 +16,7 @@ JOBS="${JOBS:-$(nproc)}"
 
 SDL_REPOSITORY="https://github.com/devkitPro/SDL.git"
 SDL_REVISION="c329016c0e338ab4397ad930f83330c9fe058348"
-SDL_STAMP="eden-switch2-sdl3-v1 ${SDL_REVISION}"
+SDL_STAMP="eden-switch2-sdl3-v2 ${SDL_REVISION}"
 
 if [[ ! -f "${TOOLCHAIN_FILE}" ]]; then
     echo "ERROR: Switch2.cmake not found at ${TOOLCHAIN_FILE}" >&2
@@ -52,6 +52,11 @@ if [[ ! -f "${SDL_PREFIX}/.eden-switch2-sdl3" ]] || [[ "$(<"${SDL_PREFIX}/.eden-
     rm -rf "${SDL_SOURCE_DIR}" "${SDL_BUILD_DIR}"
 fi
 
+echo "=== SDL3 diagnostics ==="
+aarch64-none-elf-nm -A "${SDL_PREFIX}/lib/libSDL3.a" 2>/dev/null | grep -i "SWITCH_bootstrap" || echo "SDL3: SWITCH_bootstrap NOT defined in libSDL3.a"
+grep -rn "SDL_VIDEO_DRIVER_\(SWITCH\|DUMMY\|OFFSCREEN\)" "${SDL_PREFIX}/include/SDL3/SDL_build_config.h" 2>/dev/null || true
+ls "${DEVKITPRO}/portlibs/switch/lib" | grep -i -E "dav1d|libz\.a" || echo "WARN: dav1d/libz not in portlibs/switch/lib"
+
 echo "=== Eden-NX2 Switch 2 Build ==="
 echo "CMake: $(cmake --version | head -n1)"
 echo "Compiler: $(aarch64-none-elf-g++ --version | head -n1)"
@@ -69,6 +74,8 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \
     -DCMAKE_PREFIX_PATH="${SDL_PREFIX};${OUNCEVK_PREFIX};${DEVKITPRO}/portlibs/switch" \
     -DSDL3_DIR="${SDL_PREFIX}/lib/cmake/SDL3" \
     -DNINTENDO_SWITCH2=ON \
+    -DCMAKE_CXX_STANDARD_LIBRARIES="-ldav1d -lz" \
+    -DCMAKE_EXE_LINKER_FLAGS_INIT="-Wl,--allow-multiple-definition" \
     -DCMAKE_C_FLAGS_INIT="-mcpu=cortex-a78c+crypto -O2 -D__SWITCH2__=1 -D__SWITCH__=1" \
     -DCMAKE_CXX_FLAGS_INIT="-mcpu=cortex-a78c+crypto -O2 -D__SWITCH2__=1 -D__SWITCH__=1" \
     -DENABLE_QT=OFF \
@@ -90,11 +97,12 @@ cmake --build "${BUILD_DIR}" --target ${TARGET} --parallel "${JOBS}"
 echo "=== Built target(s): ${TARGET} ==="
 
 ELF_PATH=""
-if [[ -f "${BUILD_DIR}/bin/yuzu-cmd" ]]; then
-    ELF_PATH="${BUILD_DIR}/bin/yuzu-cmd"
-elif [[ -f "${BUILD_DIR}/bin/yuzu-cmd.elf" ]]; then
-    ELF_PATH="${BUILD_DIR}/bin/yuzu-cmd.elf"
-fi
+for candidate in "${BUILD_DIR}/bin/eden-cli.elf" "${BUILD_DIR}/bin/eden-cli" "${BUILD_DIR}/bin/yuzu-cmd" "${BUILD_DIR}/bin/yuzu-cmd.elf"; do
+    if [[ -f "${candidate}" ]]; then
+        ELF_PATH="${candidate}"
+        break
+    fi
+done
 
 if [[ -n "${ELF_PATH}" ]]; then
     echo "=== Packaging dist/eden-switch2.nro from ${ELF_PATH} ==="

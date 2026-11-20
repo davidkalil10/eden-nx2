@@ -179,12 +179,17 @@ constexpr int SD_BOTH = SHUT_RDWR;
 int interrupt_pipe_fd[2] = {-1, -1};
 
 void Initialize() {
+#ifdef __SWITCH2__
+    // newlib on Switch 2 has no pipe(); socket interrupts are disabled (fd stays -1).
+    return;
+#else
     if (pipe(interrupt_pipe_fd) != 0) {
         LOG_ERROR(Network, "Failed to create interrupt pipe!");
     }
     int flags = fcntl(interrupt_pipe_fd[0], F_GETFL);
     ASSERT_MSG(fcntl(interrupt_pipe_fd[0], F_SETFL, flags | O_NONBLOCK) == 0,
                "Failed to set nonblocking state for interrupt pipe");
+#endif
 }
 
 void Finalize() {
@@ -197,11 +202,17 @@ void Finalize() {
 }
 
 void InterruptSocketOperations() {
+    if (interrupt_pipe_fd[1] < 0) {
+        return;
+    }
     u8 value = 0;
     ASSERT(write(interrupt_pipe_fd[1], &value, sizeof(value)) == 1);
 }
 
 void AcknowledgeInterrupt() {
+    if (interrupt_pipe_fd[0] < 0) {
+        return;
+    }
     u8 value = 0;
     ssize_t ret = read(interrupt_pipe_fd[0], &value, sizeof(value));
     if (ret != 1 && errno != EAGAIN && errno != EWOULDBLOCK) {
