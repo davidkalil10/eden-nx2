@@ -24,7 +24,7 @@ index 3012e05..2ae23ff 100644
 +    elseif (NINTENDO_SWITCH2)
 +        set(EMSCRIPTEN_CMAKE_WRAPPER "")
 +        set(EMSCRIPTEN_LINKER ${CMAKE_LINKER})
-+        list(APPEND CONFIGURE_COMMAND linux-aarch64 no-asm no-shared no-dso no-tests no-apps no-async no-ui-console no-afalgeng no-quic -DOPENSSL_NO_SECURE_MEMORY -I$ENV{DEVKITPRO}/libounce/include -I$ENV{DEVKITPRO}/portlibs/switch2/include -I$ENV{DEVKITPRO}/portlibs/switch/include)
++        list(APPEND CONFIGURE_COMMAND linux-aarch64 no-asm no-shared no-dso no-tests no-apps no-async no-ui-console no-afalgeng no-quic -DOPENSSL_NO_SECURE_MEMORY -DOPENSSL_NO_UNIX_SOCK -I$ENV{DEVKITPRO}/libounce/include -I$ENV{DEVKITPRO}/portlibs/switch2/include -I$ENV{DEVKITPRO}/portlibs/switch/include)
 +    else()
 +        set(EMSCRIPTEN_CMAKE_WRAPPER "")
 +        set(EMSCRIPTEN_LINKER ${CMAKE_LINKER})

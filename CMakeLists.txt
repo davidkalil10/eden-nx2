@@ -450,6 +450,9 @@ set(BOOST_NO_HEADERS ${Boost_ADDED})
 
 if (Boost_ADDED)
     add_compile_definitions(YUZU_BOOST_v1)
+    if (SWITCH2 AND TARGET boost_container)
+        target_compile_definitions(boost_container PRIVATE HAVE_MMAP=0 HAVE_MREMAP=0)
+    endif()
     if (NOT MSVC OR CXX_CLANG)
         # solaris sucks
         if (SOLARIS)
