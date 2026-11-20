@@ -86,8 +86,8 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 - [x] Add `SWITCH2` / `__SWITCH2__` detection to CMake platform/architecture modules (`CMakeLists.txt`, `externals/cmake-modules/DetectPlatform.cmake`, `CompilerChecks.cmake`)
 - [x] Create `scripts/build-switch2.sh`, `tools/verify_switch2_package.py`, and `.github/workflows/build-switch2.yml` (CMake 3.31.6 + `ounce-devkit` `20261115b` + Switch portlibs + CPM cache)
 - [x] Port `src/common/host_memory.cpp` to Switch 2 non-fastmem `memalign` backing buffer
-- [ ] Fix remaining POSIX/OS shims in `src/common/` for `libnx`/`newlib` discovered during CI bring-up
-- [ ] Get `common` + `dynarmic` + `shader_recompiler` + `core` compiling cleanly in GitHub Actions
+- [x] Port POSIX/OS shims in `src/common/` for `libnx`/`newlib` (`host_memory.cpp`, `dynamic_library.cpp`, `fs/file.cpp`, `fs/path_util.cpp`, `sparse_large_vector`, `multi_level_page_table.inc`, `signal_chain` skip, `thread.cpp`, `sys/resource.h`) — **`libcommon.a` compiled 100% green!**
+- [ ] Get `dynarmic` + `shader_recompiler` + `core` compiling cleanly in GitHub Actions
 
 ### Phase 2 — `kaiHEN` ARM64 JIT Backend in `Dynarmic`
 - [ ] Implement `Switch2JitPool` (`jitCreate` single shared pool, e.g. 64–128 MiB, `Alloc`/`Free`/`Publish`/`Shutdown`)
@@ -118,4 +118,4 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 | :--- | :--- | :--- | :--- |
 | **2026-11-20** | **Phase 0 Complete** | `6bb33b3d` | Repo cleaned (1 branch `master`, 0 tags), Switch 2 Bible copied to `docs/switch2/`, full audit of `HostMemory`, `Dynarmic/oaknut`, `Vulkan`, and `CMakeLists.txt` completed. |
 | **2026-11-20** | **Phase 1 Started (CI Bring-Up #1–#11)** | `ff64743c`..`43a2cb2c` | Full CMake configure green (`devkitPro/SDL3` + `glslang-tools`), **OpenSSL 3.6.2** (`libcrypto.a`/`libssl.a`), **Boost 1.92** (`boost_container` `HAVE_MMAP=0`, `BOOST_HAS_PTHREADS=1`, `sys/resource.h` shim for `boost_context`), `jacinth`, and `hydrocarbon` all compiled green for Switch 2. |
-| **2026-11-20** | **Phase 1 `src/common/` Porting** | pending push | Ported `dynamic_library.cpp`, `fs/file.cpp`, `fs/path_util.cpp` (`sdmc:/switch/eden-nx2`), `sparse_large_vector.h/.cpp` (`memalign`/no-`mprotect`) for `__SWITCH2__`. |
+| **2026-11-20** | **Phase 1 `src/common/` Complete!** | `32f6f4e4` ([Run #44736441818](https://github.com/davidkalil10/eden-nx2/actions/runs/44736441818)) | **`libcommon.a` compiled 100% green** for Switch 2 (`file.cpp` `fopen`, `signal_chain` skipped, `thread.cpp` priority/name guarded). Advancing CI target to `dynarmic shader_recompiler core`. |

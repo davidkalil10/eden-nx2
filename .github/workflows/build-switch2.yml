@@ -10,7 +10,7 @@ on:
       target:
         description: "CMake target(s) to build (e.g. common, dynarmic, core, yuzu-cmd)"
         required: false
-        default: "common"
+        default: "dynarmic shader_recompiler core"
 
 jobs:
   build-switch2:
@@ -62,5 +62,5 @@ jobs:
 
       - name: Configure and build Phase 1 target
         env:
-          EDEN_SWITCH2_TARGET: ${{ github.event.inputs.target || 'common' }}
+          EDEN_SWITCH2_TARGET: ${{ github.event.inputs.target || 'dynarmic shader_recompiler core' }}
         run: bash scripts/build-switch2.sh

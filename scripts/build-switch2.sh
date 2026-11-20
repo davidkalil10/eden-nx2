@@ -11,7 +11,7 @@ SDL_PREFIX="${DEPS_DIR}/sdl-prefix"
 DEVKITPRO="${DEVKITPRO:-/opt/devkitpro}"
 TOOLCHAIN_FILE="${DEVKITPRO}/libounce/cmake/Switch2.cmake"
 OUNCEVK_PREFIX="${DEVKITPRO}/portlibs/switch2"
-TARGET="${EDEN_SWITCH2_TARGET:-common}"
+TARGET="${EDEN_SWITCH2_TARGET:-dynarmic shader_recompiler core}"
 JOBS="${JOBS:-$(nproc)}"
 
 SDL_REPOSITORY="https://github.com/devkitPro/SDL.git"
