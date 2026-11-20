@@ -50,13 +50,15 @@ jobs:
           bash "$sdk/install.sh" "20261115b"
           rm -rf "$sdk"
 
-      - name: Cache CPM packages
+      - name: Cache CPM packages and Switch 2 SDL3
         uses: actions/cache@v4
         with:
-          path: .cache/cpm
-          key: eden-nx2-cpm-v1-${{ hashFiles('cpmfile.json') }}
+          path: |
+            .cache/cpm
+            build-switch2-deps/sdl-prefix
+          key: eden-nx2-deps-v1-${{ hashFiles('cpmfile.json', 'scripts/build-switch2.sh') }}
           restore-keys: |
-            eden-nx2-cpm-v1-
+            eden-nx2-deps-v1-
 
       - name: Configure and build Phase 1 target
         env:

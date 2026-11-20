@@ -2,11 +2,21 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DEPS_DIR="${ROOT_DIR}/build-switch2-deps"
 BUILD_DIR="${ROOT_DIR}/build-switch2"
+SDL_SOURCE_DIR="${DEPS_DIR}/sdl-src"
+SDL_BUILD_DIR="${DEPS_DIR}/sdl-build"
+SDL_PREFIX="${DEPS_DIR}/sdl-prefix"
+
 DEVKITPRO="${DEVKITPRO:-/opt/devkitpro}"
 TOOLCHAIN_FILE="${DEVKITPRO}/libounce/cmake/Switch2.cmake"
 OUNCEVK_PREFIX="${DEVKITPRO}/portlibs/switch2"
 TARGET="${EDEN_SWITCH2_TARGET:-common}"
+JOBS="${JOBS:-$(nproc)}"
+
+SDL_REPOSITORY="https://github.com/devkitPro/SDL.git"
+SDL_REVISION="c329016c0e338ab4397ad930f83330c9fe058348"
+SDL_STAMP="eden-switch2-sdl3-v1 ${SDL_REVISION}"
 
 if [[ ! -f "${TOOLCHAIN_FILE}" ]]; then
     echo "ERROR: Switch2.cmake not found at ${TOOLCHAIN_FILE}" >&2
@@ -14,7 +24,33 @@ if [[ ! -f "${TOOLCHAIN_FILE}" ]]; then
 fi
 
 export PATH="${DEVKITPRO}/tools/bin:${DEVKITPRO}/devkitA64/bin:${OUNCEVK_PREFIX}/bin:${DEVKITPRO}/portlibs/switch/bin:${PATH}"
-export PKG_CONFIG_PATH="${OUNCEVK_PREFIX}/lib/pkgconfig:${DEVKITPRO}/portlibs/switch/lib/pkgconfig:${DEVKITPRO}/libounce/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+export PKG_CONFIG_PATH="${SDL_PREFIX}/lib/pkgconfig:${OUNCEVK_PREFIX}/lib/pkgconfig:${DEVKITPRO}/portlibs/switch/lib/pkgconfig:${DEVKITPRO}/libounce/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+
+mkdir -p "${DEPS_DIR}" "${BUILD_DIR}"
+
+if [[ ! -f "${SDL_PREFIX}/.eden-switch2-sdl3" ]] || [[ "$(<"${SDL_PREFIX}/.eden-switch2-sdl3")" != "${SDL_STAMP}" ]]; then
+    echo "=== Building Switch 2 SDL3 (devkitPro/SDL @ ${SDL_REVISION:0:10}) ==="
+    rm -rf "${SDL_SOURCE_DIR}" "${SDL_BUILD_DIR}" "${SDL_PREFIX}"
+    git clone --no-checkout "${SDL_REPOSITORY}" "${SDL_SOURCE_DIR}"
+    git -C "${SDL_SOURCE_DIR}" checkout --detach "${SDL_REVISION}"
+    cmake -S "${SDL_SOURCE_DIR}" -B "${SDL_BUILD_DIR}" -G Ninja \
+        -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="${SDL_PREFIX}" \
+        -DCMAKE_PREFIX_PATH="${OUNCEVK_PREFIX}" \
+        -DOpenGL_DIR="${OUNCEVK_PREFIX}/lib/cmake/OpenGL" \
+        -DSDL_SHARED=OFF \
+        -DSDL_STATIC=ON \
+        -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON \
+        -DSDL_TESTS=OFF \
+        -DSDL_EXAMPLES=OFF \
+        -DSDL_INSTALL=ON \
+        -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF
+    cmake --build "${SDL_BUILD_DIR}" --parallel "${JOBS}"
+    cmake --install "${SDL_BUILD_DIR}"
+    printf '%s' "${SDL_STAMP}" > "${SDL_PREFIX}/.eden-switch2-sdl3"
+    rm -rf "${SDL_SOURCE_DIR}" "${SDL_BUILD_DIR}"
+fi
 
 echo "=== Eden-NX2 Switch 2 Build ==="
 echo "CMake: $(cmake --version | head -n1)"
@@ -24,6 +60,8 @@ echo "Target: ${TARGET}"
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \
     -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_PREFIX_PATH="${SDL_PREFIX};${OUNCEVK_PREFIX};${DEVKITPRO}/portlibs/switch" \
+    -DSDL3_DIR="${SDL_PREFIX}/lib/cmake/SDL3" \
     -DNINTENDO_SWITCH2=ON \
     -DCMAKE_C_FLAGS_INIT="-mcpu=cortex-a78c+crypto -O2 -D__SWITCH2__=1 -D__SWITCH__=1" \
     -DCMAKE_CXX_FLAGS_INIT="-mcpu=cortex-a78c+crypto -O2 -D__SWITCH2__=1 -D__SWITCH__=1" \
@@ -42,5 +80,5 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \
     -DYUZU_DISABLE_LLVM=ON \
     -DYUZU_STATIC_BUILD=ON
 
-cmake --build "${BUILD_DIR}" --target ${TARGET} --parallel "$(nproc)"
+cmake --build "${BUILD_DIR}" --target ${TARGET} --parallel "${JOBS}"
 echo "=== Built target(s): ${TARGET} ==="
