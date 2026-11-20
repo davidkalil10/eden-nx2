@@ -96,9 +96,10 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 - [ ] Verify `RelinkForDescriptor` behavior under `kaiHEN` on real Switch 2 hardware
 
 ### Phase 3 — `OunceVK` Static Vulkan 1.4 & `VK_NN_vi_surface`
-- [ ] Wire `vulkan_instance.cpp` to static `&::vkGetInstanceProcAddr` on `__SWITCH2__`
-- [ ] Add `WindowSystemType::Switch2` (`VK_NN_vi_surface` / `vkCreateViSurfaceNN(nwindowGetDefault())`) in `vulkan_surface.cpp` and `emu_window.h`
-- [ ] Link `libouncevk.a` (`OunceVK`) cleanly without duplicate Vulkan symbols
+- [x] Define `VK_USE_PLATFORM_VI_NN` instead of X11/Wayland in `src/video_core/vulkan_common/vulkan.h`
+- [x] Wire `vulkan_instance.cpp` to static `&::vkGetInstanceProcAddr` on `__SWITCH2__`
+- [x] Add `WindowSystemType::Switch2` (`VK_NN_vi_surface` / `vkCreateViSurfaceNN`) in `emu_window.h`, `vulkan_instance.cpp`, and `vulkan_surface.cpp`
+- [ ] Verify full `video_core` + `yuzu-cmd` link against `libvulkan.a` (`OunceVK`) without duplicate symbols
 
 ### Phase 4 — Minimal Switch 2 Frontend (`eden-switch2.nro`)
 - [ ] Adapt `src/yuzu_cmd/` (SDL3 window, libnx/SDL3 gamepad input, Switch 2 SD paths `sdmc:/switch/eden-nx2/`)
@@ -120,4 +121,4 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 | **2026-11-20** | **Phase 1 Started (CI Bring-Up #1–#11)** | `ff64743c`..`43a2cb2c` | Full CMake configure green (`devkitPro/SDL3` + `glslang-tools`), **OpenSSL 3.6.2** (`libcrypto.a`/`libssl.a`), **Boost 1.92** (`boost_container` `HAVE_MMAP=0`, `BOOST_HAS_PTHREADS=1`, `sys/resource.h` shim for `boost_context`), `jacinth`, and `hydrocarbon` all compiled green for Switch 2. |
 | **2026-11-20** | **Phase 1 `src/common/` Complete!** | `32f6f4e4` ([Run #44736441818](https://github.com/davidkalil10/eden-nx2/actions/runs/44736441818)) | **`libcommon.a` compiled 100% green** for Switch 2 (`file.cpp` `fopen`, `signal_chain` skipped, `thread.cpp` priority/name guarded). Advancing CI target to `dynarmic shader_recompiler core`. |
 | **2026-11-20** | **Phase 2 `kaiHEN` JIT Wired in `Dynarmic`** | `f33bf253` | Disabled `boost_process` (`debugger.cpp` stubbed on `__SWITCH2__`), implemented `Switch2CodeBlock` + `Switch2JitPool` (96 MiB shared `kaiHEN` pool + `kaihenJitPublishRanges`) replacing `oaknut::CodeBlock` (`sys/mman.h`) across `AddressSpace` / `A64AddressSpace` / `A32AddressSpace` / `spin_lock_arm64.cpp`. |
-| **2026-11-20** | **`dynarmic` & `shader_recompiler` Compiled Green!** | `f33bf253` ([Run #44744188663](https://github.com/davidkalil10/eden-nx2/actions/runs/44744188663)) | Both **`dynarmic`** (with `kaiHEN` `Switch2CodeBlock`) and **`shader_recompiler`** compiled cleanly for Switch 2! Now finishing `src/core/` (`renderdoc.cpp` guarded for `__SWITCH2__`). |
+| **2026-11-20** | **`core` / `audio_core` / `hid_core` / `network` Passed! Phase 3 `OunceVK` Wired** | pending push | [Run #44753977095](https://github.com/davidkalil10/eden-nx2/actions/runs/44753977095) passed `core` and reached `video_core/renderer_vulkan` (`X11/Xlib.h`). Wired `VK_USE_PLATFORM_VI_NN`, static `&::vkGetInstanceProcAddr`, and `WindowSystemType::Switch2` (`vkCreateViSurfaceNN`). |

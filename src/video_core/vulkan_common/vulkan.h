@@ -15,6 +15,8 @@
 #define VK_USE_PLATFORM_ANDROID_KHR
 #elif defined(__HAIKU__)
 #define VK_USE_PLATFORM_XCB_KHR
+#elif defined(__SWITCH2__)
+#define VK_USE_PLATFORM_VI_NN
 #else
 #define VK_USE_PLATFORM_XLIB_KHR
 #define VK_USE_PLATFORM_WAYLAND_KHR

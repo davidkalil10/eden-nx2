@@ -26,6 +26,7 @@ enum class WindowSystemType {
     Cocoa,
     Android,
     Xcb,
+    Switch2,
 };
 
 /**

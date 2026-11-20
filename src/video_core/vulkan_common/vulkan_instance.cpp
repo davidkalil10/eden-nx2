@@ -59,6 +59,10 @@ namespace {
     case Core::Frontend::WindowSystemType::Xcb:
         extensions.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
         break;
+#elif defined(__SWITCH2__)
+    case Core::Frontend::WindowSystemType::Switch2:
+        extensions.push_back(VK_NN_VI_SURFACE_EXTENSION_NAME);
+        break;
 #else
     case Core::Frontend::WindowSystemType::X11:
         extensions.push_back(VK_KHR_XLIB_SURFACE_EXTENSION_NAME);
@@ -113,9 +117,18 @@ void RemoveUnavailableLayers(const vk::InstanceDispatch& dld, std::vector<const 
 }
 } // Anonymous namespace
 
+#ifdef __SWITCH2__
+extern "C" VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance instance,
+                                                                          const char* pName);
+#endif
+
 vk::Instance CreateInstance(const Common::DynamicLibrary& library, vk::InstanceDispatch& dld,
                             u32 required_version, Core::Frontend::WindowSystemType window_type,
                             bool enable_validation) {
+#ifdef __SWITCH2__
+    (void)library;
+    dld.vkGetInstanceProcAddr = &::vkGetInstanceProcAddr;
+#else
     if (!library.IsOpen()) {
         LOG_ERROR(Render_Vulkan, "Vulkan library not available");
         throw vk::Exception(VK_ERROR_INITIALIZATION_FAILED);
@@ -124,6 +137,7 @@ vk::Instance CreateInstance(const Common::DynamicLibrary& library, vk::InstanceD
         LOG_ERROR(Render_Vulkan, "vkGetInstanceProcAddr not present in Vulkan");
         throw vk::Exception(VK_ERROR_INITIALIZATION_FAILED);
     }
+#endif
     if (!vk::Load(dld)) {
         LOG_ERROR(Render_Vulkan, "Failed to load Vulkan function pointers");
         throw vk::Exception(VK_ERROR_INITIALIZATION_FAILED);
