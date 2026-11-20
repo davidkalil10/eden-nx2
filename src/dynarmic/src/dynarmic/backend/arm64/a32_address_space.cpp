@@ -387,7 +387,11 @@ void A32AddressSpace::EmitPrelude() {
 
     prelude_info.end_of_prelude = code.offset();
 
+#ifdef __SWITCH2__
+    mem.invalidate(mem.ptr(), prelude_info.end_of_prelude);
+#else
     mem.invalidate_all();
+#endif
     ProtectCodeMemory();
 }
 

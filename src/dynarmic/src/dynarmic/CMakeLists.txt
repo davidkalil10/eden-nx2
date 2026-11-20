@@ -236,6 +236,8 @@ if (ARCHITECTURE_arm64)
         backend/arm64/reg_alloc.cpp
         backend/arm64/reg_alloc.h
         backend/arm64/stack_layout.h
+        backend/arm64/switch2_code_block.cpp
+        backend/arm64/switch2_code_block.h
         backend/arm64/verbose_debugging_output.cpp
         backend/arm64/verbose_debugging_output.h
         common/spin_lock_arm64.cpp
@@ -361,7 +363,7 @@ elseif (APPLE)
             backend/exception_handler_macos_mig.c
         )
     endif()
-elseif (UNIX AND NOT HAIKUOS)
+elseif (UNIX AND NOT HAIKUOS AND NOT SWITCH2)
     # Haiku lacks <ucontext.h>
     if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         target_link_libraries(dynarmic PRIVATE rt)

@@ -29,7 +29,11 @@ AddressSpace::AddressSpace(std::size_t code_cache_size)
     : ir_block{IR::LocationDescriptor{0}}
     , code_cache_size(code_cache_size)
     , mem(code_cache_size)
+#ifdef __SWITCH2__
+    , code(mem.rw_ptr(), mem.ptr())
+#else
     , code(mem.ptr(), mem.ptr())
+#endif
     , fastmem_manager(exception_handler)
 {
     ASSERT(code_cache_size <= 128 * 1024 * 1024 && "code_cache_size > 128 MiB not currently supported");
@@ -144,7 +148,11 @@ void AddressSpace::Link(EmittedBlockInfo& block_info) {
     using namespace oaknut::util;
 
     for (auto [ptr_offset, target] : block_info.relocations) {
+#ifdef __SWITCH2__
+        CodeGenerator c{mem.rw_ptr(), mem.ptr()};
+#else
         CodeGenerator c{mem.ptr(), mem.ptr()};
+#endif
         c.set_xptr(reinterpret_cast<u32*>(block_info.entry_point + ptr_offset));
 
         switch (target) {
@@ -290,7 +298,11 @@ void AddressSpace::LinkBlockLinks(const CodePtr entry_point, const CodePtr targe
     using namespace oaknut::util;
 
     for (auto [ptr_offset, type] : block_relocations_list) {
+#ifdef __SWITCH2__
+        CodeGenerator c{mem.rw_ptr(), mem.ptr()};
+#else
         CodeGenerator c{mem.ptr(), mem.ptr()};
+#endif
         c.set_xptr(reinterpret_cast<u32*>(entry_point + ptr_offset));
 
         switch (type) {

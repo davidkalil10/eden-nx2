@@ -90,10 +90,10 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 - [ ] Get `dynarmic` + `shader_recompiler` + `core` compiling cleanly in GitHub Actions
 
 ### Phase 2 — `kaiHEN` ARM64 JIT Backend in `Dynarmic`
-- [ ] Implement `Switch2JitPool` (`jitCreate` single shared pool, e.g. 64–128 MiB, `Alloc`/`Free`/`Publish`/`Shutdown`)
-- [ ] Wire `oaknut::CodeBlock` + `Dynarmic::Backend::Arm64::AddressSpace` to separate `(rw_ptr, rx_ptr)` and `kaihenJitPublishRanges` in `mem.invalidate(...)`
-- [ ] Guard `exception_handler` / `fastmem_manager` as no-ops on `__SWITCH2__`
-- [ ] Handle or disable dynamic block relinking (`RelinkForDescriptor`) safely under `kaiHEN`
+- [x] Implement `Switch2JitPool` (`jitCreate` single shared 96 MiB pool, `Alloc`/`Free`/`Publish`/`Shutdown`) in `src/dynarmic/src/dynarmic/backend/arm64/switch2_code_block.h/.cpp`
+- [x] Wire `Switch2CodeBlock` + `Dynarmic::Backend::Arm64::AddressSpace` to separate `(rw_ptr, rx_ptr)` and `kaihenJitPublishRanges` in `mem.invalidate(...)` (plus prelude-only invalidation in `a64_address_space.cpp` and `a32_address_space.cpp`)
+- [x] Guard `exception_handler` to `backend/exception_handler_generic.cpp` on `SWITCH2`
+- [ ] Verify `RelinkForDescriptor` behavior under `kaiHEN` on real Switch 2 hardware
 
 ### Phase 3 — `OunceVK` Static Vulkan 1.4 & `VK_NN_vi_surface`
 - [ ] Wire `vulkan_instance.cpp` to static `&::vkGetInstanceProcAddr` on `__SWITCH2__`
@@ -119,3 +119,4 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 | **2026-11-20** | **Phase 0 Complete** | `6bb33b3d` | Repo cleaned (1 branch `master`, 0 tags), Switch 2 Bible copied to `docs/switch2/`, full audit of `HostMemory`, `Dynarmic/oaknut`, `Vulkan`, and `CMakeLists.txt` completed. |
 | **2026-11-20** | **Phase 1 Started (CI Bring-Up #1–#11)** | `ff64743c`..`43a2cb2c` | Full CMake configure green (`devkitPro/SDL3` + `glslang-tools`), **OpenSSL 3.6.2** (`libcrypto.a`/`libssl.a`), **Boost 1.92** (`boost_container` `HAVE_MMAP=0`, `BOOST_HAS_PTHREADS=1`, `sys/resource.h` shim for `boost_context`), `jacinth`, and `hydrocarbon` all compiled green for Switch 2. |
 | **2026-11-20** | **Phase 1 `src/common/` Complete!** | `32f6f4e4` ([Run #44736441818](https://github.com/davidkalil10/eden-nx2/actions/runs/44736441818)) | **`libcommon.a` compiled 100% green** for Switch 2 (`file.cpp` `fopen`, `signal_chain` skipped, `thread.cpp` priority/name guarded). Advancing CI target to `dynarmic shader_recompiler core`. |
+| **2026-11-20** | **Phase 2 `kaiHEN` JIT Wired in `Dynarmic`** | pending push | Disabled `boost_process` (`debugger.cpp` stubbed on `__SWITCH2__`), implemented `Switch2CodeBlock` + `Switch2JitPool` (96 MiB shared `kaiHEN` pool + `kaihenJitPublishRanges`) replacing `oaknut::CodeBlock` (`sys/mman.h`) across `AddressSpace` / `A64AddressSpace` / `A32AddressSpace`. |

@@ -12,7 +12,11 @@
 #include <optional>
 
 #include "common/common_types.h"
+#ifdef __SWITCH2__
+#include "dynarmic/backend/arm64/switch2_code_block.h"
+#else
 #include <oaknut/code_block.hpp>
+#endif
 #include <oaknut/oaknut.hpp>
 #include "common/container/unordered_map.h"
 #include "common/container/unordered_set.h"
@@ -71,7 +75,11 @@ protected:
 
     IR::Block ir_block;
     const std::size_t code_cache_size;
+#ifdef __SWITCH2__
+    Switch2CodeBlock mem;
+#else
     oaknut::CodeBlock mem;
+#endif
     oaknut::CodeGenerator code;
 
     // A IR::LocationDescriptor will have one current CodePtr.
