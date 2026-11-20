@@ -159,7 +159,7 @@ if(WIN32)
     target_link_libraries(common PRIVATE ntdll)
 endif()
 
-if(NOT WIN32)
+if(NOT WIN32 AND NOT SWITCH2)
     target_sources(common PRIVATE signal_chain.cpp signal_chain.h)
 endif()
 
