@@ -3,6 +3,10 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(__SWITCH2__)
+#include <cstdlib>
+#include <cstring>
+#include <malloc.h>
 #else
 #include <sys/mman.h>
 #endif
@@ -28,6 +32,11 @@ MultiLevelPageTable<BaseAddr>::MultiLevelPageTable(std::size_t address_space_bit
     first_level_map.resize(first_level_size, nullptr);
 #ifdef _WIN32
     void* base{VirtualAlloc(nullptr, alloc_size, MEM_RESERVE, PAGE_READWRITE)};
+#elif defined(__SWITCH2__)
+    void* base{memalign(0x1000, alloc_size)};
+    if (base) {
+        std::memset(base, 0, alloc_size);
+    }
 #else
     void* base{mmap(nullptr, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)};
     if (base == MAP_FAILED)
@@ -44,6 +53,8 @@ MultiLevelPageTable<BaseAddr>::~MultiLevelPageTable() noexcept {
     }
 #ifdef _WIN32
     ASSERT(VirtualFree(base_ptr, 0, MEM_RELEASE));
+#elif defined(__SWITCH2__)
+    free(base_ptr);
 #else
     ASSERT(munmap(base_ptr, alloc_size) == 0);
 #endif
