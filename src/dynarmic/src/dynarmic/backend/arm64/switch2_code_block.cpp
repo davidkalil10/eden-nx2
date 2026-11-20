@@ -7,8 +7,12 @@
 #include <mutex>
 #include <vector>
 
+#define u128 libnx_u128
+#define s128 libnx_s128
 #include <kaihen.h>
 #include <switch.h>
+#undef u128
+#undef s128
 
 #include "common/assert.h"
 #include "common/logging.h"
