@@ -490,6 +490,8 @@ void SetCurrentThreadPriority(ThreadPriority new_priority) {
         LOG_DEBUG(Common, "Could not set thread nice value to {}: {}", nice_value,
                   GetLastErrorMsg());
     }
+#elif defined(__SWITCH2__)
+    (void)new_priority;
 #else
     const s32 max_prio = sched_get_priority_max(SCHED_OTHER);
     const s32 min_prio = sched_get_priority_min(SCHED_OTHER);
@@ -529,8 +531,8 @@ void SetCurrentThreadName(const char* name) {
         buf[len] = '\0';
         pthread_setname_np(pthread_self(), buf);
     }
-#elif defined(_WIN32)
-    // MinGW with the POSIX threading model does not support pthread_setname_np
+#elif defined(_WIN32) || defined(__SWITCH2__)
+    // MinGW with the POSIX threading model and libounce do not support pthread_setname_np
     // See for reference
     // https://gitlab.freedesktop.org/mesa/mesa/-/blame/main/src/util/u_thread.c?ref_type=heads#L75
     (void)name;
