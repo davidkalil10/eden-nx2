@@ -23,7 +23,9 @@
 #include <shlobj.h> // Used in GetExeDirectory()
 #else
 #include <cstdlib>     // Used in Get(Home/Data)Directory()
+#ifndef __SWITCH2__
 #include <pwd.h>       // Used in GetHomeDirectory()
+#endif
 #include <sys/types.h> // Used in GetHomeDirectory()
 #include <unistd.h>    // Used in GetDataDirectory()
 #endif
@@ -349,6 +351,9 @@ fs::path GetAppDataRoamingDirectory() {
 #else
 
 fs::path GetHomeDirectory() {
+#ifdef __SWITCH2__
+    return fs::path{"sdmc:/switch/eden-nx2"};
+#else
     const char* home_env_var = getenv("HOME");
 
     if (home_env_var) {
@@ -367,6 +372,7 @@ fs::path GetHomeDirectory() {
     }
 
     return fs::path{pw->pw_dir};
+#endif
 }
 
 fs::path GetDataDirectory(const std::string& env_name) {

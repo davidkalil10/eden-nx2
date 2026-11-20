@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__SWITCH2__)
 #include <unistd.h>
 #include <sys/mman.h>
 #endif
@@ -22,11 +22,13 @@
 
 namespace Common {
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__SWITCH2__)
 constexpr u64 HostPageSize = 0x1000;
 constexpr u64 HostPageBits = 12;
 constexpr u64 HostPageMask = ~(HostPageSize - 1);
+#ifdef _WIN32
 bool CommitVectorPage(uintptr_t addr, bool write) noexcept;
+#endif
 #else
 inline const u64 HostPageSize = sysconf(_SC_PAGESIZE);
 inline const u64 HostPageBits = std::countr_zero(HostPageSize);
@@ -183,6 +185,8 @@ private:
         if (!CommitVectorPage(page, true)) {
             return false;
         }
+#elif defined(__SWITCH2__)
+        (void)page;
 #else
         if (mprotect(reinterpret_cast<void*>(page), HostPageSize, PROT_READ | PROT_WRITE) != 0) {
             LOG_ERROR(Common_Memory, "Failed to commit large buffer region at index {}, error {}", index, strerror(errno));

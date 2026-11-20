@@ -9,6 +9,10 @@
 #include <algorithm>
 #include <windows.h>
 #include <mutex>
+#elif defined(__SWITCH2__)
+#include <cstdlib>
+#include <cstring>
+#include <malloc.h>
 #else
 #include <sys/mman.h>
 #endif
@@ -116,6 +120,8 @@ bool CommitVectorPage(uintptr_t addr, bool write) noexcept {
 void DecommitVectorPage(uintptr_t base) noexcept {
 #if defined(_WIN32)
     VirtualFree(reinterpret_cast<LPVOID>(base), HostPageSize, MEM_DECOMMIT);
+#elif defined(__SWITCH2__)
+    std::memset(reinterpret_cast<void*>(base), 0, HostPageSize);
 #elif defined(__linux__)
     // Linux's MADV_DONTNEED zeros out pages for us
     madvise(reinterpret_cast<void*>(base), HostPageSize, MADV_DONTNEED);
@@ -147,6 +153,12 @@ void* AllocateMemoryPages(std::size_t size) noexcept {
         base = VirtualAlloc(nullptr, size, MEM_COMMIT, PAGE_READWRITE);
     }
     ASSERT_MSG(base, "Failed to reserve {:#x} sized region with error {}", size, GetLastError());
+#elif defined(__SWITCH2__)
+    void* base = memalign(HostPageSize, size);
+    if (base != nullptr) {
+        std::memset(base, 0, size);
+    }
+    ASSERT_MSG(base, "Failed to allocate {:#x} sized region on Switch 2", size);
 #else
     void* base = mmap(nullptr, size, PROT_READ, MAP_ANON | MAP_PRIVATE | MAP_NOCORE, -1, 0);
     if (base == MAP_FAILED)
@@ -166,6 +178,8 @@ void FreeMemoryPages(void* base, [[maybe_unused]] std::size_t size) noexcept {
     std::lock_guard lock(vector_regions_mutex);
     std::erase_if(vector_regions, [base](const auto& r) {return r.first == reinterpret_cast<u64>(base); });
     ASSERT(VirtualFree(base, 0, MEM_RELEASE));
+#elif defined(__SWITCH2__)
+    free(base);
 #else
     ASSERT(munmap(base, size) == 0);
 #endif

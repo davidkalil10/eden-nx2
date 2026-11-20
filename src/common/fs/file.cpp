@@ -23,7 +23,9 @@
 #include <windows.h>
 #else
 #include <unistd.h>
+#ifndef __SWITCH2__
 #include <sys/mman.h>
+#endif
 #include <sys/stat.h>
 #include <fcntl.h>
 #endif

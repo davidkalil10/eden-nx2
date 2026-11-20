@@ -117,4 +117,5 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 | Date | Milestone | Commit / CI | Notes |
 | :--- | :--- | :--- | :--- |
 | **2026-11-20** | **Phase 0 Complete** | `6bb33b3d` | Repo cleaned (1 branch `master`, 0 tags), Switch 2 Bible copied to `docs/switch2/`, full audit of `HostMemory`, `Dynarmic/oaknut`, `Vulkan`, and `CMakeLists.txt` completed. |
-| **2026-11-20** | **Phase 1 Started (CI Bring-Up #1)** | pending push | Added `NINTENDO_SWITCH2` / `SWITCH2` CMake platform support, relaxed `CompilerChecks.cmake` for devkitA64 GCC, added `__SWITCH2__` non-fastmem path in `host_memory.cpp`, created `scripts/build-switch2.sh`, `tools/verify_switch2_package.py`, and `.github/workflows/build-switch2.yml`. |
+| **2026-11-20** | **Phase 1 Started (CI Bring-Up #1–#11)** | `ff64743c`..`43a2cb2c` | Full CMake configure green (`devkitPro/SDL3` + `glslang-tools`), **OpenSSL 3.6.2** (`libcrypto.a`/`libssl.a`), **Boost 1.92** (`boost_container` `HAVE_MMAP=0`, `BOOST_HAS_PTHREADS=1`, `sys/resource.h` shim for `boost_context`), `jacinth`, and `hydrocarbon` all compiled green for Switch 2. |
+| **2026-11-20** | **Phase 1 `src/common/` Porting** | pending push | Ported `dynamic_library.cpp`, `fs/file.cpp`, `fs/path_util.cpp` (`sdmc:/switch/eden-nx2`), `sparse_large_vector.h/.cpp` (`memalign`/no-`mprotect`) for `__SWITCH2__`. |
