@@ -5,8 +5,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <random>
+#include <cstdio>
 #include <utility>
+#ifndef __SWITCH2__
 #include <boost/asio.hpp>
+#endif
 #include <format>
 
 #include "common/logging.h"
@@ -17,7 +20,9 @@
 #include "input_common/drivers/udp_client.h"
 #include "input_common/helpers/udp_protocol.h"
 
+#ifndef __SWITCH2__
 using boost::asio::ip::udp;
+#endif
 
 namespace InputCommon::CemuhookUDP {
 
@@ -27,6 +32,19 @@ struct SocketCallback {
     std::function<void(Response::PadData)> pad_data;
 };
 
+#ifdef __SWITCH2__
+// Cemuhook UDP motion is disabled on Switch 2 (newlib lacks the POSIX bits Boost.Asio needs).
+class Socket {
+public:
+    using clock = std::chrono::system_clock;
+
+    explicit Socket(const std::string&, u16, SocketCallback) {}
+    void Stop() {}
+    void Loop() {}
+    void StartSend(const clock::time_point&) {}
+    void StartReceive() {}
+};
+#else
 class Socket {
 public:
     using clock = std::chrono::system_clock;
@@ -132,6 +150,7 @@ private:
     std::array<u8, MAX_PACKET_SIZE> receive_buffer;
     udp::endpoint receive_endpoint;
 };
+#endif
 
 static void SocketLoop(Socket* socket) {
     Common::SetCurrentThreadName("cemuhookWorker");
@@ -359,6 +378,15 @@ PadIdentifier UDPClient::GetPadIdentifier(std::size_t pad_index) const {
 }
 
 Common::UUID UDPClient::GetHostUUID(const std::string& host) const {
+#ifdef __SWITCH2__
+    unsigned a = 0, b = 0, c = 0, d = 0;
+    if (std::sscanf(host.c_str(), "%u.%u.%u.%u", &a, &b, &c, &d) != 4) {
+        a = b = c = d = 0;
+    }
+    const u32 ip_value = ((a & 0xff) << 24) | ((b & 0xff) << 16) | ((c & 0xff) << 8) | (d & 0xff);
+    auto const hex_host = std::format("00000000-0000-0000-0000-0000{:06x}", ip_value);
+    return Common::UUID{hex_host};
+#else
     boost::system::error_code ec{};
     auto ip = boost::asio::ip::make_address_v4(host, ec);
     if (ec.value() != boost::system::errc::success) {
@@ -367,6 +395,7 @@ Common::UUID UDPClient::GetHostUUID(const std::string& host) const {
     }
     auto const hex_host = std::format("00000000-0000-0000-0000-0000{:06x}", ip.to_uint());
     return Common::UUID{hex_host};
+#endif
 }
 
 void UDPClient::Reset() {
