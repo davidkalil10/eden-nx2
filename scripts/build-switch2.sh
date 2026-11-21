@@ -16,7 +16,7 @@ JOBS="${JOBS:-$(nproc)}"
 
 SDL_REPOSITORY="https://github.com/devkitPro/SDL.git"
 SDL_REVISION="c329016c0e338ab4397ad930f83330c9fe058348"
-SDL_STAMP="eden-switch2-sdl3-v3 ${SDL_REVISION}"
+SDL_STAMP="eden-switch2-sdl3-v4 ${SDL_REVISION}"
 
 if [[ ! -f "${TOOLCHAIN_FILE}" ]]; then
     echo "ERROR: Switch2.cmake not found at ${TOOLCHAIN_FILE}" >&2
@@ -33,10 +33,12 @@ if [[ ! -f "${SDL_PREFIX}/.eden-switch2-sdl3" ]] || [[ "$(<"${SDL_PREFIX}/.eden-
     rm -rf "${SDL_SOURCE_DIR}" "${SDL_BUILD_DIR}" "${SDL_PREFIX}"
     git clone --no-checkout "${SDL_REPOSITORY}" "${SDL_SOURCE_DIR}"
     git -C "${SDL_SOURCE_DIR}" checkout --detach "${SDL_REVISION}"
-    # devkitPro SDL's Switch video driver is EGL-only and its sources lack SDL_internal.h
-    # (compiled as empty files), so drop it and use SDL's dummy video driver instead.
+    # devkitPro SDL's Switch video driver is EGL-only (pulls libouncevk-gl.a / EGLSurface),
+    # whereas Eden-NX2 renders directly to OunceVK via vkCreateViSurfaceNN(nwindowGetDefault()).
+    # Disable SDL_VIDEO_DRIVER_SWITCH cleanly and use SDL's dummy video driver instead.
+    sed -i 's/set(SDL_VIDEO_DRIVER_SWITCH 1)/# disabled on Switch 2 (OunceVK)/' "${SDL_SOURCE_DIR}/CMakeLists.txt"
+    sed -i 's|sdl_glob_sources("${SDL3_SOURCE_DIR}/src/video/switch/\*.c")|# disabled on Switch 2 (OunceVK)|' "${SDL_SOURCE_DIR}/CMakeLists.txt"
     sed -i 's/#ifdef SDL_VIDEO_DRIVER_SWITCH/#if 0/' "${SDL_SOURCE_DIR}/src/video/SDL_video.c"
-    grep -rn "SWITCH_bootstrap" "${SDL_SOURCE_DIR}/src" --include=*.c --include=*.h | grep -v "src/video/switch/" || true
     cmake -S "${SDL_SOURCE_DIR}" -B "${SDL_BUILD_DIR}" -G Ninja \
         -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
         -DCMAKE_BUILD_TYPE=Release \

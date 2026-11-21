@@ -13,6 +13,9 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#define u128 libnx_u128
+#include <switch.h>
+#undef u128
 #include "dynarmic/backend/arm64/switch2_code_block.h"
 #endif
 #include "common/settings_enums.h"
@@ -354,6 +357,11 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     return SDL_APP_CONTINUE;
 }
 extern "C" SDL_AppResult SDL_AppIterate(void *appstate) {
+#ifdef __SWITCH2__
+    if (!appletMainLoop()) {
+        return SDL_APP_SUCCESS;
+    }
+#endif
     SdlState *state = (SdlState *)appstate;
     return state->emu_window->IsOpen() ? SDL_APP_CONTINUE : SDL_APP_SUCCESS;
 }
