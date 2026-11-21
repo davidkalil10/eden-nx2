@@ -56,6 +56,9 @@ O **Eden-NX2** é um port nativo de homebrew para **Nintendo Switch 2** (`OUN0` 
 > [!NOTE]
 > You must supply your own legitimately dumped Switch 1 decryption keys (`prod.keys`) and game dumps. No copyrighted keys, firmware, or ROMs are included in this repository.
 
+> [!WARNING]
+> **Known issues:** NSZ or Switch 1 NUP not working yet.
+
 ---
 
 ## <a id="key-features"></a>Key Features
