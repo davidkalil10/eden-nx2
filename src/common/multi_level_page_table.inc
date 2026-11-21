@@ -33,8 +33,8 @@ MultiLevelPageTable<BaseAddr>::MultiLevelPageTable(std::size_t address_space_bit
 #ifdef __SWITCH2__
     level_index_mask = (1ULL << (first_level_shift - page_bits)) - 1;
     base_ptr = nullptr;
-    return;
-#elif defined(_WIN32)
+#else
+#ifdef _WIN32
     void* base{VirtualAlloc(nullptr, alloc_size, MEM_RESERVE, PAGE_READWRITE)};
 #else
     void* base{mmap(nullptr, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)};
@@ -43,6 +43,7 @@ MultiLevelPageTable<BaseAddr>::MultiLevelPageTable(std::size_t address_space_bit
 #endif
     ASSERT(base);
     base_ptr = reinterpret_cast<BaseAddr*>(base);
+#endif
 }
 
 template <typename BaseAddr>
