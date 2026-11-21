@@ -39,6 +39,7 @@
   <a href="#controls">Controls</a> |
   <a href="#building-from-source">Building & CI</a> |
   <a href="#documentation">Documentation</a> |
+  <a href="#support">Support</a> |
   <a href="#license--credits">License & Credits</a>
 </p>
 
@@ -151,6 +152,16 @@ The build script compiles `eden-cli.elf`, packages [`dist/eden-switch2.nro`](./s
 - **[Switch 2 Porting Progress & Engineering Log](./docs/switch2/EDEN_NX2_PROGRESS.md)** — Architecture Decision Records (ADRs), phased roadmap, and milestone changelog.
 - **[Build Script](./scripts/build-switch2.sh)** & **[GitHub Actions Workflow](./.github/workflows/build-switch2.yml)** — Full cross-compilation and packaging pipeline.
 - **[NRO Verification Script](./tools/verify_switch2_package.py)** — Automated `OUN0` + `kaiHEN` binary verification.
+
+---
+
+## <a id="support"></a>Support
+
+If you find **Eden-NX2** and our Nintendo Switch 2 homebrew ports useful, consider buying me a coffee to support continued development and maintenance:
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/davidkalil10)
+
+👉 **[https://ko-fi.com/davidkalil10](https://ko-fi.com/davidkalil10)**
 
 ---
 
