@@ -30,6 +30,8 @@ struct Switch2LaunchConfig {
     bool shader_cache = true;
     std::string language = "pt-BR";
     bool ui_english = false;
+    std::string update_pkg = "auto"; // "auto", "none", or full path to Update .nsp/.xci
+    std::string dlc_pkg = "auto";    // "auto", "none", or full path to DLC .nsp/.xci or folder
 };
 
 // Opens the 1280x720 graphical ROM selector & settings dashboard.

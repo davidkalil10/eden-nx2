@@ -330,6 +330,77 @@ void UpdateSwitch2FpsOverlay(const std::string& text) {
     ++panel.version;
 }
 
+void ScanSwitch2AddonDir(FileSys::ManualContentProvider& provider, FileSys::VfsFilesystem& vfs,
+                         const std::string& dir, const std::string& skip_path, bool filter_upd,
+                         bool filter_dlc, bool recurse_one) {
+    std::error_code ec;
+    if (dir.empty() || !std::filesystem::is_directory(dir, ec)) return;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        const std::string p = entry.path().generic_string();
+        if (entry.is_directory(ec)) {
+            if (recurse_one) {
+                const std::string dname = entry.path().filename().string();
+                if (!dname.empty() && dname[0] != '.') {
+                    ScanSwitch2AddonDir(provider, vfs, p, skip_path, filter_upd, filter_dlc, false);
+                }
+            }
+            continue;
+        }
+        if (!entry.is_regular_file(ec) || p == skip_path) continue;
+        const std::string ext = Common::ToLower(entry.path().extension().string());
+        if (ext != ".nsp" && ext != ".xci") continue;
+        const std::string lower_name = Common::ToLower(entry.path().filename().string());
+        if (filter_upd &&
+            lower_name.find("upd") == std::string::npos &&
+            lower_name.find("patch") == std::string::npos &&
+            lower_name.find("[v") == std::string::npos) {
+            continue;
+        }
+        if (filter_dlc &&
+            lower_name.find("dlc") == std::string::npos &&
+            lower_name.find("aoc") == std::string::npos) {
+            continue;
+        }
+        if (auto f = vfs.OpenFile(p, FileSys::OpenMode::Read)) {
+            provider.AddEntriesFromContainer(f, false);
+        }
+    }
+}
+
+void RegisterSwitch2Addons(FileSys::ManualContentProvider& provider, FileSys::VfsFilesystem& vfs,
+                           const Switch2LaunchConfig& cfg) {
+    auto add_file = [&](const std::string& path) {
+        std::error_code ec;
+        if (path.empty() || !std::filesystem::is_regular_file(path, ec)) return;
+        if (auto f = vfs.OpenFile(path, FileSys::OpenMode::Read)) {
+            provider.AddEntriesFromContainer(f, false);
+        }
+    };
+
+    const std::string rom_dir = std::filesystem::path(cfg.rom_path).parent_path().generic_string();
+
+    if (cfg.update_pkg == "auto" || cfg.update_pkg.empty()) {
+        ScanSwitch2AddonDir(provider, vfs, "sdmc:/switch/eden-nx2/updates", cfg.rom_path, false,
+                            false, true);
+        ScanSwitch2AddonDir(provider, vfs, rom_dir, cfg.rom_path, true, false, false);
+    } else if (cfg.update_pkg != "none") {
+        add_file(cfg.update_pkg);
+    }
+
+    if (cfg.dlc_pkg == "auto" || cfg.dlc_pkg.empty()) {
+        ScanSwitch2AddonDir(provider, vfs, "sdmc:/switch/eden-nx2/dlc", cfg.rom_path, false, false,
+                            true);
+        ScanSwitch2AddonDir(provider, vfs, rom_dir, cfg.rom_path, false, true, false);
+    } else if (cfg.dlc_pkg != "none") {
+        std::error_code ec;
+        if (std::filesystem::is_directory(cfg.dlc_pkg, ec)) {
+            ScanSwitch2AddonDir(provider, vfs, cfg.dlc_pkg, cfg.rom_path, false, false, true);
+        } else {
+            add_file(cfg.dlc_pkg);
+        }
+    }
+}
+
 void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg, std::size_t& active_pad_index,
                               Core::HID::NpadIdType& active_npad_id) {
     Settings::values.renderer_backend.SetValue(Settings::RendererBackend::Vulkan);
@@ -559,6 +630,7 @@ int main(int argc, char** argv) {
     Core::HID::NpadIdType active_npad_id = Core::HID::NpadIdType::Player1;
     ApplySwitch2LaunchConfig(launch_cfg, active_pad_index, active_npad_id);
 
+    auto manual_provider = std::make_unique<FileSys::ManualContentProvider>();
     auto system = std::make_unique<Core::System>();
     auto input_subsystem = std::make_unique<InputCommon::InputSubsystem>();
     auto emu_window = std::make_unique<EmuWindowSwitch2>();
@@ -568,9 +640,13 @@ int main(int argc, char** argv) {
     system->ApplySettings();
     input_subsystem->Initialize();
     system->HIDCore().ReloadInputDevices();
-    system->SetContentProvider(std::make_unique<FileSys::ContentProviderUnion>());
+    auto content_provider = std::make_unique<FileSys::ContentProviderUnion>();
+    content_provider->SetSlot(FileSys::ContentProviderUnionSlot::FrontendManual,
+                              manual_provider.get());
+    system->SetContentProvider(std::move(content_provider));
     system->SetFilesystem(std::make_shared<FileSys::RealVfsFilesystem>());
     system->GetFileSystemController().CreateFactories(*system->GetFilesystem());
+    RegisterSwitch2Addons(*manual_provider, *system->GetFilesystem(), launch_cfg);
     system->GetUserChannel().clear();
     Switch2BootTrace("04: System initialized");
 
@@ -685,6 +761,7 @@ int main(int argc, char** argv) {
     system->HIDCore().UnloadInputDevices();
     emu_window.reset();
     system.reset();
+    manual_provider.reset();
     input_subsystem->Shutdown();
     input_subsystem.reset();
     Common::Log::Stop();

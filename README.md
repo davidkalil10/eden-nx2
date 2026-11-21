@@ -86,6 +86,8 @@ sdmc:/
 │   └── eden-nx2/
 │       ├── eden-switch2.nro          # Main Switch 2 homebrew binary (OUN0)
 │       ├── roms/                     # Place .nsp / .xci / .nca / .nro files here
+│       ├── updates/                  # Place game Update .nsp / .xci files here (optional subfolders)
+│       ├── dlc/                      # Place DLC .nsp / .xci files here (or per-game subfolders)
 │       ├── keys/
 │       │   └── prod.keys             # Switch 1 decryption keys (or in .local/share/eden/keys/)
 │       ├── Lossless.dll              # (Optional) Enables LSFG 2x/3x/4x Frame Generation
@@ -100,6 +102,7 @@ sdmc:/
 
 ### Tips for First Boot
 - **Keys (`prod.keys`):** Place `prod.keys` inside `sdmc:/switch/eden-nx2/keys/prod.keys` or `sdmc:/.local/share/eden/keys/prod.keys`.
+- **Updates & DLC:** Put Update `.nsp`/`.xci` files in `sdmc:/switch/eden-nx2/updates/` and DLC `.nsp`/`.xci` files (or subfolders) in `sdmc:/switch/eden-nx2/dlc/` for automatic discovery, or assign/disable them individually per game via **`[Y]` Per-Game Settings**.
 - **Lossless Scaling (`LSFG`):** Copy your `Lossless.dll` to `sdmc:/switch/eden-nx2/Lossless.dll` (or `sdmc:/Lossless.dll`). On launch, the top bar displays **`LSFG OK`** once imported and cached.
 - **3D Performance:** In **`[X]` Global** or **`[Y]` Per-Game** settings, try `Resolution = 0.5x` or `0.75x`, `GPU = Fast`, `CPU = Unsafe`, `CPU Boost = On`, and `Address Space = 38-bit` (or `36-bit` to free extra RAM).
 - ***Pokémon: Let's Go Pikachu / Eevee*:** Set `Controller (Player 1)` to **`Handheld`** or **`Right Joy-Con`** in per-game settings (**`Y`**).

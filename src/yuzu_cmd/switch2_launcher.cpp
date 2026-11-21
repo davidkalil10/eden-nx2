@@ -371,6 +371,8 @@ std::string GameConfigPath(std::string_view rom_path) {
 constexpr const char* kGlobalSettingsPath = "sdmc:/switch/eden-nx2/settings.ini";
 constexpr const char* kLastFolderPath = "sdmc:/switch/eden-nx2/last_folder.txt";
 constexpr const char* kDefaultRomsDir = "sdmc:/switch/eden-nx2/roms";
+constexpr const char* kDefaultUpdatesDir = "sdmc:/switch/eden-nx2/updates";
+constexpr const char* kDefaultDlcDir = "sdmc:/switch/eden-nx2/dlc";
 
 bool EnsureLosslessInstalled() {
 #ifdef HAS_LSFG
@@ -512,6 +514,8 @@ std::string ParentFolder(const std::string& folder) {
 std::string ReadInitialFolder() {
     std::error_code ec;
     std::filesystem::create_directories(kDefaultRomsDir, ec);
+    std::filesystem::create_directories(kDefaultUpdatesDir, ec);
+    std::filesystem::create_directories(kDefaultDlcDir, ec);
     std::filesystem::create_directories("sdmc:/switch/eden-nx2/games", ec);
     std::ifstream in(kLastFolderPath);
     std::string folder;
@@ -681,9 +685,97 @@ void SaveGlobalIni(const std::vector<SettingOption>& opts) {
     }
 }
 
+bool IsAddonContainerExt(const std::filesystem::path& p) {
+    const std::string ext = ToLowerExt(p);
+    return ext == ".nsp" || ext == ".xci";
+}
+
+void AppendAddonFilesFromDir(const std::string& dir, const std::string& label_prefix,
+                             const std::string& skip_path, bool recurse_subdirs,
+                             SettingOption& opt) {
+    std::error_code ec;
+    if (dir.empty() || !std::filesystem::is_directory(dir, ec)) return;
+    std::vector<std::pair<std::string, std::string>> found;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        const std::string fname = entry.path().filename().string();
+        if (fname.empty() || fname[0] == '.') continue;
+        const std::string full = entry.path().generic_string();
+        if (entry.is_directory(ec)) {
+            if (recurse_subdirs) {
+                AppendAddonFilesFromDir(full, label_prefix + fname + "/", skip_path, false, opt);
+            }
+            continue;
+        }
+        if (!entry.is_regular_file(ec) || full == skip_path || !IsAddonContainerExt(entry.path())) {
+            continue;
+        }
+        found.emplace_back(label_prefix + fname, full);
+    }
+    std::sort(found.begin(), found.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (const auto& [label, full] : found) {
+        if (std::find(opt.values.begin(), opt.values.end(), full) != opt.values.end()) continue;
+        opt.values.push_back(full);
+        opt.labels_pt.push_back(label);
+        opt.labels_en.push_back(label);
+    }
+}
+
+std::vector<SettingOption> BuildPerGameAddonOptions(const std::string& rom_path) {
+    const std::string rom_dir = std::filesystem::path(rom_path).parent_path().generic_string();
+
+    SettingOption upd;
+    upd.key = "update_pkg";
+    upd.label_pt = "Update do Jogo";
+    upd.label_en = "Game Update";
+    upd.help_pt = "Arquivo Update (.nsp/.xci). 'Auto' carrega de sdmc:/switch/eden-nx2/updates/.";
+    upd.help_en = "Update package (.nsp/.xci). 'Auto' loads from sdmc:/switch/eden-nx2/updates/.";
+    upd.values = {"auto", "none"};
+    upd.labels_pt = {"Auto (Pasta updates/)", "Desativado (Base v1.0)"};
+    upd.labels_en = {"Auto (updates/ folder)", "Disabled (Base v1.0)"};
+    upd.selected = 0;
+    upd.per_game = true;
+    AppendAddonFilesFromDir(kDefaultUpdatesDir, "updates/", rom_path, true, upd);
+    AppendAddonFilesFromDir(rom_dir, "", rom_path, false, upd);
+
+    SettingOption dlc;
+    dlc.key = "dlc_pkg";
+    dlc.label_pt = "Pacotes DLC";
+    dlc.label_en = "DLC Packages";
+    dlc.help_pt = "Pasta ou arquivo DLC (.nsp/.xci). 'Auto' carrega de sdmc:/switch/eden-nx2/dlc/.";
+    dlc.help_en = "DLC folder or file (.nsp/.xci). 'Auto' loads from sdmc:/switch/eden-nx2/dlc/.";
+    dlc.values = {"auto", "none"};
+    dlc.labels_pt = {"Todas as DLCs (Auto)", "Desativado (Sem DLC)"};
+    dlc.labels_en = {"All DLCs (Auto)", "Disabled (No DLC)"};
+    dlc.selected = 0;
+    dlc.per_game = true;
+
+    std::error_code ec;
+    if (std::filesystem::is_directory(kDefaultDlcDir, ec)) {
+        std::vector<std::pair<std::string, std::string>> subdirs;
+        for (const auto& entry : std::filesystem::directory_iterator(kDefaultDlcDir, ec)) {
+            if (!entry.is_directory(ec)) continue;
+            const std::string dname = entry.path().filename().string();
+            if (dname.empty() || dname[0] == '.') continue;
+            subdirs.emplace_back(dname, entry.path().generic_string());
+        }
+        std::sort(subdirs.begin(), subdirs.end(),
+                  [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (const auto& [dname, full] : subdirs) {
+            dlc.values.push_back(full);
+            dlc.labels_pt.push_back("Pasta: dlc/" + dname);
+            dlc.labels_en.push_back("Folder: dlc/" + dname);
+        }
+    }
+    AppendAddonFilesFromDir(kDefaultDlcDir, "dlc/", rom_path, true, dlc);
+    AppendAddonFilesFromDir(rom_dir, "", rom_path, false, dlc);
+
+    return {std::move(upd), std::move(dlc)};
+}
+
 std::vector<SettingOption> MakePerGameOptions(const std::vector<SettingOption>& global_opts,
                                                 const std::string& rom_path, bool en) {
-    std::vector<SettingOption> out;
+    std::vector<SettingOption> out = BuildPerGameAddonOptions(rom_path);
     for (const auto& opt : global_opts) {
         if (!opt.per_game) continue;
         SettingOption copy = opt;
@@ -724,6 +816,10 @@ std::vector<SettingOption> EffectiveOptions(const std::vector<SettingOption>& gl
     std::vector<SettingOption> eff = global_opts;
     const auto game_opts = MakePerGameOptions(global_opts, rom_path, en);
     for (const auto& g : game_opts) {
+        if (g.key == "update_pkg" || g.key == "dlc_pkg") {
+            eff.push_back(g);
+            continue;
+        }
         if (g.selected <= 0) continue;
         for (auto& e : eff) {
             if (e.key == g.key) {
@@ -783,6 +879,10 @@ void FillLaunchConfig(const std::vector<SettingOption>& eff, const std::string& 
     cfg->shader_cache = (GetValue(eff, "shader_cache") == "on");
     cfg->language = GetValue(eff, "language");
     cfg->ui_english = (GetValue(eff, "ui_lang") == "en");
+    cfg->update_pkg = GetValue(eff, "update_pkg");
+    if (cfg->update_pkg.empty()) cfg->update_pkg = "auto";
+    cfg->dlc_pkg = GetValue(eff, "dlc_pkg");
+    if (cfg->dlc_pkg.empty()) cfg->dlc_pkg = "auto";
 }
 
 void DrawFormatBadge(Canvas& cv, int x, int y, const GameEntry& entry) {
@@ -923,8 +1023,11 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
         {"GPU / CPU", GetLabel(eff, "gpu_mode", en) + " | " + GetValue(eff, "cpu_accuracy")},
         {"LSFG / FPS", GetLabel(eff, "frame_gen", en) + " | " + GetValue(eff, "show_fps")},
         {"CPU / RAM", GetLabel(eff, "cpu_boost", en) + " | " + GetValue(eff, "address_space")},
-        {"JIT / Shader", GetValue(eff, "jit_ahead") + " blk | " + GetValue(eff, "shader_cache")},
-        {T(en, "Idioma", "Language"), GetValue(eff, "language")},
+        {"JIT / Shader", GetValue(eff, "jit_ahead") + " blk | " + GetValue(eff, "shader_cache") +
+                             " | " + GetValue(eff, "language")},
+        {"Update / DLC", has_game ? (GetLabel(eff, "update_pkg", en) + " | " +
+                                     GetLabel(eff, "dlc_pkg", en))
+                                  : std::string("Auto | Auto")},
     }};
     for (std::size_t i = 0; i < rows.size(); ++i) {
         const int ry = 164 + static_cast<int>(i) * 32;
@@ -993,18 +1096,28 @@ void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int s
                        const std::string& title, bool en) {
     cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 205);
     cv.DrawRoundedRect(120, 48, 1040, 624, 16, kPanelBg, kAccent);
-    cv.DrawText(152, 68, title, kAccent, 2, true);
+    constexpr int kMaxVis = 12;
+    const int total = static_cast<int>(opts.size());
+    const std::string header = (total > kMaxVis)
+                                   ? (title + " (" + std::to_string(selected + 1) + "/" +
+                                      std::to_string(total) + ")")
+                                   : title;
+    cv.DrawText(152, 68, header, kAccent, 2, true);
     cv.FillRect(152, 96, 976, 2, kBorderDim);
 
-    for (std::size_t i = 0; i < opts.size(); ++i) {
-        const int ry = 108 + static_cast<int>(i) * 34;
-        const bool is_sel = (static_cast<int>(i) == selected);
+    const int start = std::clamp(selected - kMaxVis / 2, 0, std::max(0, total - kMaxVis));
+    const int end = std::min(total, start + kMaxVis);
+    for (int i = start; i < end; ++i) {
+        const int vis = i - start;
+        const int ry = 108 + vis * 36;
+        const bool is_sel = (i == selected);
         cv.DrawRoundedRect(152, ry, 976, 30, 6, is_sel ? kCardSelected : kCardBg,
                            is_sel ? kAccent : kBorderDim);
-        const std::string& lbl = en ? opts[i].label_en : opts[i].label_pt;
-        const auto& ch_lbls = en ? opts[i].labels_en : opts[i].labels_pt;
+        const std::size_t idx = static_cast<std::size_t>(i);
+        const std::string& lbl = en ? opts[idx].label_en : opts[idx].label_pt;
+        const auto& ch_lbls = en ? opts[idx].labels_en : opts[idx].labels_pt;
         cv.DrawTextMaxWidth(168, ry + 7, 420, lbl, kTextPrimary, 2);
-        const std::string val_txt = "< " + ch_lbls[static_cast<std::size_t>(opts[i].selected)] + " >";
+        const std::string val_txt = "< " + ch_lbls[static_cast<std::size_t>(opts[idx].selected)] + " >";
         cv.DrawTextMaxWidth(600, ry + 7, 512, val_txt, is_sel ? kAccent : kCyan, 2);
     }
 
