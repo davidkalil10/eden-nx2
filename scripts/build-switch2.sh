@@ -73,7 +73,7 @@ echo "Target: ${TARGET}"
 
 CCACHE_ARGS=()
 if [[ "${EDEN_USE_CCACHE:-0}" == "1" ]] && command -v ccache >/dev/null; then
-    CCACHE_ARGS=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+    CCACHE_ARGS=(-DUSE_CCACHE=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
 fi
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \

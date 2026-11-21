@@ -263,49 +263,51 @@ endif()
 # These externals need their compiler flags to match the rest of the world
 # C++20 modules are sad sometimes
 
-# Jacinth (json)
-AddJsonPackage(jacinth)
+if (NOT NINTENDO_SWITCH2)
+    # Jacinth (json)
+    AddJsonPackage(jacinth)
 
-# Hydrocarbon (http)
-AddJsonPackage(hydrocarbon)
+    # Hydrocarbon (http)
+    AddJsonPackage(hydrocarbon)
 
-# Disable rtti, enable fwrapv, link POSIX threads
-macro(fix_modules target type)
-    if (MSVC)
-        set(flags /GR-)
+    # Disable rtti, enable fwrapv, link POSIX threads
+    macro(fix_modules target type)
+        if (MSVC)
+            set(flags /GR-)
+        else()
+            set(flags -fno-rtti -fwrapv)
+        endif()
+
+        target_link_libraries(${target} ${type} Threads::Threads)
+
+        # apply to imported modules
+        if (type STREQUAL INTERFACE)
+            set_property(TARGET ${target} PROPERTY
+                IMPORTED_CXX_MODULES_COMPILE_OPTIONS ${flags})
+        else()
+            # apply to compile target
+            target_compile_options(${target} ${type} ${flags})
+        endif()
+    endmacro()
+
+    # enable POSIX threads
+    if (jacinth_ADDED)
+        fix_modules(jacinth PRIVATE)
+        set_target_properties(jacinth PROPERTIES CXX_SCAN_FOR_MODULES ON)
     else()
-        set(flags -fno-rtti -fwrapv)
+        fix_modules(jacinth::jacinth INTERFACE)
     endif()
 
-    target_link_libraries(${target} ${type} Threads::Threads)
-
-    # apply to imported modules
-    if (type STREQUAL INTERFACE)
-        set_property(TARGET ${target} PROPERTY
-            IMPORTED_CXX_MODULES_COMPILE_OPTIONS ${flags})
+    # ditto, hydrocarbon
+    if (hydrocarbon_ADDED)
+        fix_modules(hydrocarbon PRIVATE)
+        set_target_properties(hydrocarbon PROPERTIES CXX_SCAN_FOR_MODULES ON)
+        if (SWITCH2)
+            target_compile_definitions(hydrocarbon PRIVATE __unix__=1)
+        endif()
     else()
-        # apply to compile target
-        target_compile_options(${target} ${type} ${flags})
+        fix_modules(hydro::carbon INTERFACE)
     endif()
-endmacro()
-
-# enable POSIX threads
-if (jacinth_ADDED)
-    fix_modules(jacinth PRIVATE)
-    set_target_properties(jacinth PROPERTIES CXX_SCAN_FOR_MODULES ON)
-else()
-    fix_modules(jacinth::jacinth INTERFACE)
-endif()
-
-# ditto, hydrocarbon
-if (hydrocarbon_ADDED)
-    fix_modules(hydrocarbon PRIVATE)
-    set_target_properties(hydrocarbon PROPERTIES CXX_SCAN_FOR_MODULES ON)
-    if (SWITCH2)
-        target_compile_definitions(hydrocarbon PRIVATE __unix__=1)
-    endif()
-else()
-    fix_modules(hydro::carbon INTERFACE)
 endif()
 
 add_subdirectory(common)

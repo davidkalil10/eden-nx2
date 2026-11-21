@@ -14,7 +14,9 @@
 #include "common/fs/path_util.h"
 #include "common/logging.h"
 
+#ifndef __SWITCH2__
 import jacinth;
+#endif
 
 namespace Core::LaunchTimestampCache {
 namespace {
@@ -65,6 +67,7 @@ void Load() {
 
     g_loaded = true;
 
+#ifndef __SWITCH2__
     const auto path = GetCachePath();
     if (!std::filesystem::exists(path)) {
         return;
@@ -102,9 +105,11 @@ void Load() {
     } catch (const std::exception& e) {
         LOG_WARNING(Core, "Failed to parse launch timestamp cache: {}", e.what());
     }
+#endif
 }
 
 void Save() {
+#ifndef __SWITCH2__
     jacinth::json json;
     for (const auto& [key, value] : g_cache) {
         const auto count_it = g_counts.find(key);
@@ -118,6 +123,7 @@ void Save() {
         LOG_WARNING(Core, "Failed to write launch timestamp cache: {}",
                     Common::FS::PathToUTF8String(path));
     }
+#endif
 }
 
 s64 NowSeconds() {

@@ -25,7 +25,9 @@
 #include "core/memory.h"
 #include "core/reporter.h"
 
+#ifndef __SWITCH2__
 import jacinth;
+#endif
 
 struct YuzuVersionData {
     std::string scm_rev;
@@ -156,6 +158,10 @@ std::string GetTimestamp() {
 
 template <typename T>
 void SaveToFile(const T& data, const std::filesystem::path& filename) {
+#ifdef __SWITCH2__
+    (void)data;
+    (void)filename;
+#else
     if (!Common::FS::CreateParentDirs(filename)) {
         LOG_ERROR(Core, "Failed to create path for '{}' to save report!",
                   Common::FS::PathToUTF8String(filename));
@@ -167,6 +173,7 @@ void SaveToFile(const T& data, const std::filesystem::path& filename) {
     std::ofstream file;
     Common::FS::OpenFileStream(file, filename, std::ios_base::out | std::ios_base::trunc);
     file << buffer << std::endl;
+#endif
 }
 
 YuzuVersionData GetYuzuVersionData() {

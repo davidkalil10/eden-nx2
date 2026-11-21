@@ -1228,10 +1228,12 @@ target_link_libraries(core PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto
     RenderDoc::API
-    jacinth::jacinth
     ZLIB::ZLIB)
 
-set_source_files_properties(launch_timestamp_cache.cpp reporter.cpp PROPERTIES CXX_SCAN_FOR_MODULES ON)
+if (NOT NINTENDO_SWITCH2)
+    target_link_libraries(core PRIVATE jacinth::jacinth)
+    set_source_files_properties(launch_timestamp_cache.cpp reporter.cpp PROPERTIES CXX_SCAN_FOR_MODULES ON)
+endif()
 
 target_link_libraries(core PUBLIC zstd::zstd)
 

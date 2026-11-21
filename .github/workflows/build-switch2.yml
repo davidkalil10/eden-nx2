@@ -4,13 +4,19 @@ on:
   push:
     branches: [ master, main ]
     tags: [ "v*" ]
+    paths-ignore: [ "README.md", "docs/**", "*.md" ]
   pull_request:
+    paths-ignore: [ "README.md", "docs/**", "*.md" ]
   workflow_dispatch:
     inputs:
       target:
         description: "CMake target(s) to build (e.g. common, dynarmic, core, yuzu-cmd)"
         required: false
         default: "yuzu-cmd"
+
+concurrency:
+  group: build-switch2-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-switch2:

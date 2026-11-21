@@ -22,8 +22,10 @@
 #include "common/fs/path_util.h"
 #endif
 
+#ifndef __SWITCH2__
 import jacinth;
 import hydrocarbon;
+#endif
 
 namespace Common::Net {
 
@@ -104,6 +106,10 @@ std::vector<NamedAsset> GetPlatformAssets(const Release& r) {
 }
 
 std::optional<std::string> MakeRequest(const std::string& url) {
+#ifdef __SWITCH2__
+    (void)url;
+    return std::nullopt;
+#else
     hydro::RequestOptions opts;
 #ifdef YUZU_BUNDLED_OPENSSL
     opts.connect.cert = std::string{kCert};
@@ -122,6 +128,7 @@ std::optional<std::string> MakeRequest(const std::string& url) {
     }
 
     return res->body;
+#endif
 }
 
 std::optional<std::string> MakeRequest(const std::string_view url) {
@@ -140,6 +147,9 @@ std::vector<Release> GetReleases() {
 }
 
 std::optional<Release> GetLatestRelease() {
+#ifdef __SWITCH2__
+    return std::nullopt;
+#else
     const auto releases_path = Common::g_build_auto_update_api_path;
     const auto url = std::format("https://{}{}", std::string{Common::g_build_auto_update_api}, releases_path);
 
@@ -158,6 +168,7 @@ std::optional<Release> GetLatestRelease() {
     }
 
     return ec.value();
+#endif
 }
 
 std::optional<std::string> GetReleasesBody() {
@@ -170,6 +181,10 @@ std::optional<std::string> GetReleasesBody() {
 }
 
 std::vector<Release> GetReleasesFromJson(const std::string& body) {
+#ifdef __SWITCH2__
+    (void)body;
+    return {};
+#else
     auto ec = jacinth::doc::try_read<std::vector<Release>>(body);
 
     if (!ec) {
@@ -178,9 +193,14 @@ std::vector<Release> GetReleasesFromJson(const std::string& body) {
     }
 
     return ec.value();
+#endif
 }
 
 bool HeadRequest(const std::string& url) {
+#ifdef __SWITCH2__
+    (void)url;
+    return false;
+#else
     // TODO: add timeouts
     hydro::RequestOptions opts;
 #ifdef YUZU_BUNDLED_OPENSSL
@@ -200,6 +220,7 @@ bool HeadRequest(const std::string& url) {
     }
 
     return true;
+#endif
 }
 
 } // namespace Common::Net
