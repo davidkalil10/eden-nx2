@@ -297,12 +297,13 @@ private:
 };
 
 // Solid NCZ: one zstd stream over the whole body. Decoded incrementally into a bounded
-// 1 MiB chunk cache (64 MiB pinned head + 384 MiB LRU) so both small metadata accesses and
-// streaming multi-GB reads stay fast without exhausting Switch 2 RAM.
+// 1 MiB chunk cache (256 MiB pinned head + 384 MiB LRU) while discarding intermediate
+// forward-seek chunks beyond a 16 MiB tail window so multi-GB jumps don't thrash the LRU.
 class SolidNczFile final : public FileSys::VfsFile {
 public:
-    static constexpr std::size_t PinnedBodyChunks = 64;
+    static constexpr std::size_t PinnedBodyChunks = 256;
     static constexpr std::size_t MaxLruChunks = 384;
+    static constexpr u64 SeekKeepTail = 16ULL * Chunk;
 
     SolidNczFile(std::string name_, FileSys::VirtualFile source_,
                  std::vector<Section> sections_, u64 payload_start_, bool pre_decrypted_)
@@ -399,13 +400,14 @@ private:
         return &it->second->second;
     }
 
-    std::vector<u8>& ObtainWritableChunkLocked(u64 cid, std::size_t chunk_len) const {
+    std::vector<u8>* ObtainWritableChunkLocked(u64 cid, std::size_t chunk_len,
+                                            bool allow_insert_lru) const {
         if (cid < PinnedBodyChunks) {
             if (pinned_chunks.size() <= cid) pinned_chunks.resize(cid + 1);
             if (pinned_chunks[cid].size() != chunk_len) {
                 pinned_chunks[cid].assign(chunk_len, 0);
             }
-            return pinned_chunks[cid];
+            return &pinned_chunks[cid];
         }
         const auto it = lru_map.find(cid);
         if (it != lru_map.end()) {
@@ -413,7 +415,10 @@ private:
             if (it->second->second.size() != chunk_len) {
                 it->second->second.assign(chunk_len, 0);
             }
-            return it->second->second;
+            return &it->second->second;
+        }
+        if (!allow_insert_lru) {
+            return nullptr;
         }
         std::vector<u8> buf;
         if (lru_map.size() >= MaxLruChunks && !lru_list.empty()) {
@@ -424,23 +429,28 @@ private:
         buf.assign(chunk_len, 0);
         lru_list.emplace_front(cid, std::move(buf));
         lru_map.emplace(cid, lru_list.begin());
-        return lru_list.front().second;
+        return &lru_list.front().second;
     }
 
-    void StoreDecodedBytesLocked(u64 start_off, const u8* src, std::size_t len) const {
+    void StoreDecodedBytesLocked(u64 start_off, const u8* src, std::size_t len,
+                                 u64 keep_from) const {
         std::size_t done = 0;
         while (done < len) {
-            const u64 body_off = (start_off + done) - HeaderSize;
+            const u64 abs_off = start_off + done;
+            const u64 body_off = abs_off - HeaderSize;
             const u64 cid = body_off / Chunk;
             const std::size_t in_chunk = static_cast<std::size_t>(body_off % Chunk);
             const std::size_t chunk_len = ChunkLengthLocked(cid);
             if (chunk_len <= in_chunk) break;
             const std::size_t take = std::min<std::size_t>(len - done, chunk_len - in_chunk);
-            auto& buf = ObtainWritableChunkLocked(cid, chunk_len);
-            if (src != nullptr) {
-                std::memcpy(buf.data() + in_chunk, src + done, take);
-            } else {
-                std::memset(buf.data() + in_chunk, 0, take);
+            const u64 chunk_end_off = HeaderSize + cid * Chunk + chunk_len;
+            const bool allow_insert_lru = chunk_end_off > keep_from;
+            if (auto* buf = ObtainWritableChunkLocked(cid, chunk_len, allow_insert_lru)) {
+                if (src != nullptr) {
+                    std::memcpy(buf->data() + in_chunk, src + done, take);
+                } else {
+                    std::memset(buf->data() + in_chunk, 0, take);
+                }
             }
             done += take;
         }
@@ -466,6 +476,7 @@ private:
         }
 
         const u64 file_size = source->GetSize();
+        const u64 keep_from = (needed > HeaderSize + SeekKeepTail) ? (needed - SeekKeepTail) : HeaderSize;
         std::vector<u8> out_buf(Chunk);
 
         std::size_t index = 0;
@@ -485,7 +496,7 @@ private:
             if (end <= frontier) continue;
             if (frontier < begin) {
                 StoreDecodedBytesLocked(frontier, nullptr,
-                                        static_cast<std::size_t>(begin - frontier));
+                                        static_cast<std::size_t>(begin - frontier), keep_from);
                 frontier = begin;
             }
             u64 pos = std::max<u64>(begin, frontier);
@@ -528,7 +539,7 @@ private:
                     cipher->SetIV(iv);
                     cipher->Transcode(out_buf.data(), produced, out_buf.data(), Op::Encrypt);
                 }
-                StoreDecodedBytesLocked(pos, out_buf.data(), produced);
+                StoreDecodedBytesLocked(pos, out_buf.data(), produced, keep_from);
                 pos += produced;
                 frontier = pos;
             }

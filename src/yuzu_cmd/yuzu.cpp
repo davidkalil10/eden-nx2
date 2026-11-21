@@ -763,6 +763,9 @@ int main(int argc, char** argv) {
         }
         // If Horizon didn't request exit (e.g. Home/Close), the user held [+]+[-] -> relaunch UI.
         should_return_to_launcher = Switch2MainLoop();
+    } else {
+        // Return cleanly to the launcher when a title fails to load (e.g. unsupported Switch 2 package).
+        should_return_to_launcher = Switch2MainLoop();
     }
 
     Switch2BootTrace("99: shutdown");

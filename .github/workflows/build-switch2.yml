@@ -14,6 +14,9 @@ on:
         required: false
         default: "yuzu-cmd"
 
+permissions:
+  contents: write
+
 concurrency:
   group: build-switch2-${{ github.ref }}
   cancel-in-progress: true
@@ -98,3 +101,12 @@ jobs:
           name: eden-switch2-nro
           path: dist/eden-switch2.nro
           if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') && hashFiles('dist/eden-switch2.nro') != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Eden-NX2 ${{ github.ref_name }} (Nintendo Switch 2)
+          files: dist/eden-switch2.nro
+          generate_release_notes: true
+          prerelease: true
