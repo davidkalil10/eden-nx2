@@ -422,8 +422,7 @@ void MacroInterpreterImpl::Execute(Core::System& system, Engines::Maxwell3D& max
     Reset();
 
     registers[1] = params[0];
-    parameters.resize(params.size());
-    std::memcpy(parameters.data(), params.data(), params.size() * sizeof(u32));
+    parameters = params;
 
     // Execute the code until we hit an exit condition.
     bool keep_executing = true;
@@ -433,6 +432,7 @@ void MacroInterpreterImpl::Execute(Core::System& system, Engines::Maxwell3D& max
 
     // Assert the the macro used all the input parameters
     ASSERT(next_parameter_index == parameters.size());
+    parameters = {};
 }
 
 /// Resets the execution engine state, zeroing registers, etc.

@@ -15,7 +15,11 @@ namespace {
 using Clock = std::chrono::steady_clock;
 
 constexpr f32 INTERVAL_SMOOTHING = 0.25f;
+#ifdef __SWITCH2__
+constexpr f32 MINIMUM_BASE_RATE = 4.0f;
+#else
 constexpr f32 MINIMUM_BASE_RATE = 10.0f;
+#endif
 constexpr f32 BURST_CADENCE_RATIO = 3.0f;
 constexpr f32 BURST_TARGET_RATIO = 2.0f;
 constexpr f32 PROBE_THROUGHPUT_TOLERANCE = 0.95f;
@@ -26,7 +30,11 @@ constexpr f32 UNLOADED_BASE_RETENTION = 0.75f;
 constexpr f32 CREDIT_EPSILON = 1.0e-4f;
 constexpr u32 MAX_PROBE_FAILURES = 4;
 
+#ifdef __SWITCH2__
+constexpr auto STABILIZATION_DURATION = std::chrono::milliseconds(150);
+#else
 constexpr auto STABILIZATION_DURATION = std::chrono::seconds(1);
+#endif
 constexpr auto PROBE_DURATION = std::chrono::seconds(1);
 constexpr auto DEFICIT_DURATION = std::chrono::seconds(1);
 constexpr auto PROBE_STEP_DELAY = std::chrono::milliseconds(250);

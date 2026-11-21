@@ -729,14 +729,18 @@ int main(int argc, char** argv) {
             if (launch_cfg.show_fps_mode > 0 && (++loop_iters % 200u) == 0u) {
                 const auto perf = system->GetAndResetPerfStats();
                 char line[128];
+                const double out_fps =
+                    (launch_cfg.frame_gen_mult >= 2)
+                        ? (perf.average_game_fps * static_cast<double>(launch_cfg.frame_gen_mult))
+                        : perf.average_game_fps;
                 if (launch_cfg.show_fps_mode == 2) {
                     const char* mode_str =
                         (Settings::values.use_docked_mode.GetValue() == Settings::ConsoleMode::Docked)
                             ? "DOCKED"
                             : "HANDHELD";
                     if (launch_cfg.frame_gen_mult >= 2) {
-                        std::snprintf(line, sizeof(line), "%.0f FPS  %.0f%%\n%s %.2gX  LSFG %dX",
-                                      perf.average_game_fps, perf.emulation_speed * 100.0,
+                        std::snprintf(line, sizeof(line), "%.0f->%.0f FPS  %.0f%%\n%s %.2gX  LSFG %dX",
+                                      perf.average_game_fps, out_fps, perf.emulation_speed * 100.0,
                                       mode_str, launch_cfg.resolution_scale,
                                       launch_cfg.frame_gen_mult);
                     } else {
@@ -745,8 +749,13 @@ int main(int argc, char** argv) {
                                       mode_str, launch_cfg.resolution_scale);
                     }
                 } else {
-                    std::snprintf(line, sizeof(line), "%.0f FPS  %.0f%%",
-                                  perf.average_game_fps, perf.emulation_speed * 100.0);
+                    if (launch_cfg.frame_gen_mult >= 2) {
+                        std::snprintf(line, sizeof(line), "%.0f->%.0f FPS  %.0f%%",
+                                      perf.average_game_fps, out_fps, perf.emulation_speed * 100.0);
+                    } else {
+                        std::snprintf(line, sizeof(line), "%.0f FPS  %.0f%%",
+                                      perf.average_game_fps, perf.emulation_speed * 100.0);
+                    }
                 }
                 UpdateSwitch2FpsOverlay(line);
             }

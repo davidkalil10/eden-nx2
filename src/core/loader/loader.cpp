@@ -28,6 +28,7 @@
 #include "core/loader/nro.h"
 #include "core/loader/nso.h"
 #include "core/loader/nsp.h"
+#include "core/loader/nup.h"
 #include "core/loader/xci.h"
 
 namespace Loader {
@@ -137,6 +138,8 @@ FileType IdentifyFile(FileSys::VirtualFile file) {
         return *nax_type;
     } else if (const auto kip_type = IdentifyFileLoader<AppLoader_KIP>(file)) {
         return *kip_type;
+    } else if (const auto nup_type = IdentifyFileLoader<AppLoader_NUP>(file)) {
+        return *nup_type;
     } else if (const auto nso_type = IdentifyFileLoader<AppLoader_NSO>(file)) {
         return *nso_type;
     } else if (const auto romdir_type =
@@ -193,6 +196,8 @@ FileType GuessFromFilename(const std::string& name) {
         return FileType::NSZ;
     else if (extension == "kip")
         return FileType::KIP;
+    else if (extension == "nup")
+        return FileType::NUP;
     return FileType::Unknown;
 }
 
@@ -216,6 +221,8 @@ std::string GetFileTypeString(FileType type) {
         return "NSZ";
     case FileType::KIP:
         return "KIP";
+    case FileType::NUP:
+        return "NUP";
     case FileType::DeconstructedRomDirectory:
         return "Directory";
     case FileType::Error:
@@ -226,7 +233,7 @@ std::string GetFileTypeString(FileType type) {
     return "unknown";
 }
 
-constexpr std::array<const char*, 69> RESULT_MESSAGES{
+constexpr std::array<const char*, 71> RESULT_MESSAGES{
     "The operation completed successfully.",
     "The loader requested to load is already loaded.",
     "The operation is not implemented.",
@@ -297,6 +304,8 @@ constexpr std::array<const char*, 69> RESULT_MESSAGES{
     "Integrity verification failed.",
     "Switch 2 (Ounce) games are not supported by this Eden build. Package metadata can be read, "
     "but Switch 2 game execution is not implemented.",
+    "The NUP container has a bad or corrupted format.",
+    "The NUP container does not contain a usable base or standalone package.",
 };
 
 std::string GetResultStatusString(ResultStatus status) {
@@ -371,6 +380,10 @@ static std::unique_ptr<AppLoader> GetFileLoader(Core::System& system, FileSys::V
     // NX KIP (Kernel Internal Process) file format
     case FileType::KIP:
         return std::make_unique<AppLoader_KIP>(std::move(file));
+
+    // Experimental NUP container format
+    case FileType::NUP:
+        return std::make_unique<AppLoader_NUP>(std::move(file));
 
     // NX deconstructed ROM directory.
     case FileType::DeconstructedRomDirectory:

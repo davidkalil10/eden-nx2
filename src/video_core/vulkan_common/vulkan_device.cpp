@@ -583,11 +583,13 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
     }
 
     if (is_nvidia) {
+#ifndef __SWITCH2__
         const auto arch = GetNvidiaArch();
         if (arch >= NvidiaArchitecture::Arch_AmpereOrNewer) {
             LOG_WARNING(Render_Vulkan, "Ampere and newer have broken float16 math");
             features.shader_float16_int8.shaderFloat16 = false;
         }
+#endif
 
         // Use hardware depth/stencil blits instead when available
         if (!extensions.shader_stencil_export) {

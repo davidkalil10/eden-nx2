@@ -47,6 +47,7 @@ enum class FileType {
     XCZ,
     NAX,
     KIP,
+    NUP,
     DeconstructedRomDirectory,
 };
 
@@ -158,6 +159,8 @@ enum class ResultStatus : u16 {
     ErrorIntegrityVerificationNotImplemented,
     ErrorIntegrityVerificationFailed,
     ErrorUnsupportedSwitch2,
+    ErrorNUPBadFormat,
+    ErrorNUPNoBasePackage,
 };
 
 std::string GetResultStatusString(ResultStatus status);

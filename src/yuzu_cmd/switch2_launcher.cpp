@@ -166,6 +166,7 @@ public:
         const int y0 = std::max(0, y);
         const int x1 = std::min(kScreenW, x + w);
         const int y1 = std::min(kScreenH, y + h);
+        if (x0 >= x1 || y0 >= y1) return;
         const std::uint8_t r0 = top & 0xFFu, g0 = (top >> 8) & 0xFFu, b0 = (top >> 16) & 0xFFu;
         const std::uint8_t r1 = bottom & 0xFFu, g1 = (bottom >> 8) & 0xFFu, b1 = (bottom >> 16) & 0xFFu;
         const int span = std::max(1, h - 1);
@@ -184,6 +185,7 @@ public:
         const int y0 = std::max(0, y);
         const int x1 = std::min(kScreenW, x + w);
         const int y1 = std::min(kScreenH, y + h);
+        if (x0 >= x1 || y0 >= y1) return;
         if (alpha == 255) {
             for (int py = y0; py < y1; ++py) {
                 std::fill(buf.begin() + py * kScreenW + x0, buf.begin() + py * kScreenW + x1, col);
@@ -349,7 +351,7 @@ bool IsAddonExt(std::string_view ext) {
 }
 
 bool IsSupportedRomExt(std::string_view ext) {
-    return IsAddonExt(ext) || ext == ".nro" || ext == ".nca";
+    return IsAddonExt(ext) || ext == ".nup" || ext == ".nro" || ext == ".nca";
 }
 
 template <typename Fn>
@@ -468,10 +470,12 @@ void TryLoadNroMetadata(GameEntry& entry) {
 std::vector<GameEntry> ScanDirectory(const std::string& folder) {
     std::vector<GameEntry> list;
     SafeForEachDirEntry(folder, [&](const std::filesystem::directory_entry& dir_entry,
-                                    std::error_code& ec) {
+                                    std::error_code&) {
+        std::error_code entry_ec;
         const std::string fname = dir_entry.path().filename().string();
         if (fname.empty() || fname[0] == '.') return;
-        const bool is_dir = dir_entry.is_directory(ec);
+        const bool is_dir = dir_entry.is_directory(entry_ec);
+        if (entry_ec) return;
         const std::string ext = is_dir ? "" : ToLowerExt(dir_entry.path());
         if (!is_dir && !IsSupportedRomExt(ext)) return;
         GameEntry item;
@@ -481,7 +485,8 @@ std::vector<GameEntry> ScanDirectory(const std::string& folder) {
         item.ext = ext;
         item.is_dir = is_dir;
         if (!is_dir) {
-            item.size_bytes = dir_entry.file_size(ec);
+            const auto sz = dir_entry.file_size(entry_ec);
+            item.size_bytes = entry_ec ? 0 : sz;
             TryLoadNroMetadata(item);
         }
         list.push_back(std::move(item));
@@ -954,6 +959,9 @@ void DrawFormatBadge(Canvas& cv, int x, int y, const GameEntry& entry) {
         } else if (entry.ext == ".xcz") {
             bg = PackRGBA(180, 120, 14);
             tag = "XCZ";
+        } else if (entry.ext == ".nup") {
+            bg = PackRGBA(124, 58, 237);
+            tag = "NUP";
         } else if (entry.ext == ".nca") {
             bg = PackRGBA(14, 116, 144);
             tag = "NCA";
@@ -1027,17 +1035,19 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
     constexpr int kVisible = 6;
     if (entries.empty()) {
         cv.DrawRoundedRect(46, 150, 680, 180, 12, kCardBg, kBorderDim);
-        cv.DrawText(68, 174, T(en, "Nenhuma ROM encontrada nesta pasta.", "No ROMs found in this folder."),
-                    kTextPrimary, 2);
-        cv.DrawText(68, 210,
-                    T(en, "Coloque arquivos .nsp / .nsz / .xci / .nro em:",
-                      "Place .nsp / .nsz / .xci / .nro files in:"),
-                    kTextMuted, 1);
-        cv.DrawText(68, 230, "sdmc:/switch/eden-nx2/roms/", kAccent, 2);
-        cv.DrawText(68, 266, "Keys: sdmc:/switch/eden-nx2/.local/share/eden/keys/", kTextMuted, 1);
-        cv.DrawText(68, 286, T(en, "Pressione [B] para navegar em outras pastas do cartao SD.",
-                               "Press [B] to browse parent folders on the SD card."),
-                    kCyan, 1);
+        cv.DrawTextMaxWidth(68, 174, 636,
+                            T(en, "Nenhuma ROM encontrada nesta pasta.", "No ROMs found in this folder."),
+                            kTextPrimary, 2);
+        cv.DrawTextMaxWidth(68, 210, 636,
+                            T(en, "Coloque arquivos .nsp / .nsz / .xci / .nup / .nro em:",
+                              "Place .nsp / .nsz / .xci / .nup / .nro files in:"),
+                            kTextMuted, 1);
+        cv.DrawTextMaxWidth(68, 230, 636, "sdmc:/switch/eden-nx2/roms/", kAccent, 2);
+        cv.DrawTextMaxWidth(68, 266, 636, "Keys: sdmc:/switch/eden-nx2/.local/share/eden/keys/", kTextMuted, 1);
+        cv.DrawTextMaxWidth(68, 286, 636,
+                            T(en, "Pressione [B] para navegar em outras pastas do cartao SD.",
+                              "Press [B] to browse parent folders on the SD card."),
+                            kCyan, 1);
     } else {
         for (int i = 0; i < kVisible && (scroll + i) < static_cast<int>(entries.size()); ++i) {
             const int idx = scroll + i;
@@ -1162,7 +1172,7 @@ void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int s
                                    ? (title + " (" + std::to_string(selected + 1) + "/" +
                                       std::to_string(total) + ")")
                                    : title;
-    cv.DrawText(152, 68, header, kAccent, 2, true);
+    cv.DrawTextMaxWidth(152, 68, 960, header, kAccent, 2, true);
     cv.FillRect(152, 96, 976, 2, kBorderDim);
 
     const int start = std::clamp(selected - kMaxVis / 2, 0, std::max(0, total - kMaxVis));

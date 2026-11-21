@@ -482,7 +482,12 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
         .max_descriptor_set_storage_images = device.GetMaxDescriptorSetStorageImages(),
         .max_descriptor_set_input_attachements = device.GetMaxDescriptorSetInputAttachments(),
         .support_float64 = device.IsFloat64Supported(),
+#ifdef __SWITCH2__
+        // Keep FP16 enabled on VkDevice for LSFG compute shaders while disabling guest Ampere FP16 math.
+        .support_float16 = false,
+#else
         .support_float16 = device.IsFloat16Supported(),
+#endif
         .support_int64 = device.IsShaderInt64Supported(),
         .needs_demote_reorder = driver_id == VK_DRIVER_ID_AMD_PROPRIETARY ||
                                 driver_id == VK_DRIVER_ID_AMD_OPEN_SOURCE ||

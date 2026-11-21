@@ -179,7 +179,7 @@ struct MacroInterpreterImpl final {
     /// General purpose macro registers.
     std::array<u32, Macro::NUM_MACRO_REGISTERS> registers = {};
     /// Input parameters of the current macro.
-    std::vector<u32> parameters;
+    std::span<const u32> parameters;
     std::span<const u32> code;
     /// Program counter to execute at after the delay slot is executed.
     std::optional<u32> delayed_pc;
