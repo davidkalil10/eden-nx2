@@ -98,10 +98,14 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \
     -DYUZU_TESTS=OFF \
     -DBUILD_TESTING=OFF \
     -DYUZU_DISABLE_LLVM=ON \
-    -DYUZU_STATIC_BUILD=ON
+    -DYUZU_STATIC_BUILD=ON \
+    -DCMAKE_CXX_SCAN_FOR_MODULES=OFF
 
 cmake --build "${BUILD_DIR}" --target ${TARGET} --parallel "${JOBS}"
 echo "=== Built target(s): ${TARGET} ==="
+if [[ "${EDEN_USE_CCACHE:-0}" == "1" ]] && command -v ccache >/dev/null; then
+    ccache -s || true
+fi
 
 ELF_PATH=""
 for candidate in "${BUILD_DIR}/bin/eden-cli.elf" "${BUILD_DIR}/bin/eden-cli" "${BUILD_DIR}/bin/yuzu-cmd" "${BUILD_DIR}/bin/yuzu-cmd.elf"; do

@@ -1231,6 +1231,8 @@ target_link_libraries(core PRIVATE
     jacinth::jacinth
     ZLIB::ZLIB)
 
+set_source_files_properties(launch_timestamp_cache.cpp reporter.cpp PROPERTIES CXX_SCAN_FOR_MODULES ON)
+
 target_link_libraries(core PUBLIC zstd::zstd)
 
 if (ENABLE_WEB_SERVICE)

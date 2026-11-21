@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <fstream>
+#include <system_error>
 
 #include "common/assert.h"
 #include "common/fs/file.h"
@@ -471,7 +472,18 @@ bool ISystemSettingsServer::StoreSettingsFile(std::filesystem::path& path, auto&
     }
     file.close();
 
-    std::filesystem::rename(settings_tmp_file, settings_base.replace_extension("dat"));
+    const auto settings_dat_file = settings_base.replace_extension("dat");
+#ifdef __SWITCH2__
+    std::error_code ec;
+    std::filesystem::remove(settings_dat_file, ec);
+    std::filesystem::rename(settings_tmp_file, settings_dat_file, ec);
+    if (ec) {
+        LOG_ERROR(Service_SET, "Failed to rename settings file: {}", ec.message());
+        return false;
+    }
+#else
+    std::filesystem::rename(settings_tmp_file, settings_dat_file);
+#endif
 
     return true;
 }
