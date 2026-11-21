@@ -22,8 +22,45 @@
 #include "dynarmic/common/llvm_disassemble.h"
 #include "dynarmic/interface/exclusive_monitor.h"
 #include "dynarmic/ir/location_descriptor.h"
+#ifdef __SWITCH2__
+#include <variant>
+#include <vector>
+#include "dynarmic/ir/terminal.h"
+
+extern "C" {
+int g_switch2_jit_blocks_ahead = 8;
+}
+#endif
 
 namespace Dynarmic::Backend::Arm64 {
+
+#ifdef __SWITCH2__
+namespace {
+
+void CollectLeaf(const IR::Term::LeafTerminal& leaf, std::vector<IR::LocationDescriptor>& out) {
+    if (const auto* link = std::get_if<IR::Term::LinkBlock>(&leaf)) {
+        out.push_back(link->next);
+    } else if (const auto* fast = std::get_if<IR::Term::LinkBlockFast>(&leaf)) {
+        out.push_back(fast->next);
+    }
+}
+
+void CollectSuccessors(const IR::Term::Terminal& terminal, std::vector<IR::LocationDescriptor>& out) {
+    if (const auto* leaf = std::get_if<IR::Term::LeafTerminal>(&terminal)) {
+        CollectLeaf(*leaf, out);
+    } else if (const auto* if_ = std::get_if<IR::Term::If>(&terminal)) {
+        CollectLeaf(if_->then_, out);
+        CollectLeaf(if_->else_, out);
+    } else if (const auto* check_bit = std::get_if<IR::Term::CheckBit>(&terminal)) {
+        CollectLeaf(check_bit->then_, out);
+        CollectLeaf(check_bit->else_, out);
+    } else if (const auto* check_halt = std::get_if<IR::Term::CheckHalt>(&terminal)) {
+        CollectLeaf(check_halt->else_, out);
+    }
+}
+
+} // namespace
+#endif
 
 AddressSpace::AddressSpace(std::size_t code_cache_size)
     : ir_block{IR::LocationDescriptor{0}}
@@ -49,10 +86,22 @@ AddressSpace::AddressSpace(std::size_t code_cache_size)
 AddressSpace::~AddressSpace() = default;
 
 CodePtr AddressSpace::Get(IR::LocationDescriptor descriptor) {
+#ifdef __SWITCH2__
+    LookupEntry& cached = lookup_cache[LookupIndex(descriptor.Value())];
+    if (cached.entry_point != nullptr && cached.descriptor == descriptor.Value()) {
+        return cached.entry_point;
+    }
+    if (const auto iter = block_entries.find(descriptor); iter != block_entries.end()) {
+        cached = {descriptor.Value(), iter->second};
+        return iter->second;
+    }
+    return nullptr;
+#else
     if (const auto iter = block_entries.find(descriptor); iter != block_entries.end()) {
         return iter->second;
     }
     return nullptr;
+#endif
 }
 
 std::optional<IR::LocationDescriptor> AddressSpace::ReverseGetLocation(CodePtr host_pc) {
@@ -78,6 +127,41 @@ CodePtr AddressSpace::GetOrEmit(IR::LocationDescriptor descriptor) {
         return block_entry;
     }
     GenerateIR(ir_block, descriptor);
+#ifdef __SWITCH2__
+    std::vector<IR::LocationDescriptor> ahead;
+    CollectSuccessors(ir_block.GetTerminal(), ahead);
+    mem.unprotect();
+    CodePtr entry_point;
+    try {
+        entry_point = Emit(std::move(ir_block)).entry_point;
+    } catch (const CodeBufferExhausted&) {
+        ProtectCodeMemory();
+        ClearCache();
+        GenerateIR(ir_block, descriptor);
+        mem.unprotect();
+        entry_point = Emit(std::move(ir_block)).entry_point;
+    }
+    const std::size_t max_ahead =
+        g_switch2_jit_blocks_ahead > 0 ? static_cast<std::size_t>(g_switch2_jit_blocks_ahead) : 0;
+    constexpr std::size_t min_space_ahead = 2 * 1024 * 1024;
+    std::size_t emitted_ahead = 0;
+    for (std::size_t i = 0; i < ahead.size() && emitted_ahead < max_ahead; ++i) {
+        const IR::LocationDescriptor next = ahead[i];
+        if (Get(next) || GetRemainingSize() < min_space_ahead) {
+            continue;
+        }
+        GenerateIR(ir_block, next);
+        CollectSuccessors(ir_block.GetTerminal(), ahead);
+        try {
+            Emit(std::move(ir_block));
+        } catch (const CodeBufferExhausted&) {
+            break;
+        }
+        ++emitted_ahead;
+    }
+    mem.protect();
+    return entry_point;
+#else
     try {
         return Emit(std::move(ir_block)).entry_point;
     } catch (const CodeBufferExhausted&) {
@@ -88,6 +172,7 @@ CodePtr AddressSpace::GetOrEmit(IR::LocationDescriptor descriptor) {
         GenerateIR(ir_block, descriptor);
         return Emit(std::move(ir_block)).entry_point;
     }
+#endif
 }
 
 void AddressSpace::InvalidateBasicBlocks(const ::Common::unordered_set<IR::LocationDescriptor>& descriptors) {
@@ -104,12 +189,18 @@ void AddressSpace::InvalidateBasicBlocks(const ::Common::unordered_set<IR::Locat
         RelinkForDescriptor(descriptor, nullptr);
 
         block_entries.erase(iter);
+#ifdef __SWITCH2__
+        lookup_cache[LookupIndex(descriptor.Value())] = {};
+#endif
     }
 
     ProtectCodeMemory();
 }
 
 void AddressSpace::ClearCache() {
+#ifdef __SWITCH2__
+    ClearLookupCache();
+#endif
     block_entries.clear();
     reverse_block_entries.clear();
     block_infos.clear();
@@ -290,7 +381,11 @@ void AddressSpace::Link(EmittedBlockInfo& block_info) {
     }
 
     for (auto [target_descriptor, list] : block_info.block_relocations) {
+#ifdef __SWITCH2__
+        block_references[target_descriptor].push_back(block_info.entry_point);
+#else
         block_references[target_descriptor].insert(block_info.entry_point);
+#endif
         LinkBlockLinks(block_info.entry_point, Get(target_descriptor), list);
     }
 }

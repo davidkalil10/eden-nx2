@@ -8,8 +8,10 @@
 
 #pragma once
 
+#include <algorithm>
 #include <map>
 #include <optional>
+#include <vector>
 
 #include "common/common_types.h"
 #ifdef __SWITCH2__
@@ -50,17 +52,31 @@ public:
 
     void ClearCache();
 protected:
+#ifdef __SWITCH2__
+    struct LookupEntry {
+        u64 descriptor;
+        CodePtr entry_point;
+    };
+    static constexpr std::size_t LookupCacheBits = 16;
+    std::vector<LookupEntry> lookup_cache = std::vector<LookupEntry>(std::size_t{1} << LookupCacheBits);
+    static std::size_t LookupIndex(u64 descriptor) {
+        return static_cast<std::size_t>((descriptor * 0x9E3779B97F4A7C15ULL) >> (64 - LookupCacheBits));
+    }
+    void ClearLookupCache() {
+        std::fill(lookup_cache.begin(), lookup_cache.end(), LookupEntry{});
+    }
+#endif
     virtual EmitConfig GetEmitConfig() = 0;
     virtual void RegisterNewBasicBlock(const IR::Block& block, const EmittedBlockInfo& block_info) = 0;
 
     void ProtectCodeMemory() {
-#if defined(DYNARMIC_ENABLE_NO_EXECUTE_SUPPORT) || defined(__APPLE__) || defined(__OpenBSD__)
+#if defined(DYNARMIC_ENABLE_NO_EXECUTE_SUPPORT) || defined(__APPLE__) || defined(__OpenBSD__) || defined(__SWITCH2__)
         mem.protect();
 #endif
     }
 
     void UnprotectCodeMemory() {
-#if defined(DYNARMIC_ENABLE_NO_EXECUTE_SUPPORT) || defined(__APPLE__) || defined(__OpenBSD__)
+#if defined(DYNARMIC_ENABLE_NO_EXECUTE_SUPPORT) || defined(__APPLE__) || defined(__OpenBSD__) || defined(__SWITCH2__)
         mem.unprotect();
 #endif
     }
@@ -87,7 +103,11 @@ protected:
     std::map<CodePtr, IR::LocationDescriptor> reverse_block_entries;
     ::Common::unordered_map<IR::LocationDescriptor, CodePtr> block_entries;
     ::Common::unordered_map<CodePtr, EmittedBlockInfo> block_infos;
+#ifdef __SWITCH2__
+    ::Common::unordered_map<IR::LocationDescriptor, std::vector<CodePtr>> block_references;
+#else
     ::Common::unordered_map<IR::LocationDescriptor, ::Common::unordered_set<CodePtr>> block_references;
+#endif
 
     ExceptionHandler exception_handler;
     FastmemManager fastmem_manager;

@@ -103,13 +103,13 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 
 ### Phase 4 — Minimal Switch 2 Frontend (`eden-switch2.nro`)
 - [x] Adapt `src/yuzu_cmd/` (`emu_window_sdl3_vk.cpp` `nwindowGetDefault()`, `yuzu.cpp` Vulkan + SD `roms/` scan + `Switch2JitPool::Shutdown()`, `CMakeLists.txt` `WIN32` guard on `yuzu.rc`)
-- [ ] Add minimal controller-friendly ROM picker + status/log screen (so it boots cleanly even before a game is selected)
+- [x] Add 1280×720 graphical ROM picker + global/per-game settings & live controller test (`switch2_launcher.cpp` / `switch2_runtime.cpp`)
 - [x] Wire `eden-switch2.nro` packaging (`nacptool` + `elf2nro` + `verify_switch2_package.py`) and CI artifact upload in `scripts/build-switch2.sh` & `.github/workflows/build-switch2.yml`
 
 ### Phase 5 — Real Switch 2 Hardware Bring-Up
-- [ ] Boot `eden-switch2.nro` on real Switch 2 (verify launcher + `OunceVK` device enumeration + clean exit to `hbmenu`)
-- [ ] Boot a lightweight Switch 1 homebrew `.nro` (e.g., simple 2D/3D test) to validate `Dynarmic` (`kaiHEN`) + `HostMemory` + `OunceVK`
-- [ ] Boot a commercial Switch 1 title with `prod.keys` + firmware and tune RAM budget / shader cache / performance
+- [x] Boot `eden-switch2.nro` on real Switch 2 and render first commercial/homebrew game video & audio (`aa855e49`)
+- [ ] Verify 1280×720 graphical launcher, full controller profiles (including *Let's Go Pikachu* Handheld/Single Joy-Con), touch/gyro/rumble, and CPU/GPU/JIT speedups on hardware
+- [ ] Add Updates/DLC manager + in-game overlay menu & tune per-title presets
 
 ---
 
@@ -125,4 +125,5 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 | **2026-11-21** | **First `eden-switch2.nro` Built & Verified Green!** | `2fb0d19f` ([Run #44899545405](https://github.com/davidkalil10/eden-nx2/actions/runs/44899545405)) | Full `yuzu-cmd` -> `eden-cli.elf` -> `dist/eden-switch2.nro` (`OUN0` + `kaiHEN`) built & verified green with `ccache` + SDL3 dummy video! |
 | **2026-11-21** | **Phase 5: Boot Trace + Demand-Paged `MultiLevelPageTable` + 38-bit AS + OunceVK Fixes** | `d36ba550` | Fixed `MultiLevelPageTable` (demand-paged `AllocateLevel`), compacted 39-bit process AS to 38-bit in `KPageTableBase`, capped `OunceVK` VMA blocks (32 MiB) & VRAM budget (2 GiB), added `VK_FORMAT_R8G8B8A8` swapchain view support, and added `boot_trace.txt` breadcrumbs. |
 | **2026-11-21** | **Phase 5: Native Switch 2 `main()` + `EmuWindowSwitch2` + NRO Icon** | `64ad51ff` | Replaced Switch 2 entrypoint in `yuzu.cpp` with native `int main()` + `EmuWindowSwitch2` (`nwindowGetDefault()`), moved Horizon runtime helpers to `switch2_runtime.cpp`, and wired 256×256 `dist/eden_profile.jpg` icon into `elf2nro`. |
-| **2026-11-21** | **Phase 5: Fix `rename` `EEXIST` Crash on `sdmc:` (`settings.dat`) + `ccache` Module Scan Fix** | pending push | `std::set_terminate` caught `filesystem error: cannot rename: File exists` on `settings.tmp -> settings.dat` in `system_settings_server.cpp` (Horizon `fsdev` returns `EEXIST` instead of overwriting); removed destination before rename on `__SWITCH2__`. Also set `-DCMAKE_CXX_SCAN_FOR_MODULES=OFF` globally with `CXX_SCAN_FOR_MODULES ON` scoped only to `jacinth`, `hydrocarbon`, `launch_timestamp_cache.cpp`, and `reporter.cpp` so `ccache` caches all ~2,300 non-module TUs cleanly. |
+| **2026-11-21** | **Phase 5: First Game Booted with Video & Audio on Switch 2!** | `aa855e49` | `settings.dat` `rename` `EEXIST` fix unblocked full boot — first ROM booted with live Vulkan image and SDL3 audio on real Switch 2 hardware! |
+| **2026-11-21** | **Phase 4/5: 1280×720 Graphical Launcher, Full Controls & Perf Optimizations** | pending push | Added 1280×720 RGBA8888 launcher + global/per-game settings modal + live controller tester (`switch2_launcher.cpp` / `switch2_runtime.cpp`), full input forwarding (`ProController`, `Handheld`, `DualJoycon`, `RightJoycon`/`LeftJoycon` for *Let's Go*, SL/SR, touch, gyro, rumble), Cortex-A78C core affinity (`thread.cpp`), `kaiHEN` IPC batching + 8-block ahead compilation + 64K lookup cache (`Switch2CodeBlock`/`AddressSpace`/`SmallLinearMap`), 512 MiB texture cache floor, 64 MiB staging buffer, and selectable 36/38/39-bit AS mode. |

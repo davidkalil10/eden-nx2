@@ -24,6 +24,10 @@
 #include "core/arm/nce/arm_nce.h"
 #endif
 
+#ifdef __SWITCH2__
+extern "C" int g_switch2_address_space_mode;
+#endif
+
 namespace Kernel {
 
 namespace {
@@ -1216,7 +1220,15 @@ Result KProcess::LoadFromMetadata(KernelCore& kernel, const FileSys::ProgramMeta
     }
 
     // Set the address space type and code address.
-    switch (metadata.GetAddressSpaceType()) {
+    auto address_space_type = metadata.GetAddressSpaceType();
+#ifdef __SWITCH2__
+    if (g_switch2_address_space_mode == 0 &&
+        address_space_type == FileSys::ProgramAddressSpaceType::Is39Bit) {
+        LOG_WARNING(Kernel, "Using 36-bit compact address space mode to save RAM");
+        address_space_type = FileSys::ProgramAddressSpaceType::Is36Bit;
+    }
+#endif
+    switch (address_space_type) {
     case FileSys::ProgramAddressSpaceType::Is39Bit:
         // For 39-bit processes, the ASLR region starts at 0x800'0000 and is ~512GiB large.
         // However, some (buggy) programs/libraries like skyline incorrectly depend on the

@@ -4,6 +4,7 @@
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
 #include "common/scope_exit.h"
 #include "common/settings.h"
 #include "core/core.h"
@@ -11,6 +12,13 @@
 #include "core/hle/kernel/k_page_table_base.h"
 #include "core/hle/kernel/k_scoped_resource_reservation.h"
 #include "core/hle/kernel/k_system_resource.h"
+
+#ifdef __SWITCH2__
+extern "C" {
+// 0 = 36-bit compact (128 MiB table), 1 = 38-bit balanced (512 MiB table), 2 = 39-bit full (1 GiB table)
+int g_switch2_address_space_mode = 1;
+}
+#endif
 
 namespace Kernel {
 
@@ -202,8 +210,8 @@ Result KPageTableBase::InitializeForProcess(Svc::CreateProcessFlag as_type, bool
     // Calculate region extents.
     size_t as_width = GetAddressSpaceWidth(as_type);
 #ifdef __SWITCH2__
-    // Compact 39-bit address space to 38 bits to halve the flat page table (saves ~512 MiB).
-    const bool narrowed = as_width == 39;
+    // Compact 39-bit address space to 38 bits in balanced mode (saves ~512 MiB).
+    const bool narrowed = as_width == 39 && g_switch2_address_space_mode == 1;
     if (narrowed) {
         as_width = 38;
     }

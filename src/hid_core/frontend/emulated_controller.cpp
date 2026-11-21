@@ -1237,6 +1237,10 @@ bool EmulatedController::SetVibration(DeviceIndex device_index, const VibrationV
     }
     const std::size_t index = static_cast<std::size_t>(device_index);
     if (!output_devices[index]) {
+#ifdef __SWITCH2__
+        // Switch 2 frontend reads GetActualVibrationValue() directly and forwards to libnx.
+        last_vibration_value[index] = vibration;
+#endif
         return false;
     }
 

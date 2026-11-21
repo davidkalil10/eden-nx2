@@ -108,8 +108,8 @@ void Free(u8* rx, std::size_t size) {
     std::erase_if(s.used, [off](const Slice& sl) { return sl.offset == off; });
 }
 
-void Publish(const u8* rx_start, std::size_t size) {
-    if (!rx_start || !size) {
+void PublishRanges(const Switch2JitRange* ranges, std::size_t count) {
+    if (!ranges || count == 0) {
         return;
     }
     PoolState& s = State();
@@ -118,31 +118,53 @@ void Publish(const u8* rx_start, std::size_t size) {
         return;
     }
     const uintptr_t rx_base = reinterpret_cast<uintptr_t>(s.jit.rx_addr);
-    const uintptr_t addr = reinterpret_cast<uintptr_t>(rx_start);
-    if (addr < rx_base) {
-        return;
-    }
-    const std::size_t off = addr - rx_base;
-    if (off >= s.jit.size) {
-        return;
-    }
-    const std::size_t clamped = std::min(size, s.jit.size - off);
+    const bool use_ipc =
+        s.jit.type == JitType_SetProcessMemoryPermission && s.jit.rw_addr != s.jit.src_addr;
 
-    if (s.jit.type == JitType_SetProcessMemoryPermission && s.jit.rw_addr != s.jit.src_addr) {
-        const KaihenJitRange range{static_cast<u64>(off), static_cast<u64>(clamped)};
-        const Result rc = kaihenJitPublishRanges(&s.jit, &range, 1);
-        if (R_FAILED(rc)) {
-            LOG_ERROR(Common, "Switch2JitPool: kaihenJitPublishRanges(off=0x{:x}, size=0x{:x}) failed: 0x{:x}",
-                      off, clamped, rc);
+    std::vector<KaihenJitRange> k_ranges;
+    if (use_ipc) {
+        k_ranges.reserve(count);
+    }
+
+    for (std::size_t i = 0; i < count; ++i) {
+        const u8* rx_start = ranges[i].rx_start;
+        const std::size_t size = ranges[i].size;
+        if (!rx_start || size == 0) {
+            continue;
         }
-    } else {
-        char* rw_ptr = static_cast<char*>(s.jit.rw_addr) + off;
-        char* rx_ptr = static_cast<char*>(s.jit.rx_addr) + off;
-        __builtin___clear_cache(rw_ptr, rw_ptr + clamped);
-        if (rx_ptr != rw_ptr) {
-            __builtin___clear_cache(rx_ptr, rx_ptr + clamped);
+        const uintptr_t addr = reinterpret_cast<uintptr_t>(rx_start);
+        if (addr < rx_base) {
+            continue;
+        }
+        const std::size_t off = addr - rx_base;
+        if (off >= s.jit.size) {
+            continue;
+        }
+        const std::size_t clamped = std::min(size, s.jit.size - off);
+        if (use_ipc) {
+            k_ranges.push_back(KaihenJitRange{static_cast<u64>(off), static_cast<u64>(clamped)});
+        } else {
+            char* rw_ptr = static_cast<char*>(s.jit.rw_addr) + off;
+            char* rx_ptr = static_cast<char*>(s.jit.rx_addr) + off;
+            __builtin___clear_cache(rw_ptr, rw_ptr + clamped);
+            if (rx_ptr != rw_ptr) {
+                __builtin___clear_cache(rx_ptr, rx_ptr + clamped);
+            }
         }
     }
+
+    if (use_ipc && !k_ranges.empty()) {
+        const Result rc = kaihenJitPublishRanges(&s.jit, k_ranges.data(), k_ranges.size());
+        if (R_FAILED(rc)) {
+            LOG_ERROR(Common, "Switch2JitPool: kaihenJitPublishRanges(count={}) failed: 0x{:x}",
+                      k_ranges.size(), rc);
+        }
+    }
+}
+
+void Publish(const u8* rx_start, std::size_t size) {
+    const Switch2JitRange single{rx_start, size};
+    PublishRanges(&single, 1);
 }
 
 void Shutdown() {
@@ -166,8 +188,30 @@ Switch2CodeBlock::~Switch2CodeBlock() {
     Switch2JitPool::Free(rx_base_, size_);
 }
 
+void Switch2CodeBlock::unprotect() {
+    ++batch_depth_;
+}
+
+void Switch2CodeBlock::protect() {
+    if (batch_depth_ > 0 && --batch_depth_ > 0) {
+        return;
+    }
+    if (!pending_.empty()) {
+        Switch2JitPool::PublishRanges(pending_.data(), pending_.size());
+        pending_.clear();
+    }
+}
+
 void Switch2CodeBlock::invalidate(u32* mem, std::size_t size) {
-    Switch2JitPool::Publish(reinterpret_cast<const u8*>(mem), size);
+    if (!mem || size == 0) {
+        return;
+    }
+    const Switch2JitRange range{reinterpret_cast<const u8*>(mem), size};
+    if (batch_depth_ > 0) {
+        pending_.push_back(range);
+    } else {
+        Switch2JitPool::PublishRanges(&range, 1);
+    }
 }
 
 void Switch2CodeBlock::invalidate_all() {

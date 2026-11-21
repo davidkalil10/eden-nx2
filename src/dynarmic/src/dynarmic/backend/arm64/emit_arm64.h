@@ -8,9 +8,11 @@
 
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "common/common_types.h"
@@ -101,11 +103,42 @@ struct BlockRelocation {
     BlockRelocationType type;
 };
 
+template <typename Key, typename Value>
+class SmallLinearMap {
+public:
+    using value_type = std::pair<Key, Value>;
+    using const_iterator = typename std::vector<value_type>::const_iterator;
+
+    Value& operator[](const Key& key) {
+        for (auto& entry : entries) {
+            if (entry.first == key) {
+                return entry.second;
+            }
+        }
+        return entries.emplace_back(key, Value{}).second;
+    }
+
+    const_iterator find(const Key& key) const {
+        return std::find_if(entries.begin(), entries.end(),
+                            [&key](const value_type& entry) { return entry.first == key; });
+    }
+
+    const_iterator begin() const { return entries.begin(); }
+    const_iterator end() const { return entries.end(); }
+
+private:
+    std::vector<value_type> entries;
+};
+
 struct EmittedBlockInfo {
     CodePtr entry_point;
     std::size_t size;
     std::vector<Relocation> relocations;
+#ifdef __SWITCH2__
+    SmallLinearMap<IR::LocationDescriptor, std::vector<BlockRelocation>> block_relocations;
+#else
     ::Common::unordered_map<IR::LocationDescriptor, std::vector<BlockRelocation>> block_relocations;
+#endif
     ::Common::unordered_map<std::ptrdiff_t, FastmemPatchInfo> fastmem_patch_info;
 };
 

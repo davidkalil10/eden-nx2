@@ -11,20 +11,29 @@
 #include <string>
 #ifdef __SWITCH2__
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <tuple>
 #include "core/frontend/emu_window.h"
 #include "core/frontend/graphics_context.h"
 #include "dynarmic/backend/arm64/switch2_code_block.h"
+#include "hid_core/frontend/emulated_controller.h"
+#include "hid_core/hid_core.h"
+#include "hid_core/hid_types.h"
+#include "input_common/drivers/touch_screen.h"
+#include "input_common/drivers/virtual_gamepad.h"
+#include "yuzu_cmd/switch2_launcher.h"
+#include "yuzu_cmd/switch2_runtime.h"
+
 extern "C" {
-void* Switch2GetNativeWindow(void);
-void Switch2GetWindowDimensions(std::uint32_t* w, std::uint32_t* h);
-void Switch2SleepMs(std::uint64_t ms);
-bool Switch2MainLoop(void);
+extern int g_switch2_address_space_mode;
+extern int g_switch2_jit_blocks_ahead;
 }
 
 static void Switch2BootTrace(const char* stage) {
@@ -214,6 +223,163 @@ public:
     }
 };
 
+void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg, std::size_t& active_pad_index,
+                              Core::HID::NpadIdType& active_npad_id) {
+    Settings::values.renderer_backend.SetValue(Settings::RendererBackend::Vulkan);
+    Settings::values.cpu_backend.SetValue(Settings::CpuBackend::Dynarmic);
+    Settings::values.cpuopt_fastmem.SetValue(false);
+    Settings::values.use_disk_shader_cache.SetValue(cfg.shader_cache);
+
+    g_switch2_address_space_mode = cfg.address_space_mode;
+    g_switch2_jit_blocks_ahead = cfg.jit_blocks_ahead;
+    Switch2SetCpuBoost(cfg.cpu_boost);
+
+    // Resolution scale
+    Settings::ResolutionSetup res_setup = Settings::ResolutionSetup::Res1X;
+    if (cfg.resolution_scale <= 0.6f) res_setup = Settings::ResolutionSetup::Res1_2X;
+    else if (cfg.resolution_scale <= 0.85f) res_setup = Settings::ResolutionSetup::Res3_4X;
+    else if (cfg.resolution_scale >= 1.8f) res_setup = Settings::ResolutionSetup::Res2X;
+    else if (cfg.resolution_scale >= 1.3f) res_setup = Settings::ResolutionSetup::Res3_2X;
+    Settings::values.resolution_setup.SetValue(res_setup);
+
+    // GPU accuracy
+    if (cfg.gpu_fast) {
+        Settings::values.gpu_accuracy.SetValue(Settings::GpuAccuracy::Low);
+        Settings::values.use_reactive_flushing.SetValue(false);
+    } else {
+        Settings::values.gpu_accuracy.SetValue(Settings::GpuAccuracy::High);
+        Settings::values.use_reactive_flushing.SetValue(true);
+    }
+
+    // Language & Region
+    static constexpr std::array<std::tuple<std::string_view, Settings::Language, Settings::Region>, 8> kLangs{{
+        {"pt-BR", Settings::Language::PortugueseBrazilian, Settings::Region::Usa},
+        {"en-US", Settings::Language::EnglishAmerican, Settings::Region::Usa},
+        {"es-419", Settings::Language::SpanishLatin, Settings::Region::Usa},
+        {"es-ES", Settings::Language::Spanish, Settings::Region::Europe},
+        {"fr", Settings::Language::French, Settings::Region::Europe},
+        {"de", Settings::Language::German, Settings::Region::Europe},
+        {"it", Settings::Language::Italian, Settings::Region::Europe},
+        {"ja", Settings::Language::Japanese, Settings::Region::Japan},
+    }};
+    for (const auto& [code, lang, reg] : kLangs) {
+        if (cfg.language == code) {
+            Settings::values.language_index.SetValue(lang);
+            Settings::values.region_index.SetValue(reg);
+            break;
+        }
+    }
+
+    // Disconnect all emulated controllers first so profiles apply cleanly
+    auto& players = Settings::values.players.GetValue();
+    for (auto& p : players) {
+        p.connected = false;
+    }
+
+    if (cfg.controller_profile == Switch2ControllerProfile::Handheld) {
+        Settings::values.use_docked_mode.SetValue(Settings::ConsoleMode::Handheld);
+        players[8].connected = true;
+        players[8].controller_type = Settings::ControllerType::Handheld;
+        active_pad_index = 8;
+        active_npad_id = Core::HID::NpadIdType::Handheld;
+    } else {
+        Settings::values.use_docked_mode.SetValue(cfg.docked_mode ? Settings::ConsoleMode::Docked
+                                                                  : Settings::ConsoleMode::Handheld);
+        Settings::ControllerType ctrl_type = Settings::ControllerType::ProController;
+        switch (cfg.controller_profile) {
+        case Switch2ControllerProfile::DualJoycon:
+            ctrl_type = Settings::ControllerType::DualJoyconDetached;
+            break;
+        case Switch2ControllerProfile::RightJoycon:
+            ctrl_type = Settings::ControllerType::RightJoycon;
+            break;
+        case Switch2ControllerProfile::LeftJoycon:
+            ctrl_type = Settings::ControllerType::LeftJoycon;
+            break;
+        default:
+            ctrl_type = Settings::ControllerType::ProController;
+            break;
+        }
+        players[0].connected = true;
+        players[0].controller_type = ctrl_type;
+        active_pad_index = 0;
+        active_npad_id = Core::HID::NpadIdType::Player1;
+    }
+
+    Settings::UpdateRescalingInfo();
+}
+
+void ForwardSwitch2Input(InputCommon::InputSubsystem& input_subsystem,
+                         const Switch2PadSnapshot& pad, Switch2PadSnapshot& prev,
+                         std::size_t pad_index, Switch2ControllerProfile profile,
+                         bool& prev_touch) {
+    auto* gamepad = input_subsystem.GetVirtualGamepad();
+    if (gamepad != nullptr) {
+        const std::uint32_t changed = pad.buttons ^ prev.buttons;
+        for (int button = 0; button < 16; ++button) {
+            if (changed & (1u << button)) {
+                gamepad->SetButtonState(pad_index, button, (pad.buttons & (1u << button)) != 0);
+            }
+        }
+
+        // SL/SR mapping (physical SL/SR bits 16/17, plus L/ZL as SL and R/ZR as SR for single Joy-Con comfort)
+        const bool single_jc = (profile == Switch2ControllerProfile::RightJoycon ||
+                                profile == Switch2ControllerProfile::LeftJoycon);
+        const auto calc_sl = [&](std::uint32_t btns) {
+            return (btns & (1u << 16)) != 0 || (single_jc && (btns & (1u << 8)) != 0);
+        };
+        const auto calc_sr = [&](std::uint32_t btns) {
+            return (btns & (1u << 17)) != 0 || (single_jc && (btns & (1u << 9)) != 0);
+        };
+        const bool sl_now = calc_sl(pad.buttons);
+        const bool sl_prev = calc_sl(prev.buttons);
+        if (sl_now != sl_prev) {
+            gamepad->SetButtonState(pad_index, 16, sl_now); // SLLeft
+            gamepad->SetButtonState(pad_index, 20, sl_now); // SLRight
+        }
+        const bool sr_now = calc_sr(pad.buttons);
+        const bool sr_prev = calc_sr(prev.buttons);
+        if (sr_now != sr_prev) {
+            gamepad->SetButtonState(pad_index, 17, sr_now); // SRLeft
+            gamepad->SetButtonState(pad_index, 21, sr_now); // SRRight
+        }
+
+        // Sticks (for RightJoycon single mode, mirror left stick to right stick if right stick is idle)
+        float rx = pad.right_x;
+        float ry = pad.right_y;
+        if (profile == Switch2ControllerProfile::RightJoycon &&
+            std::fabs(rx) < 0.12f && std::fabs(ry) < 0.12f) {
+            rx = pad.left_x;
+            ry = pad.left_y;
+        }
+        gamepad->SetStickPosition(pad_index, InputCommon::VirtualGamepad::VirtualStick::Left,
+                                  pad.left_x, pad.left_y);
+        gamepad->SetStickPosition(pad_index, InputCommon::VirtualGamepad::VirtualStick::Right, rx,
+                                  ry);
+
+        if (pad.has_motion) {
+            gamepad->SetMotionState(pad_index, pad.motion_delta_us, pad.gyro[0], pad.gyro[1],
+                                    pad.gyro[2], pad.accel[0], pad.accel[1], pad.accel[2]);
+        }
+    }
+
+    if (auto* touch = input_subsystem.GetTouchScreen()) {
+        if (pad.has_touch) {
+            if (!prev_touch) {
+                touch->TouchPressed(pad.touch_x, pad.touch_y, 0);
+            } else {
+                touch->TouchMoved(pad.touch_x, pad.touch_y, 0);
+            }
+            prev_touch = true;
+        } else if (prev_touch) {
+            touch->ReleaseAllTouch();
+            prev_touch = false;
+        }
+    }
+
+    prev = pad;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -257,51 +423,34 @@ int main(int argc, char** argv) {
     Common::Log::Start();
     Switch2BootTrace("01: Log started");
 
-    std::error_code ec;
-    std::filesystem::create_directories("sdmc:/switch/eden-nx2/roms", ec);
+    Switch2InitInput();
 
-    Settings::values.renderer_backend.SetValue(Settings::RendererBackend::Vulkan);
-    Settings::values.cpu_backend.SetValue(Settings::CpuBackend::Dynarmic);
-    Settings::values.cpuopt_fastmem.SetValue(false);
-    auto& player1 = Settings::values.players.GetValue()[0];
-    player1.connected = true;
-    player1.controller_type = Settings::ControllerType::ProController;
-
-    std::string rom_path;
-    if (std::filesystem::exists("sdmc:/switch/eden-nx2/roms", ec)) {
-        for (const auto& entry : std::filesystem::directory_iterator("sdmc:/switch/eden-nx2/roms", ec)) {
-            if (!entry.is_regular_file(ec)) {
-                continue;
-            }
-            std::string ext = entry.path().extension().string();
-            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
-                return static_cast<char>(std::tolower(c));
-            });
-            if (ext == ".nsp" || ext == ".xci" || ext == ".nro") {
-                rom_path = entry.path().string();
-                break;
-            }
-        }
-    }
-
-    if (rom_path.empty()) {
-        Switch2BootTrace("02: No ROM found in sdmc:/switch/eden-nx2/roms");
+    Switch2LaunchConfig launch_cfg{};
+    if (!Switch2RunLauncher(&launch_cfg) || launch_cfg.rom_path.empty()) {
+        Switch2BootTrace("02: Launcher exited without launching a ROM");
+        Common::Log::Stop();
+        Dynarmic::Backend::Arm64::Switch2JitPool::Shutdown();
         return 0;
     }
 
     {
-        std::string msg = "02: ROM=" + rom_path;
+        std::string msg = "02: ROM=" + launch_cfg.rom_path;
         Switch2BootTrace(msg.c_str());
     }
 
+    std::size_t active_pad_index = 0;
+    Core::HID::NpadIdType active_npad_id = Core::HID::NpadIdType::Player1;
+    ApplySwitch2LaunchConfig(launch_cfg, active_pad_index, active_npad_id);
+
     auto system = std::make_unique<Core::System>();
     auto input_subsystem = std::make_unique<InputCommon::InputSubsystem>();
-    input_subsystem->Initialize();
     auto emu_window = std::make_unique<EmuWindowSwitch2>();
     Switch2BootTrace("03: System/Window created");
 
     system->Initialize();
     system->ApplySettings();
+    input_subsystem->Initialize();
+    system->HIDCore().ReloadInputDevices();
     system->SetContentProvider(std::make_unique<FileSys::ContentProviderUnion>());
     system->SetFilesystem(std::make_shared<FileSys::RealVfsFilesystem>());
     system->GetFileSystemController().CreateFactories(*system->GetFilesystem());
@@ -312,7 +461,7 @@ int main(int argc, char** argv) {
         .applet_id = Service::AM::AppletId::Application,
     };
     const Core::SystemResultStatus load_result =
-        system->Load(*emu_window, rom_path, load_parameters);
+        system->Load(*emu_window, launch_cfg.rom_path, load_parameters);
     {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "05: system.Load result=%d", static_cast<int>(load_result));
@@ -333,21 +482,45 @@ int main(int argc, char** argv) {
         void(system->Run());
         Switch2BootTrace("06: system.Run() ok");
 
-        while (Switch2MainLoop()) {
-            Switch2SleepMs(16);
+        Switch2PadSnapshot pad{};
+        Switch2PadSnapshot prev_pad{};
+        bool prev_touch = false;
+        auto* active_ctrl = system->HIDCore().GetEmulatedController(active_npad_id);
+        Core::HID::VibrationValue last_l{Core::HID::DEFAULT_VIBRATION_VALUE};
+        Core::HID::VibrationValue last_r{Core::HID::DEFAULT_VIBRATION_VALUE};
+
+        while (Switch2PollInput(&pad, true)) {
+            ForwardSwitch2Input(*input_subsystem, pad, prev_pad, active_pad_index,
+                                launch_cfg.controller_profile, prev_touch);
+            if (active_ctrl != nullptr) {
+                auto vl = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Left);
+                auto vr = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Right);
+                if (!(vl == last_l) || !(vr == last_r)) {
+                    Switch2SetVibration(vl.low_amplitude, vl.low_frequency, vl.high_amplitude,
+                                        vl.high_frequency, vr.low_amplitude, vr.low_frequency,
+                                        vr.high_amplitude, vr.high_frequency);
+                    last_l = vl;
+                    last_r = vr;
+                }
+            }
+            Switch2SleepMs(4);
         }
     }
 
     Switch2BootTrace("99: shutdown");
+    Switch2SetCpuBoost(false);
+    Switch2SetVibration(0, 160.0f, 0, 320.0f, 0, 160.0f, 0, 320.0f);
     system->DetachDebugger();
     if (system->IsPoweredOn()) {
         system->Pause();
         system->ShutdownMainProcess();
     }
+    system->HIDCore().UnloadInputDevices();
     emu_window.reset();
+    system.reset();
     input_subsystem->Shutdown();
     input_subsystem.reset();
-    system.reset();
+    Common::Log::Stop();
     Dynarmic::Backend::Arm64::Switch2JitPool::Shutdown();
     return 0;
 }

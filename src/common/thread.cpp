@@ -447,6 +447,15 @@ void RememberCurrentThreadNice(pid_t tid, s32 nice_value) {
 #include "common/x64/rdtsc.h"
 #endif
 
+#ifdef __SWITCH2__
+#include <string_view>
+#include <utility>
+extern "C" {
+u32 svcGetInfo(u64* out, u32 id0, u32 handle, u64 id1);
+u32 svcSetThreadCoreMask(u32 handle, s32 preferred_core, u64 affinity_mask);
+}
+#endif
+
 namespace Common {
 
 void SetCurrentThreadPriority(ThreadPriority new_priority) {
@@ -531,11 +540,27 @@ void SetCurrentThreadName(const char* name) {
         buf[len] = '\0';
         pthread_setname_np(pthread_self(), buf);
     }
-#elif defined(_WIN32) || defined(__SWITCH2__)
-    // MinGW with the POSIX threading model and libounce do not support pthread_setname_np
+#elif defined(_WIN32)
+    // MinGW with the POSIX threading model does not support pthread_setname_np
     // See for reference
     // https://gitlab.freedesktop.org/mesa/mesa/-/blame/main/src/util/u_thread.c?ref_type=heads#L75
     (void)name;
+#elif defined(__SWITCH2__)
+    // Give busy emulator threads distinct preferred Cortex-A78C cores so they don't pile onto Core 0.
+    static constexpr std::pair<std::string_view, s32> preferred_cores[]{
+        {"CPUCore_0", 0}, {"CPUCore_1", 1}, {"CPUCore_2", 2}, {"CPUCore_3", 3},
+        {"GPU", 4},       {"VulkanWorker", 5},
+    };
+    for (const auto& [thread_name, core] : preferred_cores) {
+        if (thread_name == name) {
+            u64 allowed = 0;
+            if (svcGetInfo(&allowed, 0 /* CoreMask */, 0xFFFF8001 /* this process */, 0) == 0 &&
+                (allowed & (u64{1} << core)) != 0) {
+                svcSetThreadCoreMask(0xFFFF8000 /* this thread */, core, allowed);
+            }
+            break;
+        }
+    }
 #else
     pthread_setname_np(pthread_self(), name);
 #endif
