@@ -752,9 +752,13 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
             .flags = flags,
             .physicalDevice = physical,
             .device = *logical,
+#ifdef __SWITCH2__
+            .preferredLargeHeapBlockSize = 32u * 1024u * 1024u,
+#else
             .preferredLargeHeapBlockSize = is_integrated
                                            ? (64u * 1024u * 1024u)
                                            : (256u * 1024u * 1024u),
+#endif
             .pAllocationCallbacks = nullptr,
             .pDeviceMemoryCallbacks = nullptr,
             .pHeapSizeLimit = nullptr,
@@ -993,7 +997,17 @@ bool Device::HasTimelineSemaphore() const {
 }
 
 bool Device::MustEmulateBGR565() const {
-    return Settings::values.emulate_bgr565.GetValue();
+    if (Settings::values.emulate_bgr565.GetValue()) {
+        return true;
+    }
+#ifdef __SWITCH2__
+    static constexpr VkFormatFeatureFlags usage = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
+                                                  VK_FORMAT_FEATURE_TRANSFER_SRC_BIT |
+                                                  VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+    return !IsFormatSupported(VK_FORMAT_B5G6R5_UNORM_PACK16, usage, FormatType::Optimal);
+#else
+    return false;
+#endif
 }
 
 bool Device::GetSuitability(bool requires_swapchain) {
@@ -1658,6 +1672,9 @@ void Device::CollectPhysicalMemoryInfo() {
             device_access_memory = std::min<u64>(device_access_memory, normal_memory + scaler_memory);
         }
     }
+#ifdef __SWITCH2__
+    device_access_memory = std::min<u64>(device_access_memory, 2_GiB);
+#endif
 }
 
 void Device::CollectToolingInfo() {

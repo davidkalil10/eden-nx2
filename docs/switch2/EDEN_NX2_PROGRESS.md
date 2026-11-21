@@ -18,7 +18,7 @@
 | **Port Maintainer** | **David Kalil Braga (`@davidkalil10`)** — Ko-fi: `https://ko-fi.com/davidkalil10` |
 | **Target Platform** | Nintendo Switch 2 (`aarch64-none-elf`, `-mcpu=cortex-a78c+crypto`, `OUN0` NRO, `ounce-devkit` `20261115b`) |
 | **Graphics / JIT Stack** | **OunceVK** (static Vulkan 1.4 + `VK_NN_vi_surface`) + **kaiHEN** (`jitCreate` / `kaihenJitPublishRanges`) |
-| **Current Phase** | **Phase 4 In Progress (`yuzu-cmd` + `eden-switch2.nro` Packaging & Link)** |
+| **Current Phase** | **Phase 5 In Progress (Real Switch 2 Hardware Bring-Up & Memory/OunceVK Tuning)** |
 
 ---
 
@@ -122,4 +122,5 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 | **2026-11-20** | **Phase 1 `src/common/` Complete!** | `32f6f4e4` ([Run #44736441818](https://github.com/davidkalil10/eden-nx2/actions/runs/44736441818)) | **`libcommon.a` compiled 100% green** for Switch 2 (`file.cpp` `fopen`, `signal_chain` skipped, `thread.cpp` priority/name guarded). Advancing CI target to `dynarmic shader_recompiler core`. |
 | **2026-11-20** | **Phase 2 `kaiHEN` JIT Wired in `Dynarmic`** | `f33bf253` | Disabled `boost_process` (`debugger.cpp` stubbed on `__SWITCH2__`), implemented `Switch2CodeBlock` + `Switch2JitPool` (96 MiB shared `kaiHEN` pool + `kaihenJitPublishRanges`) replacing `oaknut::CodeBlock` (`sys/mman.h`) across `AddressSpace` / `A64AddressSpace` / `A32AddressSpace` / `spin_lock_arm64.cpp`. |
 | **2026-11-20** | **`core` / `audio_core` / `hid_core` / `network` Passed! Phase 3 `OunceVK` Wired** | `d4ef421a` ([Run #44759350095](https://github.com/davidkalil10/eden-nx2/actions/runs/44759350095)) | All core emulator libraries (`common`, `dynarmic`, `shader_recompiler`, `video_core`, `audio_core`, `hid_core`, `network`, `core`) compiled **100% green** in ~33m! |
-| **2026-11-20** | **Phase 4 `yuzu-cmd` & `eden-switch2.nro` Packaging Wired** | pending push | Updated `emu_window_sdl3_vk.cpp`, `yuzu.cpp`, `src/yuzu_cmd/CMakeLists.txt`, `scripts/build-switch2.sh`, and `build-switch2.yml` to build `yuzu-cmd`, package `dist/eden-switch2.nro` (`OUN0`), verify it, and upload as CI artifact. |
+| **2026-11-21** | **First `eden-switch2.nro` Built & Verified Green!** | `2fb0d19f` ([Run #44899545405](https://github.com/davidkalil10/eden-nx2/actions/runs/44899545405)) | Full `yuzu-cmd` -> `eden-cli.elf` -> `dist/eden-switch2.nro` (`OUN0` + `kaiHEN`) built & verified green with `ccache` + SDL3 dummy video! |
+| **2026-11-21** | **Phase 5: Boot Trace + Demand-Paged `MultiLevelPageTable` + 38-bit AS + OunceVK Fixes** | pending push | First hardware test created `.local/share/eden` then crashed before boot; fixed `MultiLevelPageTable` (was eagerly `memalign`ing 1 GiB up front!), compacted 39-bit process AS to 38-bit in `KPageTableBase` (saves ~512 MiB), capped `OunceVK` VMA blocks (32 MiB) & VRAM budget (2 GiB), added `VK_FORMAT_R8G8B8A8` swapchain view support, and added `boot_trace.txt` breadcrumbs. |

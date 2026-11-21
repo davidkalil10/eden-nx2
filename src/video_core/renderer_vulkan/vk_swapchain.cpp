@@ -316,8 +316,8 @@ void Swapchain::CreateSwapchain(const VkSurfaceCapabilitiesKHR& capabilities) {
         swapchain_ci.imageFormat,  // Base format MUST be first
         VK_FORMAT_B8G8R8A8_UNORM,
         VK_FORMAT_B8G8R8A8_SRGB,
-#ifdef __ANDROID__
-        VK_FORMAT_R8G8B8A8_UNORM,  // Android may use RGBA
+#if defined(__ANDROID__) || defined(__SWITCH2__)
+        VK_FORMAT_R8G8B8A8_UNORM,  // Android and Switch 2 VI may use RGBA
         VK_FORMAT_R8G8B8A8_SRGB,
 #endif
     };
@@ -344,6 +344,10 @@ void Swapchain::CreateSwapchain(const VkSurfaceCapabilitiesKHR& capabilities) {
 #ifdef __ANDROID__
     // Android is already ordered the same as Switch.
     image_view_format = VK_FORMAT_R8G8B8A8_UNORM;
+#elif defined(__SWITCH2__)
+    const bool is_rgba = surface_format.format == VK_FORMAT_R8G8B8A8_UNORM ||
+                         surface_format.format == VK_FORMAT_R8G8B8A8_SRGB;
+    image_view_format = is_rgba ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_B8G8R8A8_UNORM;
 #else
     image_view_format = VK_FORMAT_B8G8R8A8_UNORM;
 #endif

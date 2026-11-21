@@ -30,13 +30,12 @@ MultiLevelPageTable<BaseAddr>::MultiLevelPageTable(std::size_t address_space_bit
     alloc_size = (1ULL << (address_space_bits - page_bits)) * sizeof(BaseAddr);
     std::size_t first_level_size = 1ULL << first_level_bits;
     first_level_map.resize(first_level_size, nullptr);
-#ifdef _WIN32
+#ifdef __SWITCH2__
+    level_index_mask = (1ULL << (first_level_shift - page_bits)) - 1;
+    base_ptr = nullptr;
+    return;
+#elif defined(_WIN32)
     void* base{VirtualAlloc(nullptr, alloc_size, MEM_RESERVE, PAGE_READWRITE)};
-#elif defined(__SWITCH2__)
-    void* base{memalign(0x1000, alloc_size)};
-    if (base) {
-        std::memset(base, 0, alloc_size);
-    }
 #else
     void* base{mmap(nullptr, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)};
     if (base == MAP_FAILED)
@@ -48,14 +47,18 @@ MultiLevelPageTable<BaseAddr>::MultiLevelPageTable(std::size_t address_space_bit
 
 template <typename BaseAddr>
 MultiLevelPageTable<BaseAddr>::~MultiLevelPageTable() noexcept {
+#ifdef __SWITCH2__
+    for (void* level : first_level_map) {
+        std::free(level);
+    }
+    return;
+#endif
     if (!base_ptr) {
         return;
     }
 #ifdef _WIN32
     ASSERT(VirtualFree(base_ptr, 0, MEM_RELEASE));
-#elif defined(__SWITCH2__)
-    free(base_ptr);
-#else
+#elif !defined(__SWITCH2__)
     ASSERT(munmap(base_ptr, alloc_size) == 0);
 #endif
 }
@@ -71,12 +74,15 @@ void MultiLevelPageTable<BaseAddr>::ReserveRange(u64 start, std::size_t size) {
 
 template <typename BaseAddr>
 void MultiLevelPageTable<BaseAddr>::AllocateLevel(u64 index) {
+#ifdef __SWITCH2__
+    void* base = std::calloc(1, first_level_chunk_size);
+    ASSERT(base);
+#elif defined(_WIN32)
     void* ptr = reinterpret_cast<char *>(base_ptr) + index * first_level_chunk_size;
-#ifdef _WIN32
     void* base = VirtualAlloc(ptr, first_level_chunk_size, MEM_COMMIT, PAGE_READWRITE);
     ASSERT(base);
 #else
-    void* base = ptr;
+    void* base = reinterpret_cast<char *>(base_ptr) + index * first_level_chunk_size;
 #endif
     first_level_map[index] = base;
 }

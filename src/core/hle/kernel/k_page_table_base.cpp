@@ -200,7 +200,14 @@ Result KPageTableBase::InitializeForKernel(bool is_64_bit, KVirtualAddress start
 
 Result KPageTableBase::InitializeForProcess(Svc::CreateProcessFlag as_type, bool enable_aslr, bool enable_das_merge, bool from_back, KMemoryManager::Pool pool, KProcessAddress code_address, size_t code_size, KSystemResource* system_resource, KResourceLimit* resource_limit, Core::Memory::Memory& memory, KProcessAddress aslr_space_start) {
     // Calculate region extents.
-    const size_t as_width = GetAddressSpaceWidth(as_type);
+    size_t as_width = GetAddressSpaceWidth(as_type);
+#ifdef __SWITCH2__
+    // Compact 39-bit address space to 38 bits to halve the flat page table (saves ~512 MiB).
+    const bool narrowed = as_width == 39;
+    if (narrowed) {
+        as_width = 38;
+    }
+#endif
     const KProcessAddress start = 0;
     const KProcessAddress end = (1ULL << as_width);
 
@@ -242,6 +249,11 @@ Result KPageTableBase::InitializeForProcess(Svc::CreateProcessFlag as_type, bool
         m_code_region_start = m_address_space_start + aslr_space_start +
                               GetSpaceStart(KAddressSpaceInfo::Type::Map39Bit);
         m_code_region_end = m_code_region_start + GetSpaceSize(KAddressSpaceInfo::Type::Map39Bit);
+#ifdef __SWITCH2__
+        if (narrowed) {
+            m_code_region_end = std::min(m_code_region_end, end);
+        }
+#endif
         m_alias_code_region_start = m_code_region_start;
         m_alias_code_region_end = m_code_region_end;
         process_code_start = Common::AlignDown(GetInteger(code_address), RegionAlignment);
@@ -432,7 +444,11 @@ Result KPageTableBase::InitializeForProcess(Svc::CreateProcessFlag as_type, bool
     ASSERT(heap_last < kmap_start || kmap_last < heap_start);
 
     // Initialize our implementation.
+#ifdef __SWITCH2__
+    m_impl.Resize(as_width, PageBits);
+#else
     m_impl.Resize(m_address_space_width, PageBits);
+#endif
 
     // Set the tracking memory.
     m_memory = std::addressof(memory);
