@@ -12,9 +12,20 @@
 #ifdef __SWITCH2__
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <filesystem>
 #include "dynarmic/backend/arm64/switch2_code_block.h"
 extern "C" bool appletMainLoop(void);
+
+static void Switch2BootTrace(const char* stage) {
+    std::error_code ec;
+    std::filesystem::create_directories("sdmc:/switch/eden-nx2", ec);
+    if (FILE* f = std::fopen("sdmc:/switch/eden-nx2/boot_trace.txt", "a")) {
+        std::fprintf(f, "%s\n", stage);
+        std::fflush(f);
+        std::fclose(f);
+    }
+}
 #endif
 #include "common/settings_enums.h"
 #include "core/launch_params.h"
@@ -168,11 +179,23 @@ struct SdlState {
     Core::System system{};
     InputCommon::InputSubsystem input_subsystem{};
     std::unique_ptr<EmuWindow_SDL3> emu_window;
+    bool system_initialized = false;
 };
 
 extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
+#ifdef __SWITCH2__
+    if (FILE* f = std::fopen("sdmc:/switch/eden-nx2/boot_trace.txt", "w")) {
+        std::fprintf(f, "00: SDL_AppInit enter (argc=%d)\n", argc);
+        std::fclose(f);
+    } else {
+        Switch2BootTrace("00: SDL_AppInit enter");
+    }
+#endif
     SdlState* state = new SdlState();
     *appstate = state;
+#ifdef __SWITCH2__
+    Switch2BootTrace("01: SdlState allocated");
+#endif
 
 #ifdef _WIN32
     if (AttachConsole(ATTACH_PARENT_PROCESS)) {
@@ -184,6 +207,9 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     Common::Log::Initialize();
     Common::Log::SetColorConsoleBackendEnabled(true);
     Common::Log::Start();
+#ifdef __SWITCH2__
+    Switch2BootTrace("02: Log started");
+#endif
 
     int option_index = 0;
 #ifdef _WIN32
@@ -200,9 +226,18 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 #ifdef _WIN32
     LocalFree(argv_w);
 #endif
+#ifdef __SWITCH2__
+    Switch2BootTrace("03: ParseLaunchParams ok");
+#endif
     SdlConfig config{lp.config_path};
+#ifdef __SWITCH2__
+    Switch2BootTrace("04: SdlConfig ok");
+#endif
 
     Core::ApplyLaunchParams(lp);
+#ifdef __SWITCH2__
+    Switch2BootTrace("05: ApplyLaunchParams ok");
+#endif
 
 #ifdef __SWITCH2__
     {
@@ -232,10 +267,22 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 
     if (lp.filepath.empty()) {
         LOG_CRITICAL(Frontend, "Failed to load ROM: No ROM specified (place a .nsp/.xci in sdmc:/switch/eden-nx2/roms)");
+#ifdef __SWITCH2__
+        Switch2BootTrace("06: No ROM found in sdmc:/switch/eden-nx2/roms - exiting cleanly");
+        return SDL_APP_SUCCESS;
+#else
         return SDL_APP_FAILURE;
+#endif
     }
 
+#ifdef __SWITCH2__
+    Switch2BootTrace("06: ROM selected, calling system.Initialize()");
+#endif
     state->system.Initialize();
+    state->system_initialized = true;
+#ifdef __SWITCH2__
+    Switch2BootTrace("07: system.Initialize() ok");
+#endif
 
     // Apply the command line arguments
     state->system.ApplySettings();
@@ -258,6 +305,9 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         LOG_CRITICAL(Frontend, "Invalid renderer backend");
         return SDL_APP_FAILURE;
     }
+#ifdef __SWITCH2__
+    Switch2BootTrace("08: EmuWindow_SDL3_VK ok");
+#endif
 
 #ifdef _WIN32
     Common::Windows::SetCurrentTimerResolutionToMaximum();
@@ -373,10 +423,15 @@ extern "C" void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     if (state == nullptr) {
         return;
     }
-    state->system.DetachDebugger();
-    if (state->system.IsPoweredOn()) {
-        state->system.Pause();
-        state->system.ShutdownMainProcess();
+#ifdef __SWITCH2__
+    Switch2BootTrace("99: SDL_AppQuit");
+#endif
+    if (state->system_initialized) {
+        state->system.DetachDebugger();
+        if (state->system.IsPoweredOn()) {
+            state->system.Pause();
+            state->system.ShutdownMainProcess();
+        }
     }
     delete state;
 #ifdef __SWITCH2__
