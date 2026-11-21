@@ -46,6 +46,7 @@ if (ENABLE_OPENGL)
 endif()
 target_link_libraries(yuzu-cmd PRIVATE ${PLATFORM_LIBRARIES} Threads::Threads)
 if (NINTENDO_SWITCH2)
+    target_sources(yuzu-cmd PRIVATE switch2_runtime.cpp)
     target_link_libraries(yuzu-cmd PRIVATE dynarmic::dynarmic)
 endif()
 

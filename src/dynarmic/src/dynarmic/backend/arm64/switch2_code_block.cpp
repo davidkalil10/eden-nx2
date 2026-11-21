@@ -22,7 +22,7 @@ namespace Dynarmic::Backend::Arm64 {
 
 namespace Switch2JitPool {
 namespace {
-constexpr std::size_t kPoolSize = 96u * 1024u * 1024u;
+constexpr std::size_t kPoolSize = 144u * 1024u * 1024u;
 constexpr std::size_t kPageSize = 0x1000u;
 
 struct Slice {

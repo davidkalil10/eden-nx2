@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include "dynarmic/backend/arm64/switch2_code_block.h"
 extern "C" bool appletMainLoop(void);
@@ -184,8 +186,29 @@ struct SdlState {
 
 extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 #ifdef __SWITCH2__
+    std::set_terminate([]() {
+        std::error_code ec;
+        std::filesystem::create_directories("sdmc:/switch/eden-nx2", ec);
+        if (FILE* f = std::fopen("sdmc:/switch/eden-nx2/crash.txt", "a")) {
+            if (auto ex = std::current_exception()) {
+                try {
+                    std::rethrow_exception(ex);
+                } catch (const std::exception& e) {
+                    std::fprintf(f, "std::terminate: %s\n", e.what());
+                } catch (...) {
+                    std::fprintf(f, "std::terminate: unknown exception\n");
+                }
+            } else {
+                std::fprintf(f, "std::terminate: no active exception\n");
+            }
+            std::fflush(f);
+            std::fclose(f);
+        }
+        std::abort();
+    });
     if (FILE* f = std::fopen("sdmc:/switch/eden-nx2/boot_trace.txt", "w")) {
         std::fprintf(f, "00: SDL_AppInit enter (argc=%d)\n", argc);
+        std::fflush(f);
         std::fclose(f);
     } else {
         Switch2BootTrace("00: SDL_AppInit enter");
@@ -244,6 +267,13 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         std::error_code ec;
         std::filesystem::create_directories("sdmc:/switch/eden-nx2/roms", ec);
         Settings::values.renderer_backend.SetValue(Settings::RendererBackend::Vulkan);
+        Settings::values.cpu_backend.SetValue(Settings::CpuBackend::Dynarmic);
+        // No SIGSEGV/fastmem handler on Switch 2: must use software page tables.
+        Settings::values.cpuopt_fastmem.SetValue(false);
+        Settings::values.log_flush_line.SetValue(true);
+        auto& player1 = Settings::values.players.GetValue()[0];
+        player1.connected = true;
+        player1.controller_type = Settings::ControllerType::ProController;
         lp.fullscreen = true;
         if (lp.filepath.empty() && std::filesystem::exists("sdmc:/switch/eden-nx2/roms", ec)) {
             for (const auto& entry : std::filesystem::directory_iterator("sdmc:/switch/eden-nx2/roms", ec)) {
@@ -348,6 +378,9 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
             loader_id, error_id, Loader::GetResultStatusString(Loader::ResultStatus(error_id)));
         return SDL_APP_FAILURE;
     }
+#ifdef __SWITCH2__
+    Switch2BootTrace("09: system.Load() ok");
+#endif
 
     if (lp.use_multiplayer) {
         if (auto member = Network::GetRoomMember().lock()) {
@@ -366,6 +399,9 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     // Core is loaded, start the GPU (makes the GPU contexts current to this thread)
     state->system.GPU().Start();
     state->system.GetCpuManager().OnGpuReady();
+#ifdef __SWITCH2__
+    Switch2BootTrace("10: GPU.Start() ok");
+#endif
 
     if (Settings::values.use_disk_shader_cache.GetValue()) {
         state->system.Renderer().ReadRasterizer()->LoadDiskResources(
@@ -400,6 +436,9 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     });
 
     void(state->system.Run());
+#ifdef __SWITCH2__
+    Switch2BootTrace("11: system.Run() ok");
+#endif
     if (state->system.DebuggerEnabled())
         state->system.InitializeDebugger();
     return SDL_APP_CONTINUE;
