@@ -13,10 +13,8 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
-#define u128 libnx_u128
-#include <switch.h>
-#undef u128
 #include "dynarmic/backend/arm64/switch2_code_block.h"
+extern "C" bool appletMainLoop(void);
 #endif
 #include "common/settings_enums.h"
 #include "core/launch_params.h"
