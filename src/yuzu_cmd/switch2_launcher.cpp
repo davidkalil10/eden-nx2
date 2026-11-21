@@ -19,6 +19,8 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "common/stb.h"
@@ -342,8 +344,26 @@ std::string ToLowerExt(const std::filesystem::path& p) {
     return ext;
 }
 
+bool IsAddonExt(std::string_view ext) {
+    return ext == ".nsp" || ext == ".nsz" || ext == ".xci" || ext == ".xcz";
+}
+
 bool IsSupportedRomExt(std::string_view ext) {
-    return ext == ".nsp" || ext == ".xci" || ext == ".nro" || ext == ".nca";
+    return IsAddonExt(ext) || ext == ".nro" || ext == ".nca";
+}
+
+template <typename Fn>
+void SafeForEachDirEntry(const std::string& dir, Fn&& fn) {
+    try {
+        std::error_code ec;
+        if (dir.empty() || !std::filesystem::is_directory(dir, ec) || ec) return;
+        std::filesystem::directory_iterator it(dir, ec);
+        const std::filesystem::directory_iterator end;
+        for (; !ec && it != end; it.increment(ec)) {
+            fn(*it, ec);
+        }
+    } catch (...) {
+    }
 }
 
 std::string SanitizeGameId(std::string_view path) {
@@ -371,36 +391,23 @@ std::string GameConfigPath(std::string_view rom_path) {
 constexpr const char* kGlobalSettingsPath = "sdmc:/switch/eden-nx2/settings.ini";
 constexpr const char* kLastFolderPath = "sdmc:/switch/eden-nx2/last_folder.txt";
 constexpr const char* kDefaultRomsDir = "sdmc:/switch/eden-nx2/roms";
-constexpr const char* kDefaultUpdatesDir = "sdmc:/switch/eden-nx2/updates";
-constexpr const char* kDefaultDlcDir = "sdmc:/switch/eden-nx2/dlc";
+constexpr const char* kDefaultUpdatesDir = "sdmc:/switch/eden-nx2/updates/";
+constexpr const char* kDefaultDlcDir = "sdmc:/switch/eden-nx2/dlc/";
 
-bool EnsureLosslessInstalled() {
+enum class LsfgBadge { Ready, Missing, Invalid };
+
+LsfgBadge EnsureLosslessInstalled() {
 #ifdef HAS_LSFG
     using namespace VideoCore::FrameGen;
-    if (GetInstalledLosslessStatus() == LosslessStatus::Ok) {
-        return true;
+    const auto st = GetInstalledLosslessStatus();
+    if (st == LosslessStatus::Ok) {
+        (void)BuildShaderCache();
+        return (GetInstalledLosslessStatus() == LosslessStatus::Ok) ? LsfgBadge::Ready
+                                                                    : LsfgBadge::Invalid;
     }
-    static constexpr const char* kDllSources[] = {
-        "sdmc:/switch/eden-nx2/Lossless.dll",
-        "sdmc:/switch/eden-nx2/lossless.dll",
-        "sdmc:/Lossless.dll",
-        "sdmc:/lossless.dll",
-    };
-    std::error_code ec;
-    const auto dst = GetLosslessDllPath();
-    for (const char* src : kDllSources) {
-        if (std::filesystem::exists(src, ec) && std::filesystem::is_regular_file(src, ec)) {
-            std::filesystem::create_directories(dst.parent_path(), ec);
-            if (std::filesystem::copy_file(
-                    src, dst, std::filesystem::copy_options::overwrite_existing, ec)) {
-                (void)BuildShaderCache();
-                return GetInstalledLosslessStatus() == LosslessStatus::Ok;
-            }
-        }
-    }
-    return false;
+    return (st == LosslessStatus::NotInstalled) ? LsfgBadge::Missing : LsfgBadge::Invalid;
 #else
-    return false;
+    return LsfgBadge::Missing;
 #endif
 }
 
@@ -460,16 +467,13 @@ void TryLoadNroMetadata(GameEntry& entry) {
 
 std::vector<GameEntry> ScanDirectory(const std::string& folder) {
     std::vector<GameEntry> list;
-    std::error_code ec;
-    if (!std::filesystem::exists(folder, ec)) {
-        return list;
-    }
-    for (const auto& dir_entry : std::filesystem::directory_iterator(folder, ec)) {
+    SafeForEachDirEntry(folder, [&](const std::filesystem::directory_entry& dir_entry,
+                                    std::error_code& ec) {
         const std::string fname = dir_entry.path().filename().string();
-        if (fname.empty() || fname[0] == '.') continue;
+        if (fname.empty() || fname[0] == '.') return;
         const bool is_dir = dir_entry.is_directory(ec);
         const std::string ext = is_dir ? "" : ToLowerExt(dir_entry.path());
-        if (!is_dir && !IsSupportedRomExt(ext)) continue;
+        if (!is_dir && !IsSupportedRomExt(ext)) return;
         GameEntry item;
         item.name = fname;
         item.display_title = is_dir ? fname : dir_entry.path().stem().string();
@@ -481,7 +485,7 @@ std::vector<GameEntry> ScanDirectory(const std::string& folder) {
             TryLoadNroMetadata(item);
         }
         list.push_back(std::move(item));
-    }
+    });
     std::sort(list.begin(), list.end(), [](const GameEntry& a, const GameEntry& b) {
         if (a.is_dir != b.is_dir) return a.is_dir;
         return a.display_title < b.display_title;
@@ -685,102 +689,140 @@ void SaveGlobalIni(const std::vector<SettingOption>& opts) {
     }
 }
 
-bool IsAddonContainerExt(const std::filesystem::path& p) {
-    const std::string ext = ToLowerExt(p);
-    return ext == ".nsp" || ext == ".xci";
-}
+struct AddonLists {
+    std::vector<std::pair<std::string, std::string>> updates;           // {label, full_path}
+    std::vector<std::tuple<std::string, std::string, bool>> dlcs;       // {label, full_path, is_dir}
+};
 
-void AppendAddonFilesFromDir(const std::string& dir, const std::string& label_prefix,
-                             const std::string& skip_path, bool recurse_subdirs,
-                             SettingOption& opt) {
-    std::error_code ec;
-    if (dir.empty() || !std::filesystem::is_directory(dir, ec)) return;
-    std::vector<std::pair<std::string, std::string>> found;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-        const std::string fname = entry.path().filename().string();
-        if (fname.empty() || fname[0] == '.') continue;
-        const std::string full = entry.path().generic_string();
-        if (entry.is_directory(ec)) {
-            if (recurse_subdirs) {
-                AppendAddonFilesFromDir(full, label_prefix + fname + "/", skip_path, false, opt);
-            }
-            continue;
-        }
-        if (!entry.is_regular_file(ec) || full == skip_path || !IsAddonContainerExt(entry.path())) {
-            continue;
-        }
-        found.emplace_back(label_prefix + fname, full);
-    }
-    std::sort(found.begin(), found.end(),
+AddonLists ScanAddonListsOnce() {
+    AddonLists cache;
+    SafeForEachDirEntry(kDefaultUpdatesDir,
+                        [&](const std::filesystem::directory_entry& e, std::error_code& ec) {
+                            const std::string fname = e.path().filename().string();
+                            if (fname.empty() || fname[0] == '.') return;
+                            const std::string full = e.path().generic_string();
+                            if (e.is_directory(ec)) {
+                                SafeForEachDirEntry(
+                                    full + "/",
+                                    [&](const std::filesystem::directory_entry& sub, std::error_code& sec) {
+                                        const std::string sname = sub.path().filename().string();
+                                        if (sname.empty() || sname[0] == '.' || sub.is_directory(sec)) return;
+                                        if (IsAddonExt(ToLowerExt(sub.path()))) {
+                                            cache.updates.emplace_back(
+                                                "updates/" + fname + "/" + sname,
+                                                sub.path().generic_string());
+                                        }
+                                    });
+                                return;
+                            }
+                            if (IsAddonExt(ToLowerExt(e.path()))) {
+                                cache.updates.emplace_back("updates/" + fname, full);
+                            }
+                        });
+    std::sort(cache.updates.begin(), cache.updates.end(),
               [](const auto& a, const auto& b) { return a.first < b.first; });
-    for (const auto& [label, full] : found) {
-        if (std::find(opt.values.begin(), opt.values.end(), full) != opt.values.end()) continue;
-        opt.values.push_back(full);
-        opt.labels_pt.push_back(label);
-        opt.labels_en.push_back(label);
-    }
+
+    SafeForEachDirEntry(kDefaultDlcDir,
+                        [&](const std::filesystem::directory_entry& e, std::error_code& ec) {
+                            const std::string fname = e.path().filename().string();
+                            if (fname.empty() || fname[0] == '.') return;
+                            const std::string full = e.path().generic_string();
+                            if (e.is_directory(ec)) {
+                                cache.dlcs.emplace_back(fname, full, true);
+                                SafeForEachDirEntry(
+                                    full + "/",
+                                    [&](const std::filesystem::directory_entry& sub, std::error_code& sec) {
+                                        const std::string sname = sub.path().filename().string();
+                                        if (sname.empty() || sname[0] == '.' || sub.is_directory(sec)) return;
+                                        if (IsAddonExt(ToLowerExt(sub.path()))) {
+                                            cache.dlcs.emplace_back(
+                                                fname + "/" + sname, sub.path().generic_string(),
+                                                false);
+                                        }
+                                    });
+                                return;
+                            }
+                            if (IsAddonExt(ToLowerExt(e.path()))) {
+                                cache.dlcs.emplace_back(fname, full, false);
+                            }
+                        });
+    std::sort(cache.dlcs.begin(), cache.dlcs.end(), [](const auto& a, const auto& b) {
+        if (std::get<2>(a) != std::get<2>(b)) return std::get<2>(a);
+        return std::get<0>(a) < std::get<0>(b);
+    });
+    return cache;
 }
 
-std::vector<SettingOption> BuildPerGameAddonOptions(const std::string& rom_path) {
-    const std::string rom_dir = std::filesystem::path(rom_path).parent_path().generic_string();
+void PushUniqueAddon(SettingOption& opt, const std::string& full, const std::string& label_pt,
+                     const std::string& label_en) {
+    if (full.empty()) return;
+    if (std::find(opt.values.begin(), opt.values.end(), full) != opt.values.end()) return;
+    opt.values.push_back(full);
+    opt.labels_pt.push_back(label_pt);
+    opt.labels_en.push_back(label_en);
+}
 
+std::vector<SettingOption> BuildPerGameAddonOptions(const std::string& rom_path,
+                                                    const AddonLists& cache,
+                                                    const std::vector<GameEntry>& dir_entries) {
     SettingOption upd;
     upd.key = "update_pkg";
     upd.label_pt = "Update do Jogo";
     upd.label_en = "Game Update";
-    upd.help_pt = "Arquivo Update (.nsp/.xci). 'Auto' carrega de sdmc:/switch/eden-nx2/updates/.";
-    upd.help_en = "Update package (.nsp/.xci). 'Auto' loads from sdmc:/switch/eden-nx2/updates/.";
+    upd.help_pt = "Arquivo Update (.nsp/.nsz/.xci). 'Auto' carrega de sdmc:/switch/eden-nx2/updates/.";
+    upd.help_en = "Update package (.nsp/.nsz/.xci). 'Auto' loads from sdmc:/switch/eden-nx2/updates/.";
     upd.values = {"auto", "none"};
     upd.labels_pt = {"Auto (Pasta updates/)", "Desativado (Base v1.0)"};
     upd.labels_en = {"Auto (updates/ folder)", "Disabled (Base v1.0)"};
     upd.selected = 0;
     upd.per_game = true;
-    AppendAddonFilesFromDir(kDefaultUpdatesDir, "updates/", rom_path, true, upd);
-    AppendAddonFilesFromDir(rom_dir, "", rom_path, false, upd);
+    for (const auto& [label, full] : cache.updates) {
+        if (full != rom_path) PushUniqueAddon(upd, full, label, label);
+    }
 
     SettingOption dlc;
     dlc.key = "dlc_pkg";
     dlc.label_pt = "Pacotes DLC";
     dlc.label_en = "DLC Packages";
-    dlc.help_pt = "Pasta ou arquivo DLC (.nsp/.xci). 'Auto' carrega de sdmc:/switch/eden-nx2/dlc/.";
-    dlc.help_en = "DLC folder or file (.nsp/.xci). 'Auto' loads from sdmc:/switch/eden-nx2/dlc/.";
+    dlc.help_pt = "Pasta ou arquivo DLC (.nsp/.nsz/.xci). 'Auto' carrega de sdmc:/switch/eden-nx2/dlc/.";
+    dlc.help_en = "DLC folder or file (.nsp/.nsz/.xci). 'Auto' loads from sdmc:/switch/eden-nx2/dlc/.";
     dlc.values = {"auto", "none"};
     dlc.labels_pt = {"Todas as DLCs (Auto)", "Desativado (Sem DLC)"};
     dlc.labels_en = {"All DLCs (Auto)", "Disabled (No DLC)"};
     dlc.selected = 0;
     dlc.per_game = true;
-
-    std::error_code ec;
-    if (std::filesystem::is_directory(kDefaultDlcDir, ec)) {
-        std::vector<std::pair<std::string, std::string>> subdirs;
-        for (const auto& entry : std::filesystem::directory_iterator(kDefaultDlcDir, ec)) {
-            if (!entry.is_directory(ec)) continue;
-            const std::string dname = entry.path().filename().string();
-            if (dname.empty() || dname[0] == '.') continue;
-            subdirs.emplace_back(dname, entry.path().generic_string());
-        }
-        std::sort(subdirs.begin(), subdirs.end(),
-                  [](const auto& a, const auto& b) { return a.first < b.first; });
-        for (const auto& [dname, full] : subdirs) {
-            dlc.values.push_back(full);
-            dlc.labels_pt.push_back("Pasta: dlc/" + dname);
-            dlc.labels_en.push_back("Folder: dlc/" + dname);
+    for (const auto& [label, full, is_dir] : cache.dlcs) {
+        if (full == rom_path) continue;
+        if (is_dir) {
+            PushUniqueAddon(dlc, full, "Pasta: dlc/" + label, "Folder: dlc/" + label);
+        } else {
+            PushUniqueAddon(dlc, full, "dlc/" + label, "dlc/" + label);
         }
     }
-    AppendAddonFilesFromDir(kDefaultDlcDir, "dlc/", rom_path, true, dlc);
-    AppendAddonFilesFromDir(rom_dir, "", rom_path, false, dlc);
+
+    for (const auto& e : dir_entries) {
+        if (e.is_dir || e.full_path == rom_path || !IsAddonExt(e.ext)) continue;
+        PushUniqueAddon(upd, e.full_path, e.name, e.name);
+        PushUniqueAddon(dlc, e.full_path, e.name, e.name);
+    }
 
     return {std::move(upd), std::move(dlc)};
 }
 
 std::vector<SettingOption> MakePerGameOptions(const std::vector<SettingOption>& global_opts,
-                                                const std::string& rom_path, bool en) {
-    std::vector<SettingOption> out = BuildPerGameAddonOptions(rom_path);
+                                                const std::string& rom_path, bool en,
+                                                const AddonLists& cache,
+                                                const std::vector<GameEntry>& dir_entries) {
+    std::vector<SettingOption> out = BuildPerGameAddonOptions(rom_path, cache, dir_entries);
     for (const auto& opt : global_opts) {
         if (!opt.per_game) continue;
         SettingOption copy = opt;
         const auto& src_labels = en ? opt.labels_en : opt.labels_pt;
-        const std::string global_lbl = src_labels[static_cast<std::size_t>(opt.selected)];
+        const std::string global_lbl =
+            src_labels.empty()
+                ? std::string{}
+                : src_labels[static_cast<std::size_t>(
+                      std::clamp(opt.selected, 0, static_cast<int>(src_labels.size()) - 1))];
         const std::string inh_pt = "Padrao Global (" + global_lbl + ")";
         const std::string inh_en = "Global Default (" + global_lbl + ")";
         copy.values.insert(copy.values.begin(), "inherit");
@@ -812,9 +854,11 @@ void SavePerGameIni(const std::vector<SettingOption>& game_opts, const std::stri
 }
 
 std::vector<SettingOption> EffectiveOptions(const std::vector<SettingOption>& global_opts,
-                                            const std::string& rom_path, bool en) {
+                                            const std::string& rom_path, bool en,
+                                            const AddonLists& cache,
+                                            const std::vector<GameEntry>& dir_entries) {
     std::vector<SettingOption> eff = global_opts;
-    const auto game_opts = MakePerGameOptions(global_opts, rom_path, en);
+    const auto game_opts = MakePerGameOptions(global_opts, rom_path, en, cache, dir_entries);
     for (const auto& g : game_opts) {
         if (g.key == "update_pkg" || g.key == "dlc_pkg") {
             eff.push_back(g);
@@ -822,8 +866,8 @@ std::vector<SettingOption> EffectiveOptions(const std::vector<SettingOption>& gl
         }
         if (g.selected <= 0) continue;
         for (auto& e : eff) {
-            if (e.key == g.key) {
-                e.selected = g.selected - 1;
+            if (e.key == g.key && !e.values.empty()) {
+                e.selected = std::clamp(g.selected - 1, 0, static_cast<int>(e.values.size()) - 1);
                 break;
             }
         }
@@ -833,7 +877,10 @@ std::vector<SettingOption> EffectiveOptions(const std::vector<SettingOption>& gl
 
 std::string GetValue(const std::vector<SettingOption>& opts, std::string_view key) {
     for (const auto& o : opts) {
-        if (o.key == key) return o.values[static_cast<std::size_t>(o.selected)];
+        if (o.key == key && !o.values.empty()) {
+            const int idx = std::clamp(o.selected, 0, static_cast<int>(o.values.size()) - 1);
+            return o.values[static_cast<std::size_t>(idx)];
+        }
     }
     return {};
 }
@@ -842,7 +889,9 @@ std::string GetLabel(const std::vector<SettingOption>& opts, std::string_view ke
     for (const auto& o : opts) {
         if (o.key == key) {
             const auto& lbls = en ? o.labels_en : o.labels_pt;
-            return lbls[static_cast<std::size_t>(o.selected)];
+            if (lbls.empty()) return {};
+            const int idx = std::clamp(o.selected, 0, static_cast<int>(lbls.size()) - 1);
+            return lbls[static_cast<std::size_t>(idx)];
         }
     }
     return {};
@@ -896,9 +945,15 @@ void DrawFormatBadge(Canvas& cv, int x, int y, const GameEntry& entry) {
         if (entry.ext == ".nsp") {
             bg = PackRGBA(14, 116, 90);
             tag = "NSP";
+        } else if (entry.ext == ".nsz") {
+            bg = PackRGBA(13, 148, 136);
+            tag = "NSZ";
         } else if (entry.ext == ".xci") {
             bg = PackRGBA(168, 95, 14);
             tag = "XCI";
+        } else if (entry.ext == ".xcz") {
+            bg = PackRGBA(180, 120, 14);
+            tag = "XCZ";
         } else if (entry.ext == ".nca") {
             bg = PackRGBA(14, 116, 144);
             tag = "NCA";
@@ -923,9 +978,9 @@ void DrawStickWidget(Canvas& cv, int cx, int cy, int r, float sx, float sy, std:
 }
 
 void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<GameEntry>& entries,
-                    int selected, int scroll, const std::vector<SettingOption>& global_opts,
-                    const Switch2PadSnapshot& pad, bool lsfg_ready) {
-    const bool en = (GetValue(global_opts, "ui_lang") == "en");
+                    int selected, int scroll, const std::vector<SettingOption>& eff,
+                    bool has_game, bool en, const Switch2PadSnapshot& pad,
+                    LsfgBadge lsfg_badge) {
     cv.FillGradientV(0, 0, kScreenW, kScreenH, kBgTop, kBgBottom);
 
     // Top bar
@@ -936,9 +991,19 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
     cv.DrawText(186, 18, "Nintendo Switch 2", kTextPrimary, 2, true);
     cv.DrawText(186, 42, "Port by @davidkalil10 (ko-fi.com/davidkalil10)", kTextMuted, 1);
 
-    cv.DrawPill(615, 18, lsfg_ready ? "LSFG OK" : "NO DLL",
-                lsfg_ready ? kAccentSoft : kCardBg,
-                lsfg_ready ? kAccent : kTextMuted, 2);
+    const char* lsfg_txt =
+        (lsfg_badge == LsfgBadge::Ready)
+            ? "LSFG OK"
+            : ((lsfg_badge == LsfgBadge::Invalid) ? "BAD DLL" : "NO DLL");
+    const std::uint32_t lsfg_bg =
+        (lsfg_badge == LsfgBadge::Ready)
+            ? kAccentSoft
+            : ((lsfg_badge == LsfgBadge::Invalid) ? PackRGBA(110, 68, 16) : kCardBg);
+    const std::uint32_t lsfg_fg =
+        (lsfg_badge == LsfgBadge::Ready)
+            ? kAccent
+            : ((lsfg_badge == LsfgBadge::Invalid) ? kAmber : kTextMuted);
+    cv.DrawPill(615, 18, lsfg_txt, lsfg_bg, lsfg_fg, 2);
 
     std::uint64_t mem_used = 0, mem_total = 0;
     Switch2GetMemoryStats(&mem_used, &mem_total);
@@ -964,7 +1029,9 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
         cv.DrawRoundedRect(46, 150, 680, 180, 12, kCardBg, kBorderDim);
         cv.DrawText(68, 174, T(en, "Nenhuma ROM encontrada nesta pasta.", "No ROMs found in this folder."),
                     kTextPrimary, 2);
-        cv.DrawText(68, 210, T(en, "Coloque arquivos .nsp / .xci / .nro em:", "Place .nsp / .xci / .nro files in:"),
+        cv.DrawText(68, 210,
+                    T(en, "Coloque arquivos .nsp / .nsz / .xci / .nro em:",
+                      "Place .nsp / .nsz / .xci / .nro files in:"),
                     kTextMuted, 1);
         cv.DrawText(68, 230, "sdmc:/switch/eden-nx2/roms/", kAccent, 2);
         cv.DrawText(68, 266, "Keys: sdmc:/switch/eden-nx2/.local/share/eden/keys/", kTextMuted, 1);
@@ -999,20 +1066,13 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
 
     // Right panel: Inspector & Controller Test
     cv.DrawRoundedRect(764, 84, 492, 570, 14, kPanelBg, kBorderDim);
-    const bool has_game = !entries.empty() && selected < static_cast<int>(entries.size()) &&
-                          !entries[static_cast<std::size_t>(selected)].is_dir;
-    const auto eff = has_game
-                         ? EffectiveOptions(global_opts,
-                                            entries[static_cast<std::size_t>(selected)].full_path, en)
-                         : global_opts;
-
     cv.DrawText(784, 98,
                 has_game ? T(en, "PERFIL DO JOGO", "GAME PROFILE")
                          : T(en, "PERFIL GLOBAL", "GLOBAL PROFILE"),
                 kAccent, 2);
     cv.FillRect(784, 122, 452, 1, kBorderDim);
 
-    if (!entries.empty() && selected < static_cast<int>(entries.size())) {
+    if (!entries.empty() && selected >= 0 && selected < static_cast<int>(entries.size())) {
         cv.DrawTextMaxWidth(784, 132, 452, entries[static_cast<std::size_t>(selected)].display_title,
                             kTextPrimary, 2);
     }
@@ -1117,7 +1177,13 @@ void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int s
         const std::string& lbl = en ? opts[idx].label_en : opts[idx].label_pt;
         const auto& ch_lbls = en ? opts[idx].labels_en : opts[idx].labels_pt;
         cv.DrawTextMaxWidth(168, ry + 7, 420, lbl, kTextPrimary, 2);
-        const std::string val_txt = "< " + ch_lbls[static_cast<std::size_t>(opts[idx].selected)] + " >";
+        const std::string val_txt =
+            ch_lbls.empty()
+                ? std::string{}
+                : ("< " +
+                   ch_lbls[static_cast<std::size_t>(
+                       std::clamp(opts[idx].selected, 0, static_cast<int>(ch_lbls.size()) - 1))] +
+                   " >");
         cv.DrawTextMaxWidth(600, ry + 7, 512, val_txt, is_sel ? kAccent : kCyan, 2);
     }
 
@@ -1135,6 +1201,7 @@ void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int s
 
 bool RunSettingsModal(Canvas& cv, std::vector<SettingOption>& opts, const std::string& title,
                       bool* ui_en_state = nullptr) {
+    if (opts.empty()) return true;
     int selected = 0;
     bool redraw = true;
     Switch2PadSnapshot pad{};
@@ -1154,7 +1221,7 @@ bool RunSettingsModal(Canvas& cv, std::vector<SettingOption>& opts, const std::s
         }
         auto& opt = opts[static_cast<std::size_t>(selected)];
         const int c = static_cast<int>(opt.values.size());
-        if (down & (SWITCH2_BTN_LEFT | SWITCH2_BTN_RIGHT | SWITCH2_BTN_A)) {
+        if (c > 0 && (down & (SWITCH2_BTN_LEFT | SWITCH2_BTN_RIGHT | SWITCH2_BTN_A))) {
             const int step = (down & SWITCH2_BTN_LEFT) ? (c - 1) : 1;
             opt.selected = (opt.selected + step) % c;
             if (ui_en_state && opt.key == "ui_lang") {
@@ -1182,12 +1249,13 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
         return false;
     }
 
-    const bool lsfg_ready = EnsureLosslessInstalled();
+    const LsfgBadge lsfg_badge = EnsureLosslessInstalled();
 
     auto global_opts = MakeDefaultOptions();
     LoadIniInto(global_opts, kGlobalSettingsPath, false);
 
     std::string folder = ReadInitialFolder();
+    const AddonLists addon_cache = ScanAddonListsOnce();
     std::vector<GameEntry> entries = ScanDirectory(folder);
     int selected = 0;
     int scroll = 0;
@@ -1198,6 +1266,9 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
     float prev_lx = 0.0f, prev_ly = 0.0f, prev_rx = 0.0f, prev_ry = 0.0f;
     bool prev_motion = false;
     int tick_counter = 0;
+    bool eff_dirty = true;
+    bool cached_has_game = false;
+    std::vector<SettingOption> cached_eff = global_opts;
 
     Canvas cv;
     Switch2PadSnapshot pad{};
@@ -1221,6 +1292,7 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
                 }
             }
             SaveGlobalIni(global_opts);
+            eff_dirty = true;
             redraw = true;
         }
 
@@ -1230,12 +1302,14 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
                 break;
             }
             SaveGlobalIni(global_opts);
+            eff_dirty = true;
             redraw = true;
         }
 
-        if ((down & SWITCH2_BTN_Y) && count > 0 && !entries[static_cast<std::size_t>(selected)].is_dir) {
+        if ((down & SWITCH2_BTN_Y) && count > 0 && selected >= 0 && selected < count &&
+            !entries[static_cast<std::size_t>(selected)].is_dir) {
             const std::string& rpath = entries[static_cast<std::size_t>(selected)].full_path;
-            auto game_opts = MakePerGameOptions(global_opts, rpath, en);
+            auto game_opts = MakePerGameOptions(global_opts, rpath, en, addon_cache, entries);
             const std::string modal_title =
                 std::string(T(en, "CONFIG DO JOGO: ", "GAME SETTINGS: ")) +
                 entries[static_cast<std::size_t>(selected)].display_title;
@@ -1243,6 +1317,7 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
                 break;
             }
             SavePerGameIni(game_opts, rpath);
+            eff_dirty = true;
             redraw = true;
         }
 
@@ -1252,6 +1327,7 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
             if (down & SWITCH2_BTN_LEFT) selected -= kVisible;
             if (down & SWITCH2_BTN_RIGHT) selected += kVisible;
             selected = std::clamp(selected, 0, std::max(0, count - 1));
+            eff_dirty = true;
             redraw = true;
         }
 
@@ -1265,6 +1341,7 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
                         pad.raw_down |= SWITCH2_BTN_A;
                     } else {
                         selected = tapped;
+                        eff_dirty = true;
                         redraw = true;
                     }
                 }
@@ -1277,7 +1354,7 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
             const std::string& rpath = entries[static_cast<std::size_t>(selected)].full_path;
             SaveGlobalIni(global_opts);
             SaveLastFolder(folder);
-            const auto eff = EffectiveOptions(global_opts, rpath, en);
+            const auto eff = EffectiveOptions(global_opts, rpath, en, addon_cache, entries);
             FillLaunchConfig(eff, rpath, out_cfg);
             chosen = true;
             break;
@@ -1288,6 +1365,7 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
             entries = ScanDirectory(folder);
             selected = 0;
             scroll = 0;
+            eff_dirty = true;
             redraw = true;
         }
 
@@ -1306,9 +1384,21 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
         prev_ry = pad.right_y;
         prev_motion = pad.has_motion;
 
+        if (eff_dirty) {
+            cached_has_game = count > 0 && selected >= 0 && selected < count &&
+                              !entries[static_cast<std::size_t>(selected)].is_dir;
+            cached_eff = cached_has_game
+                             ? EffectiveOptions(global_opts,
+                                                entries[static_cast<std::size_t>(selected)].full_path,
+                                                en, addon_cache, entries)
+                             : global_opts;
+            eff_dirty = false;
+        }
+
         if (redraw) {
             scroll = std::clamp(scroll, std::max(0, selected - kVisible + 1), selected);
-            DrawMainScreen(cv, folder, entries, selected, scroll, global_opts, pad, lsfg_ready);
+            DrawMainScreen(cv, folder, entries, selected, scroll, cached_eff, cached_has_game, en,
+                           pad, lsfg_badge);
             cv.Present();
         }
         Switch2SleepMs(16);

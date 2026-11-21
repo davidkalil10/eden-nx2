@@ -333,37 +333,44 @@ void UpdateSwitch2FpsOverlay(const std::string& text) {
 void ScanSwitch2AddonDir(FileSys::ManualContentProvider& provider, FileSys::VfsFilesystem& vfs,
                          const std::string& dir, const std::string& skip_path, bool filter_upd,
                          bool filter_dlc, bool recurse_one) {
-    std::error_code ec;
-    if (dir.empty() || !std::filesystem::is_directory(dir, ec)) return;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-        const std::string p = entry.path().generic_string();
-        if (entry.is_directory(ec)) {
-            if (recurse_one) {
-                const std::string dname = entry.path().filename().string();
-                if (!dname.empty() && dname[0] != '.') {
-                    ScanSwitch2AddonDir(provider, vfs, p, skip_path, filter_upd, filter_dlc, false);
+    try {
+        std::error_code ec;
+        if (dir.empty() || !std::filesystem::is_directory(dir, ec) || ec) return;
+        std::filesystem::directory_iterator it(dir, ec);
+        const std::filesystem::directory_iterator end;
+        for (; !ec && it != end; it.increment(ec)) {
+            const auto& entry = *it;
+            const std::string p = entry.path().generic_string();
+            if (entry.is_directory(ec)) {
+                if (recurse_one) {
+                    const std::string dname = entry.path().filename().string();
+                    if (!dname.empty() && dname[0] != '.') {
+                        ScanSwitch2AddonDir(provider, vfs, p, skip_path, filter_upd, filter_dlc,
+                                            false);
+                    }
                 }
+                continue;
             }
-            continue;
+            if (!entry.is_regular_file(ec) || p == skip_path) continue;
+            const std::string ext = Common::ToLower(entry.path().extension().string());
+            if (ext != ".nsp" && ext != ".nsz" && ext != ".xci" && ext != ".xcz") continue;
+            const std::string lower_name = Common::ToLower(entry.path().filename().string());
+            if (filter_upd &&
+                lower_name.find("upd") == std::string::npos &&
+                lower_name.find("patch") == std::string::npos &&
+                lower_name.find("[v") == std::string::npos) {
+                continue;
+            }
+            if (filter_dlc &&
+                lower_name.find("dlc") == std::string::npos &&
+                lower_name.find("aoc") == std::string::npos) {
+                continue;
+            }
+            if (auto f = vfs.OpenFile(p, FileSys::OpenMode::Read)) {
+                provider.AddEntriesFromContainer(f, false);
+            }
         }
-        if (!entry.is_regular_file(ec) || p == skip_path) continue;
-        const std::string ext = Common::ToLower(entry.path().extension().string());
-        if (ext != ".nsp" && ext != ".xci") continue;
-        const std::string lower_name = Common::ToLower(entry.path().filename().string());
-        if (filter_upd &&
-            lower_name.find("upd") == std::string::npos &&
-            lower_name.find("patch") == std::string::npos &&
-            lower_name.find("[v") == std::string::npos) {
-            continue;
-        }
-        if (filter_dlc &&
-            lower_name.find("dlc") == std::string::npos &&
-            lower_name.find("aoc") == std::string::npos) {
-            continue;
-        }
-        if (auto f = vfs.OpenFile(p, FileSys::OpenMode::Read)) {
-            provider.AddEntriesFromContainer(f, false);
-        }
+    } catch (...) {
     }
 }
 

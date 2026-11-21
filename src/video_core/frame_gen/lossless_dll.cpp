@@ -5,12 +5,14 @@
 #include <cstring>
 #include <optional>
 #include <span>
+#include <system_error>
 
 #include "common/cityhash.h"
 #include "common/fs/file.h"
 #include "common/fs/fs.h"
 #include "common/fs/fs_paths.h"
 #include "common/fs/path_util.h"
+#include "common/string_util.h"
 #include "video_core/frame_gen/lossless_dll.h"
 #include "video_core/frame_gen/lsfg_translate.h"
 
@@ -418,11 +420,47 @@ template <typename Map>
 } // Anonymous namespace
 
 std::filesystem::path GetLosslessDllPath() {
+#ifdef __SWITCH2__
+    static constexpr const char* kCandidates[] = {
+        "sdmc:/switch/eden-nx2/Lossless.dll",
+        "sdmc:/switch/eden-nx2/lossless.dll",
+        "sdmc:/switch/eden-nx2/lsfg/Lossless.dll",
+        "sdmc:/switch/eden-nx2/lsfg/lossless.dll",
+        "sdmc:/switch/Lossless.dll",
+        "sdmc:/switch/lossless.dll",
+        "sdmc:/Lossless.dll",
+        "sdmc:/lossless.dll",
+    };
+    for (const char* cand : kCandidates) {
+        const std::filesystem::path p{cand};
+        if (Common::FS::Exists(p)) {
+            return p;
+        }
+    }
+    try {
+        std::error_code ec;
+        std::filesystem::directory_iterator it("sdmc:/switch/eden-nx2/", ec);
+        const std::filesystem::directory_iterator end;
+        for (; !ec && it != end; it.increment(ec)) {
+            if (Common::ToLower(it->path().filename().string()) == "lossless.dll" &&
+                Common::FS::Exists(it->path())) {
+                return it->path();
+            }
+        }
+    } catch (...) {
+    }
+#endif
     return Common::FS::GetEdenPath(Common::FS::EdenPath::LosslessDir) / LOSSLESS_DLL_FILE;
 }
 
 std::filesystem::path GetShaderCachePath() {
+#ifdef __SWITCH2__
+    std::error_code ec;
+    std::filesystem::create_directories("sdmc:/switch/eden-nx2", ec);
+    return std::filesystem::path{"sdmc:/switch/eden-nx2/lossless_cache.bin"};
+#else
     return Common::FS::GetEdenPath(Common::FS::EdenPath::LosslessDir) / LOSSLESS_CACHE_FILE;
+#endif
 }
 
 LosslessStatus ReadShaderResources(const std::filesystem::path& path,
