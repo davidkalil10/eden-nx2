@@ -394,8 +394,14 @@ void IOFile::Open(const fs::path& path, FileAccessMode mode, FileType type, File
     } else {
         file = std::fopen(path.c_str(), AccessModeToStr(mode, type));
     }
-#elif defined(__HAIKU__) || defined(__managarm__) || defined(__OPENORBIS__) || defined(__APPLE__) || defined(__SWITCH2__)
+#elif defined(__HAIKU__) || defined(__managarm__) || defined(__OPENORBIS__) || defined(__APPLE__)
     file = std::fopen(path.c_str(), AccessModeToStr(mode, type));
+#elif defined(__SWITCH2__)
+    file = std::fopen(path.c_str(), AccessModeToStr(mode, type));
+    if (file != nullptr && mode == FileAccessMode::Read) {
+        // Larger stdio buffer slashes Horizon FS IPC read roundtrips for ROM streaming.
+        std::setvbuf(file, nullptr, _IOFBF, 128 * 1024);
+    }
 #elif defined(__unix__)
     if (type == FileType::BinaryFile && mode == FileAccessMode::Read) {
         if (PlatformMapReadOnly(*this, path.c_str()) == -1) {
@@ -525,6 +531,16 @@ u64 IOFile::GetSize() const {
                 return 0;
             }
         }
+#elif defined(__SWITCH2__)
+        // Horizon fsdev rejects path-based stat on files currently open for writing; use fstat.
+        struct stat st {};
+        if (fstat(fileno(file), &st) != 0) {
+            const auto ec = std::error_code{errno, std::generic_category()};
+            LOG_ERROR(Common_Filesystem, "Failed to retrieve the file mmap_size of path={}, ec_message={}",
+                PathToUTF8String(file_path), ec.message());
+            return 0;
+        }
+        const u64 file_size = static_cast<u64>(st.st_size);
 #else
         std::error_code ec;
         auto const file_size = fs::file_size(file_path, ec);

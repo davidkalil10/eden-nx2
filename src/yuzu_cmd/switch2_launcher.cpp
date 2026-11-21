@@ -22,6 +22,9 @@
 #include <vector>
 
 #include "common/stb.h"
+#ifdef HAS_LSFG
+#include "video_core/frame_gen/lossless_dll.h"
+#endif
 
 namespace {
 
@@ -47,6 +50,10 @@ constexpr std::uint32_t BlendColor(std::uint32_t dst, std::uint32_t src, std::ui
     const std::uint32_t g = (sg * alpha + dg * inv) / 255u;
     const std::uint32_t b = (sb * alpha + db * inv) / 255u;
     return 0xFF000000u | (b << 16) | (g << 8) | r;
+}
+
+constexpr const char* T(bool en, const char* pt, const char* en_str) {
+    return en ? en_str : pt;
 }
 
 // Crisp 8x8 bitmap font (ASCII 0x20..0x7E, MSB-left per row, 8 bytes/glyph).
@@ -264,10 +271,10 @@ public:
 
     int DrawPill(int x, int y, std::string_view text, std::uint32_t bg, std::uint32_t fg,
                  int scale = 2) {
-        const int w = static_cast<int>(text.size()) * 8 * scale + 18;
+        const int w = static_cast<int>(text.size()) * 8 * scale + 16;
         const int h = 8 * scale + 10;
         DrawRoundedRect(x, y, w, h, h / 2, bg);
-        DrawText(x + 9, y + 5, text, fg, scale, false);
+        DrawText(x + 8, y + 5, text, fg, scale, false);
         return w;
     }
 
@@ -364,6 +371,36 @@ std::string GameConfigPath(std::string_view rom_path) {
 constexpr const char* kGlobalSettingsPath = "sdmc:/switch/eden-nx2/settings.ini";
 constexpr const char* kLastFolderPath = "sdmc:/switch/eden-nx2/last_folder.txt";
 constexpr const char* kDefaultRomsDir = "sdmc:/switch/eden-nx2/roms";
+
+bool EnsureLosslessInstalled() {
+#ifdef HAS_LSFG
+    using namespace VideoCore::FrameGen;
+    if (GetInstalledLosslessStatus() == LosslessStatus::Ok) {
+        return true;
+    }
+    static constexpr const char* kDllSources[] = {
+        "sdmc:/switch/eden-nx2/Lossless.dll",
+        "sdmc:/switch/eden-nx2/lossless.dll",
+        "sdmc:/Lossless.dll",
+        "sdmc:/lossless.dll",
+    };
+    std::error_code ec;
+    const auto dst = GetLosslessDllPath();
+    for (const char* src : kDllSources) {
+        if (std::filesystem::exists(src, ec) && std::filesystem::is_regular_file(src, ec)) {
+            std::filesystem::create_directories(dst.parent_path(), ec);
+            if (std::filesystem::copy_file(
+                    src, dst, std::filesystem::copy_options::overwrite_existing, ec)) {
+                (void)BuildShaderCache();
+                return GetInstalledLosslessStatus() == LosslessStatus::Ok;
+            }
+        }
+    }
+    return false;
+#else
+    return false;
+#endif
+}
 
 void TryLoadNroMetadata(GameEntry& entry) {
     if (entry.ext != ".nro") return;
@@ -492,60 +529,123 @@ void SaveLastFolder(const std::string& folder) {
 
 struct SettingOption {
     std::string key;
-    std::string label;
-    std::string help;
+    std::string label_pt;
+    std::string label_en;
+    std::string help_pt;
+    std::string help_en;
     std::vector<std::string> values;
-    std::vector<std::string> labels;
+    std::vector<std::string> labels_pt;
+    std::vector<std::string> labels_en;
     int selected = 0;
+    bool per_game = true;
 };
 
 std::vector<SettingOption> MakeDefaultOptions() {
     return {
-        {"controller", "Controle (Player 1)",
-         "Perfil de controle. Para Pokemon Let's Go Pikachu/Eevee use Handheld ou Joy-Con Direito.",
+        {"controller",
+         "Controle (Player 1)", "Controller (Player 1)",
+         "Perfil de controle. Para Let's Go Pikachu use Handheld ou Joy-Con Direito.",
+         "Controller profile. For Let's Go Pikachu use Handheld or Right Joy-Con.",
          {"pro_controller", "handheld", "dual_joycon", "right_joycon", "left_joycon"},
-         {"Pro Controller", "Handheld (Let's Go / Portatil)", "Dual Joy-Con", "Joy-Con Direito (Let's Go)", "Joy-Con Esquerdo"},
-         0},
-        {"console_mode", "Modo do Console",
-         "Handheld renderiza tipicamente em 720p (mais leve); Docked em 1080p.",
+         {"Pro Controller", "Handheld (Portatil / Let's Go)", "Dual Joy-Con", "Joy-Con Direito (Let's Go)", "Joy-Con Esquerdo"},
+         {"Pro Controller", "Handheld (Portable / Let's Go)", "Dual Joy-Con", "Right Joy-Con (Let's Go)", "Left Joy-Con"},
+         0, true},
+        {"console_mode",
+         "Modo do Console", "Console Mode",
+         "Handheld renderiza em 720p (mais leve); Docked em 1080p.",
+         "Handheld renders at 720p (faster); Docked renders at 1080p.",
          {"handheld", "docked"},
          {"Handheld (720p)", "Docked (1080p)"},
-         0},
-        {"resolution", "Resolucao Interna",
-         "Escala de renderizacao. 0.5x ou 0.75x aumentam bastante o FPS em jogos 3D.",
+         {"Handheld (720p)", "Docked (1080p)"},
+         0, true},
+        {"resolution",
+         "Resolucao Interna", "Internal Resolution",
+         "Escala de renderizacao. 0.5x ou 0.75x aumentam bastante o FPS em 3D.",
+         "Rendering scale. 0.5x or 0.75x greatly improve FPS in 3D games.",
          {"0.5", "0.75", "1", "1.5", "2"},
          {"0.5x (Mais Rapido)", "0.75x (Equilibrado)", "1.0x (Nativo)", "1.5x", "2.0x"},
-         2},
-        {"gpu_mode", "Precisao da GPU",
-         "Fast pula sincronizacoes pesadas para maior velocidade; Accurate evita glitches graficos.",
+         {"0.5x (Fastest)", "0.75x (Balanced)", "1.0x (Native)", "1.5x", "2.0x"},
+         2, true},
+        {"gpu_mode",
+         "Precisao da GPU", "GPU Accuracy",
+         "Fast liga Shaders Assincronos e DMA rapido; Accurate evita glitches.",
+         "Fast enables Async Shaders & fast DMA; Accurate avoids glitches.",
          {"fast", "accurate"},
-         {"Fast (Recomendado Switch 2)", "Accurate (Preciso)"},
-         0},
-        {"cpu_boost", "CPU Boost (Overclock)",
-         "Ativa o modo de clock maximo de carregamento do Switch 2.",
+         {"Fast (Recomendado)", "Accurate (Preciso)"},
+         {"Fast (Recommended)", "Accurate"},
+         0, true},
+        {"cpu_accuracy",
+         "Precisao da CPU", "CPU Accuracy",
+         "Unsafe usa atalhos rapidos no Dynarmic para ganhar FPS em jogos pesados.",
+         "Unsafe enables fast Dynarmic optimizations for higher FPS.",
+         {"unsafe", "auto"},
+         {"Unsafe (Mais Rapido)", "Auto (Padrao)"},
+         {"Unsafe (Faster)", "Auto (Default)"},
+         0, true},
+        {"frame_gen",
+         "Lossless Scaling (LSFG)", "Lossless Scaling (LSFG)",
+         "Gera frames extras na GPU Switch 2 (coloque Lossless.dll em eden-nx2/).",
+         "Generates extra frames on Switch 2 GPU (place Lossless.dll in eden-nx2/).",
+         {"off", "2x", "3x", "4x"},
+         {"Desligado", "2x Frame Gen", "3x Frame Gen", "4x Frame Gen"},
+         {"Off", "2x Frame Gen", "3x Frame Gen", "4x Frame Gen"},
+         0, true},
+        {"show_fps",
+         "Mostrar FPS na Tela", "Show On-Screen FPS",
+         "Exibe contador de FPS e velocidade no canto superior esquerdo do jogo.",
+         "Displays FPS and emulation speed counter at top-left in game.",
+         {"on", "detailed", "off"},
+         {"FPS + Velocidade", "Detalhado (FPS + Modo)", "Desligado"},
+         {"FPS + Speed", "Detailed (FPS + Mode)", "Off"},
+         0, true},
+        {"cpu_boost",
+         "CPU Boost (Overclock)", "CPU Boost (Overclock)",
+         "Ativa o clock maximo de carregamento do Switch 2 durante o jogo.",
+         "Requests Switch 2 boost CPU clocks during gameplay.",
          {"on", "off"},
          {"Ligado (FastLoad)", "Desligado"},
-         0},
-        {"address_space", "Espaco de RAM (Tabela)",
-         "38-bit (512MB) e equilibrado; 36-bit (128MB) libera mais RAM; 39-bit (1GB) p/ jogos raros.",
+         {"On (FastLoad)", "Off"},
+         0, true},
+        {"address_space",
+         "Espaco de RAM (Tabela)", "Memory Address Space",
+         "38-bit (512MB) equilibrado; 36-bit (128MB) libera mais RAM; 39-bit (1GB).",
+         "38-bit (512MB) balanced; 36-bit (128MB) more free RAM; 39-bit (1GB).",
          {"38bit", "36bit", "39bit"},
          {"38-bit (Equilibrado)", "36-bit (Compacto)", "39-bit (Completo)"},
-         0},
-        {"jit_ahead", "JIT Compilacao Antecipada",
-         "Pre-compila blocos sucessores em um unico IPC kaiHEN reduzindo engasgos.",
+         {"38-bit (Balanced)", "36-bit (Compact)", "39-bit (Full)"},
+         0, true},
+        {"jit_ahead",
+         "JIT Blocos Antecipados", "JIT Ahead Blocks",
+         "Pre-compila blocos sucessores em um unico IPC kaiHEN reduzindo stutter.",
+         "Pre-compiles successor blocks in one kaiHEN IPC call to cut stutter.",
          {"8", "4", "16", "0"},
          {"8 Blocos (Padrao)", "4 Blocos", "16 Blocos", "Desligado"},
-         0},
-        {"shader_cache", "Shader Cache em Disco",
-         "Salva shaders Vulkan compilados no SD para eliminar stutter nas proximas aberturas.",
+         {"8 Blocks (Default)", "4 Blocks", "16 Blocks", "Off"},
+         0, true},
+        {"shader_cache",
+         "Shader Cache em Disco", "Disk Shader Cache",
+         "Salva shaders Vulkan no cartao SD para reduzir travamentos futuros.",
+         "Saves compiled Vulkan shaders to SD card to eliminate repeat stutter.",
          {"on", "off"},
          {"Ligado", "Desligado"},
-         0},
-        {"language", "Idioma do Sistema",
-         "Idioma e regiao informados aos jogos.",
+         {"On", "Off"},
+         0, true},
+        {"language",
+         "Idioma dos Jogos", "Game Language",
+         "Idioma e regiao informados aos jogos emulados.",
+         "System language and region reported to emulated games.",
          {"pt-BR", "en-US", "es-419", "es-ES", "fr", "de", "it", "ja"},
          {"Portugues (Brasil)", "Ingles (EUA)", "Espanhol (LatAm)", "Espanhol (ES)", "Frances", "Alemao", "Italiano", "Japones"},
-         0},
+         {"Portuguese (Brazil)", "English (US)", "Spanish (LatAm)", "Spanish (Spain)", "French", "German", "Italian", "Japanese"},
+         0, true},
+        {"ui_lang",
+         "Idioma do Menu", "Launcher Language",
+         "Idioma da interface do Eden-NX2 (ou aperte [-] na tela inicial).",
+         "Eden-NX2 interface language (or press [-] on main screen).",
+         {"pt", "en"},
+         {"Portugues", "English"},
+         {"Portuguese", "English"},
+         0, false},
     };
 }
 
@@ -582,13 +682,20 @@ void SaveGlobalIni(const std::vector<SettingOption>& opts) {
 }
 
 std::vector<SettingOption> MakePerGameOptions(const std::vector<SettingOption>& global_opts,
-                                                const std::string& rom_path) {
-    std::vector<SettingOption> out = global_opts;
-    for (auto& opt : out) {
-        const std::string global_lbl = opt.labels[static_cast<std::size_t>(opt.selected)];
-        opt.values.insert(opt.values.begin(), "inherit");
-        opt.labels.insert(opt.labels.begin(), "Padrao Global (" + global_lbl + ")");
-        opt.selected = 0;
+                                                const std::string& rom_path, bool en) {
+    std::vector<SettingOption> out;
+    for (const auto& opt : global_opts) {
+        if (!opt.per_game) continue;
+        SettingOption copy = opt;
+        const auto& src_labels = en ? opt.labels_en : opt.labels_pt;
+        const std::string global_lbl = src_labels[static_cast<std::size_t>(opt.selected)];
+        const std::string inh_pt = "Padrao Global (" + global_lbl + ")";
+        const std::string inh_en = "Global Default (" + global_lbl + ")";
+        copy.values.insert(copy.values.begin(), "inherit");
+        copy.labels_pt.insert(copy.labels_pt.begin(), inh_pt);
+        copy.labels_en.insert(copy.labels_en.begin(), inh_en);
+        copy.selected = 0;
+        out.push_back(std::move(copy));
     }
     LoadIniInto(out, GameConfigPath(rom_path), true);
     return out;
@@ -613,12 +720,16 @@ void SavePerGameIni(const std::vector<SettingOption>& game_opts, const std::stri
 }
 
 std::vector<SettingOption> EffectiveOptions(const std::vector<SettingOption>& global_opts,
-                                            const std::string& rom_path) {
+                                            const std::string& rom_path, bool en) {
     std::vector<SettingOption> eff = global_opts;
-    const auto game_opts = MakePerGameOptions(global_opts, rom_path);
-    for (std::size_t i = 0; i < eff.size() && i < game_opts.size(); ++i) {
-        if (game_opts[i].selected > 0) {
-            eff[i].selected = game_opts[i].selected - 1;
+    const auto game_opts = MakePerGameOptions(global_opts, rom_path, en);
+    for (const auto& g : game_opts) {
+        if (g.selected <= 0) continue;
+        for (auto& e : eff) {
+            if (e.key == g.key) {
+                e.selected = g.selected - 1;
+                break;
+            }
         }
     }
     return eff;
@@ -631,9 +742,12 @@ std::string GetValue(const std::vector<SettingOption>& opts, std::string_view ke
     return {};
 }
 
-std::string GetLabel(const std::vector<SettingOption>& opts, std::string_view key) {
+std::string GetLabel(const std::vector<SettingOption>& opts, std::string_view key, bool en) {
     for (const auto& o : opts) {
-        if (o.key == key) return o.labels[static_cast<std::size_t>(o.selected)];
+        if (o.key == key) {
+            const auto& lbls = en ? o.labels_en : o.labels_pt;
+            return lbls[static_cast<std::size_t>(o.selected)];
+        }
     }
     return {};
 }
@@ -652,6 +766,14 @@ void FillLaunchConfig(const std::vector<SettingOption>& eff, const std::string& 
     cfg->resolution_scale = std::strtof(GetValue(eff, "resolution").c_str(), nullptr);
     if (cfg->resolution_scale <= 0.1f) cfg->resolution_scale = 1.0f;
     cfg->gpu_fast = (GetValue(eff, "gpu_mode") == "fast");
+    cfg->cpu_unsafe = (GetValue(eff, "cpu_accuracy") == "unsafe");
+
+    const std::string fg = GetValue(eff, "frame_gen");
+    cfg->frame_gen_mult = (fg == "2x") ? 2 : (fg == "3x" ? 3 : (fg == "4x" ? 4 : 0));
+
+    const std::string fps = GetValue(eff, "show_fps");
+    cfg->show_fps_mode = (fps == "detailed") ? 2 : (fps == "on" ? 1 : 0);
+
     cfg->cpu_boost = (GetValue(eff, "cpu_boost") == "on");
 
     const std::string as_mode = GetValue(eff, "address_space");
@@ -660,6 +782,7 @@ void FillLaunchConfig(const std::vector<SettingOption>& eff, const std::string& 
     cfg->jit_blocks_ahead = std::atoi(GetValue(eff, "jit_ahead").c_str());
     cfg->shader_cache = (GetValue(eff, "shader_cache") == "on");
     cfg->language = GetValue(eff, "language");
+    cfg->ui_english = (GetValue(eff, "ui_lang") == "en");
 }
 
 void DrawFormatBadge(Canvas& cv, int x, int y, const GameEntry& entry) {
@@ -688,33 +811,42 @@ void DrawFormatBadge(Canvas& cv, int x, int y, const GameEntry& entry) {
     cv.DrawText(x + 4, y + 20, tag, kTextPrimary, 2, true);
 }
 
-void DrawStickWidget(Canvas& cv, int cx, int cy, int r, float sx, float sy, std::string_view tag) {
-    cv.DrawRoundedRect(cx - r, cy - r, r * 2, r * 2, r, PackRGBA(14, 21, 34), kBorderDim);
+void DrawStickWidget(Canvas& cv, int cx, int cy, int r, float sx, float sy, std::string_view tag,
+                     bool clicked) {
+    cv.DrawRoundedRect(cx - r, cy - r, r * 2, r * 2, r,
+                       clicked ? PackRGBA(20, 56, 74) : PackRGBA(14, 21, 34),
+                       clicked ? kAmber : kBorderDim);
     const int dot_x = cx + static_cast<int>(std::clamp(sx, -1.0f, 1.0f) * (r - 6));
     const int dot_y = cy - static_cast<int>(std::clamp(sy, -1.0f, 1.0f) * (r - 6));
-    cv.DrawRoundedRect(dot_x - 5, dot_y - 5, 10, 10, 5, kAccent);
-    cv.DrawText(cx - 4, cy + r + 4, tag, kTextMuted, 1);
+    cv.DrawRoundedRect(dot_x - 5, dot_y - 5, 10, 10, 5, clicked ? kAmber : kAccent);
+    cv.DrawText(cx - 8, cy + r + 4, tag, clicked ? kAmber : kTextMuted, 1);
 }
 
 void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<GameEntry>& entries,
                     int selected, int scroll, const std::vector<SettingOption>& global_opts,
-                    const Switch2PadSnapshot& pad) {
+                    const Switch2PadSnapshot& pad, bool lsfg_ready) {
+    const bool en = (GetValue(global_opts, "ui_lang") == "en");
     cv.FillGradientV(0, 0, kScreenW, kScreenH, kBgTop, kBgBottom);
+
     // Top bar
     cv.FillRect(0, 0, kScreenW, 68, PackRGBA(15, 23, 38));
     cv.FillRect(0, 66, kScreenW, 2, kAccent);
 
     cv.DrawPill(24, 16, "EDEN-NX2", kAccent, PackRGBA(7, 22, 16), 2);
-    cv.DrawText(192, 18, "Nintendo Switch 2", kTextPrimary, 2, true);
-    cv.DrawText(192, 42, "Port by @davidkalil10 (ko-fi.com/davidkalil10)", kTextMuted, 1);
+    cv.DrawText(186, 18, "Nintendo Switch 2", kTextPrimary, 2, true);
+    cv.DrawText(186, 42, "Port by @davidkalil10 (ko-fi.com/davidkalil10)", kTextMuted, 1);
+
+    cv.DrawPill(615, 18, lsfg_ready ? "LSFG OK" : "NO DLL",
+                lsfg_ready ? kAccentSoft : kCardBg,
+                lsfg_ready ? kAccent : kTextMuted, 2);
 
     std::uint64_t mem_used = 0, mem_total = 0;
     Switch2GetMemoryStats(&mem_used, &mem_total);
     char ram_buf[64];
-    std::snprintf(ram_buf, sizeof(ram_buf), "RAM %llu / %llu MiB",
+    std::snprintf(ram_buf, sizeof(ram_buf), "RAM %llu/%lluM",
                   static_cast<unsigned long long>(mem_used >> 20),
                   static_cast<unsigned long long>(mem_total >> 20));
-    cv.DrawPill(740, 18, ram_buf, kCardBg, kCyan, 2);
+    cv.DrawPill(765, 18, ram_buf, kCardBg, kCyan, 2);
 
     char core_buf[32];
     std::snprintf(core_buf, sizeof(core_buf), "CPU 0x%llx",
@@ -723,18 +855,22 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
 
     // Left panel: Library
     cv.DrawRoundedRect(24, 84, 724, 570, 14, kPanelBg, kBorderDim);
-    cv.DrawText(42, 98, "BIBLIOTECA DE JOGOS", kAccent, 2);
+    cv.DrawText(42, 98, T(en, "BIBLIOTECA DE JOGOS", "GAME LIBRARY"), kAccent, 2);
     cv.DrawTextMaxWidth(365, 102, 360, folder, kTextMuted, 1);
     cv.FillRect(40, 122, 692, 1, kBorderDim);
 
     constexpr int kVisible = 6;
     if (entries.empty()) {
-        cv.DrawRoundedRect(46, 150, 680, 170, 12, kCardBg, kBorderDim);
-        cv.DrawText(68, 176, "Nenhuma ROM encontrada nesta pasta.", kTextPrimary, 2);
-        cv.DrawText(68, 212, "Coloque arquivos .nsp / .xci / .nro em:", kTextMuted, 1);
-        cv.DrawText(68, 232, "sdmc:/switch/eden-nx2/roms/", kAccent, 2);
+        cv.DrawRoundedRect(46, 150, 680, 180, 12, kCardBg, kBorderDim);
+        cv.DrawText(68, 174, T(en, "Nenhuma ROM encontrada nesta pasta.", "No ROMs found in this folder."),
+                    kTextPrimary, 2);
+        cv.DrawText(68, 210, T(en, "Coloque arquivos .nsp / .xci / .nro em:", "Place .nsp / .xci / .nro files in:"),
+                    kTextMuted, 1);
+        cv.DrawText(68, 230, "sdmc:/switch/eden-nx2/roms/", kAccent, 2);
         cv.DrawText(68, 266, "Keys: sdmc:/switch/eden-nx2/.local/share/eden/keys/", kTextMuted, 1);
-        cv.DrawText(68, 286, "Pressione [B] para navegar em outras pastas do cartao SD.", kCyan, 1);
+        cv.DrawText(68, 286, T(en, "Pressione [B] para navegar em outras pastas do cartao SD.",
+                               "Press [B] to browse parent folders on the SD card."),
+                    kCyan, 1);
     } else {
         for (int i = 0; i < kVisible && (scroll + i) < static_cast<int>(entries.size()); ++i) {
             const int idx = scroll + i;
@@ -747,7 +883,7 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
             cv.DrawTextMaxWidth(120, cy + 14, 500, item.display_title, kTextPrimary, 2, is_sel);
 
             std::string sub = item.is_dir
-                                  ? "Pasta - pressione [A] para abrir"
+                                  ? T(en, "Pasta - pressione [A] para abrir", "Folder - press [A] to open")
                                   : (item.author.empty() ? FormatSize(item.size_bytes)
                                                          : (item.author + "  |  " + FormatSize(item.size_bytes)));
             cv.DrawTextMaxWidth(120, cy + 44, 480, sub, kTextMuted, 1);
@@ -765,100 +901,127 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
     cv.DrawRoundedRect(764, 84, 492, 570, 14, kPanelBg, kBorderDim);
     const bool has_game = !entries.empty() && selected < static_cast<int>(entries.size()) &&
                           !entries[static_cast<std::size_t>(selected)].is_dir;
-    const auto eff = has_game ? EffectiveOptions(global_opts, entries[static_cast<std::size_t>(selected)].full_path)
-                              : global_opts;
+    const auto eff = has_game
+                         ? EffectiveOptions(global_opts,
+                                            entries[static_cast<std::size_t>(selected)].full_path, en)
+                         : global_opts;
 
-    cv.DrawText(784, 98, has_game ? "PERFIL EFETIVO DO JOGO" : "PERFIL GLOBAL ATIVO", kAccent, 2);
+    cv.DrawText(784, 98,
+                has_game ? T(en, "PERFIL DO JOGO", "GAME PROFILE")
+                         : T(en, "PERFIL GLOBAL", "GLOBAL PROFILE"),
+                kAccent, 2);
     cv.FillRect(784, 122, 452, 1, kBorderDim);
 
     if (!entries.empty() && selected < static_cast<int>(entries.size())) {
-        cv.DrawTextMaxWidth(784, 134, 452, entries[static_cast<std::size_t>(selected)].display_title,
+        cv.DrawTextMaxWidth(784, 132, 452, entries[static_cast<std::size_t>(selected)].display_title,
                             kTextPrimary, 2);
     }
 
     const std::array<std::pair<const char*, std::string>, 7> rows = {{
-        {"Controle", GetLabel(eff, "controller")},
-        {"Modo", GetLabel(eff, "console_mode") + "  " + GetValue(eff, "resolution") + "x"},
-        {"GPU", GetLabel(eff, "gpu_mode")},
-        {"CPU Boost", GetLabel(eff, "cpu_boost")},
-        {"Memoria", GetLabel(eff, "address_space")},
-        {"JIT Ahead", GetValue(eff, "jit_ahead") + " blocos | Shader: " + GetValue(eff, "shader_cache")},
-        {"Idioma", GetValue(eff, "language")},
+        {T(en, "Controle", "Controller"), GetLabel(eff, "controller", en)},
+        {T(en, "Modo", "Mode"), GetLabel(eff, "console_mode", en) + " " + GetValue(eff, "resolution") + "x"},
+        {"GPU / CPU", GetLabel(eff, "gpu_mode", en) + " | " + GetValue(eff, "cpu_accuracy")},
+        {"LSFG / FPS", GetLabel(eff, "frame_gen", en) + " | " + GetValue(eff, "show_fps")},
+        {"CPU / RAM", GetLabel(eff, "cpu_boost", en) + " | " + GetValue(eff, "address_space")},
+        {"JIT / Shader", GetValue(eff, "jit_ahead") + " blk | " + GetValue(eff, "shader_cache")},
+        {T(en, "Idioma", "Language"), GetValue(eff, "language")},
     }};
     for (std::size_t i = 0; i < rows.size(); ++i) {
-        const int ry = 166 + static_cast<int>(i) * 32;
+        const int ry = 164 + static_cast<int>(i) * 32;
         cv.FillRect(784, ry, 452, 26, (i % 2 == 0) ? PackRGBA(22, 32, 49) : PackRGBA(19, 28, 43));
         cv.DrawText(792, ry + 6, rows[i].first, kTextMuted, 1);
-        cv.DrawTextMaxWidth(890, ry + 6, 338, rows[i].second, kTextPrimary, 1);
+        cv.DrawTextMaxWidth(896, ry + 6, 334, rows[i].second, kTextPrimary, 1);
     }
 
-    // Live controller & Let's Go tip widget
-    cv.DrawRoundedRect(784, 404, 452, 232, 10, kCardBg, kBorderDim);
-    cv.DrawText(800, 418, "TESTE DE CONTROLE AO VIVO", kCyan, 2);
+    // Live controller test widget
+    cv.DrawRoundedRect(784, 400, 452, 238, 10, kCardBg, kBorderDim);
+    cv.DrawText(800, 412, T(en, "TESTE DE CONTROLE AO VIVO", "LIVE CONTROLLER TEST"), kCyan, 2);
 
-    DrawStickWidget(cv, 840, 486, 26, pad.left_x, pad.left_y, "L");
-    DrawStickWidget(cv, 922, 486, 26, pad.right_x, pad.right_y, "R");
+    const bool l3 = (pad.raw_held & SWITCH2_BTN_LSTICK) != 0;
+    const bool r3 = (pad.raw_held & SWITCH2_BTN_RSTICK) != 0;
+    DrawStickWidget(cv, 836, 480, 26, pad.left_x, pad.left_y, "L3", l3);
+    DrawStickWidget(cv, 912, 480, 26, pad.right_x, pad.right_y, "R3", r3);
 
     auto btnColor = [&](std::uint64_t mask) {
         return (pad.raw_held & mask) ? kAccent : PackRGBA(50, 68, 95);
     };
-    cv.DrawPill(974, 454, "A", btnColor(SWITCH2_BTN_A), kTextPrimary, 1);
-    cv.DrawPill(1010, 454, "B", btnColor(SWITCH2_BTN_B), kTextPrimary, 1);
-    cv.DrawPill(1046, 454, "X", btnColor(SWITCH2_BTN_X), kTextPrimary, 1);
-    cv.DrawPill(1082, 454, "Y", btnColor(SWITCH2_BTN_Y), kTextPrimary, 1);
-    cv.DrawPill(1122, 454, "ZL", btnColor(SWITCH2_BTN_ZL), kTextPrimary, 1);
-    cv.DrawPill(1168, 454, "ZR", btnColor(SWITCH2_BTN_ZR), kTextPrimary, 1);
+    cv.DrawPill(960, 444, "A", btnColor(SWITCH2_BTN_A), kTextPrimary, 1);
+    cv.DrawPill(994, 444, "B", btnColor(SWITCH2_BTN_B), kTextPrimary, 1);
+    cv.DrawPill(1028, 444, "X", btnColor(SWITCH2_BTN_X), kTextPrimary, 1);
+    cv.DrawPill(1062, 444, "Y", btnColor(SWITCH2_BTN_Y), kTextPrimary, 1);
+    cv.DrawPill(1098, 444, "ZL", btnColor(SWITCH2_BTN_ZL), kTextPrimary, 1);
+    cv.DrawPill(1140, 444, "ZR", btnColor(SWITCH2_BTN_ZR), kTextPrimary, 1);
 
-    cv.DrawPill(974, 484, "L", btnColor(SWITCH2_BTN_L), kTextPrimary, 1);
-    cv.DrawPill(1010, 484, "R", btnColor(SWITCH2_BTN_R), kTextPrimary, 1);
-    cv.DrawPill(1046, 484, "SL", btnColor(SWITCH2_BTN_SL), kTextPrimary, 1);
-    cv.DrawPill(1090, 484, "SR", btnColor(SWITCH2_BTN_SR), kTextPrimary, 1);
-    cv.DrawText(974, 518, pad.has_motion ? "Gyro/Motion: OK" : "Gyro: Conectando...",
+    cv.DrawPill(960, 472, "L", btnColor(SWITCH2_BTN_L), kTextPrimary, 1);
+    cv.DrawPill(994, 472, "R", btnColor(SWITCH2_BTN_R), kTextPrimary, 1);
+    cv.DrawPill(1028, 472, "L3", l3 ? kAmber : PackRGBA(50, 68, 95), kTextPrimary, 1);
+    cv.DrawPill(1070, 472, "R3", r3 ? kAmber : PackRGBA(50, 68, 95), kTextPrimary, 1);
+    cv.DrawPill(1112, 472, "SL", btnColor(SWITCH2_BTN_SL), kTextPrimary, 1);
+    cv.DrawPill(1154, 472, "SR", btnColor(SWITCH2_BTN_SR), kTextPrimary, 1);
+
+    cv.DrawPill(960, 500, "+", btnColor(SWITCH2_BTN_PLUS), kTextPrimary, 1);
+    cv.DrawPill(994, 500, "-", btnColor(SWITCH2_BTN_MINUS), kTextPrimary, 1);
+    cv.DrawText(1036, 505, pad.has_motion ? "Gyro: OK" : "Gyro: ...",
                 pad.has_motion ? kAccent : kTextMuted, 1);
 
-    cv.FillRect(800, 548, 420, 1, kBorderDim);
-    cv.DrawText(800, 560, "Dica Let's Go Pikachu / Eevee:", kAmber, 1);
-    cv.DrawText(800, 578, "Pressione [Y] no jogo e mude Controle", kTextPrimary, 1);
-    cv.DrawText(800, 594, "para Handheld ou Joy-Con Direito!", kTextPrimary, 1);
-    cv.DrawText(800, 614, "Sair do jogo: segure [+] e [-] por 1 seg.", kTextMuted, 1);
+    cv.FillRect(800, 542, 420, 1, kBorderDim);
+    cv.DrawText(800, 554, T(en, "Dica Let's Go Pikachu / Eevee:", "Tip Let's Go Pikachu / Eevee:"),
+                kAmber, 1);
+    cv.DrawText(800, 572, T(en, "Aperte [Y] -> Controle = Handheld ou Joy-Con Dir.",
+                            "Press [Y] -> Controller = Handheld or Right Joy-Con"),
+                kTextPrimary, 1);
+    cv.DrawText(800, 594, T(en, "Voltar ao Launcher: segure [+]+[-] por 2 seg.",
+                            "Return to Launcher: hold [+]+[-] for 2 sec."),
+                kCyan, 1);
+    cv.DrawText(800, 614, T(en, "LSFG: coloque Lossless.dll em sdmc:/switch/eden-nx2/",
+                            "LSFG: put Lossless.dll in sdmc:/switch/eden-nx2/"),
+                kTextMuted, 1);
 
     // Bottom footer hints
     cv.FillRect(0, 666, kScreenW, 54, PackRGBA(12, 18, 29));
     cv.FillRect(0, 666, kScreenW, 1, kBorderDim);
-    int fx = 28;
-    fx += cv.DrawPill(fx, 678, "[A] Abrir Jogo", kAccentSoft, kAccent, 1) + 14;
-    fx += cv.DrawPill(fx, 678, "[B] Pasta Acima", kCardBg, kTextPrimary, 1) + 14;
-    fx += cv.DrawPill(fx, 678, "[X] Config Global", kCardBg, kCyan, 1) + 14;
-    fx += cv.DrawPill(fx, 678, "[Y] Config do Jogo", kCardBg, kAmber, 1) + 14;
-    cv.DrawPill(1136, 678, "[+] Sair", PackRGBA(120, 28, 36), kTextPrimary, 1);
+    int fx = 24;
+    fx += cv.DrawPill(fx, 678, T(en, "[A] Abrir", "[A] Launch"), kAccentSoft, kAccent, 1) + 10;
+    fx += cv.DrawPill(fx, 678, T(en, "[B] Voltar", "[B] Up Dir"), kCardBg, kTextPrimary, 1) + 10;
+    fx += cv.DrawPill(fx, 678, T(en, "[X] Global", "[X] Global"), kCardBg, kCyan, 1) + 10;
+    fx += cv.DrawPill(fx, 678, T(en, "[Y] Do Jogo", "[Y] Per-Game"), kCardBg, kAmber, 1) + 10;
+    fx += cv.DrawPill(fx, 678, T(en, "[-] PT/EN", "[-] PT/EN"), kCardBg, kTextPrimary, 1) + 10;
+    cv.DrawPill(1136, 678, T(en, "[+] Sair", "[+] Exit"), PackRGBA(120, 28, 36), kTextPrimary, 1);
 }
 
 void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int selected,
-                       const std::string& title) {
+                       const std::string& title, bool en) {
     cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 205);
-    cv.DrawRoundedRect(130, 56, 1020, 608, 16, kPanelBg, kAccent);
-    cv.DrawText(164, 80, title, kAccent, 2, true);
-    cv.FillRect(164, 108, 952, 2, kBorderDim);
+    cv.DrawRoundedRect(120, 48, 1040, 624, 16, kPanelBg, kAccent);
+    cv.DrawText(152, 68, title, kAccent, 2, true);
+    cv.FillRect(152, 96, 976, 2, kBorderDim);
 
     for (std::size_t i = 0; i < opts.size(); ++i) {
-        const int ry = 124 + static_cast<int>(i) * 48;
+        const int ry = 108 + static_cast<int>(i) * 34;
         const bool is_sel = (static_cast<int>(i) == selected);
-        cv.DrawRoundedRect(164, ry, 952, 42, 8, is_sel ? kCardSelected : kCardBg,
+        cv.DrawRoundedRect(152, ry, 976, 30, 6, is_sel ? kCardSelected : kCardBg,
                            is_sel ? kAccent : kBorderDim);
-        cv.DrawTextMaxWidth(184, ry + 13, 380, opts[i].label, kTextPrimary, 2);
-        const std::string val_txt = "< " + opts[i].labels[static_cast<std::size_t>(opts[i].selected)] + " >";
-        cv.DrawTextMaxWidth(580, ry + 13, 516, val_txt, is_sel ? kAccent : kCyan, 2);
+        const std::string& lbl = en ? opts[i].label_en : opts[i].label_pt;
+        const auto& ch_lbls = en ? opts[i].labels_en : opts[i].labels_pt;
+        cv.DrawTextMaxWidth(168, ry + 7, 420, lbl, kTextPrimary, 2);
+        const std::string val_txt = "< " + ch_lbls[static_cast<std::size_t>(opts[i].selected)] + " >";
+        cv.DrawTextMaxWidth(600, ry + 7, 512, val_txt, is_sel ? kAccent : kCyan, 2);
     }
 
     if (selected >= 0 && selected < static_cast<int>(opts.size())) {
-        cv.DrawRoundedRect(164, 562, 952, 46, 8, PackRGBA(14, 22, 34), kBorderDim);
-        cv.DrawTextMaxWidth(182, 578, 916, opts[static_cast<std::size_t>(selected)].help, kTextPrimary, 1);
+        cv.DrawRoundedRect(152, 562, 976, 46, 8, PackRGBA(14, 22, 34), kBorderDim);
+        const std::string& help = en ? opts[static_cast<std::size_t>(selected)].help_en
+                                     : opts[static_cast<std::size_t>(selected)].help_pt;
+        cv.DrawTextMaxWidth(170, 578, 940, help, kTextPrimary, 1);
     }
-    cv.DrawText(164, 626, "[Up/Down] Navegar   [Left/Right ou A] Alterar   [B] Salvar e Voltar",
+    cv.DrawText(152, 628,
+                T(en, "[Cima/Baixo] Navegar   [Esq/Dir ou A] Alterar   [B] Salvar e Voltar",
+                  "[Up/Down] Navigate   [Left/Right or A] Change   [B] Save & Back"),
                 kTextMuted, 1);
 }
 
-bool RunSettingsModal(Canvas& cv, std::vector<SettingOption>& opts, const std::string& title) {
+bool RunSettingsModal(Canvas& cv, std::vector<SettingOption>& opts, const std::string& title,
+                      bool* ui_en_state = nullptr) {
     int selected = 0;
     bool redraw = true;
     Switch2PadSnapshot pad{};
@@ -881,10 +1044,14 @@ bool RunSettingsModal(Canvas& cv, std::vector<SettingOption>& opts, const std::s
         if (down & (SWITCH2_BTN_LEFT | SWITCH2_BTN_RIGHT | SWITCH2_BTN_A)) {
             const int step = (down & SWITCH2_BTN_LEFT) ? (c - 1) : 1;
             opt.selected = (opt.selected + step) % c;
+            if (ui_en_state && opt.key == "ui_lang") {
+                *ui_en_state = (opt.values[static_cast<std::size_t>(opt.selected)] == "en");
+            }
             redraw = true;
         }
         if (redraw) {
-            DrawSettingsModal(cv, opts, selected, title);
+            const bool en = ui_en_state ? *ui_en_state : false;
+            DrawSettingsModal(cv, opts, selected, title, en);
             cv.Present();
             redraw = false;
         }
@@ -902,6 +1069,8 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
         return false;
     }
 
+    const bool lsfg_ready = EnsureLosslessInstalled();
+
     auto global_opts = MakeDefaultOptions();
     LoadIniInto(global_opts, kGlobalSettingsPath, false);
 
@@ -912,13 +1081,17 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
     constexpr int kVisible = 6;
     bool chosen = false;
     bool prev_touch = false;
+    std::uint64_t prev_held = 0;
+    float prev_lx = 0.0f, prev_ly = 0.0f, prev_rx = 0.0f, prev_ry = 0.0f;
+    bool prev_motion = false;
     int tick_counter = 0;
 
     Canvas cv;
     Switch2PadSnapshot pad{};
 
     while (Switch2PollInput(&pad, false)) {
-        bool redraw = (tick_counter++ % 6 == 0);
+        bool en = (GetValue(global_opts, "ui_lang") == "en");
+        bool redraw = (tick_counter++ % 15 == 0);
         const std::uint64_t down = pad.raw_down;
         const int count = static_cast<int>(entries.size());
 
@@ -926,8 +1099,21 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
             break;
         }
 
+        if (down & SWITCH2_BTN_MINUS) {
+            for (auto& o : global_opts) {
+                if (o.key == "ui_lang") {
+                    o.selected = (o.selected + 1) % 2;
+                    en = (o.selected == 1);
+                    break;
+                }
+            }
+            SaveGlobalIni(global_opts);
+            redraw = true;
+        }
+
         if (down & SWITCH2_BTN_X) {
-            if (!RunSettingsModal(cv, global_opts, "CONFIGURACOES GLOBAIS")) {
+            if (!RunSettingsModal(cv, global_opts,
+                                  T(en, "CONFIGURACOES GLOBAIS", "GLOBAL SETTINGS"), &en)) {
                 break;
             }
             SaveGlobalIni(global_opts);
@@ -936,8 +1122,11 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
 
         if ((down & SWITCH2_BTN_Y) && count > 0 && !entries[static_cast<std::size_t>(selected)].is_dir) {
             const std::string& rpath = entries[static_cast<std::size_t>(selected)].full_path;
-            auto game_opts = MakePerGameOptions(global_opts, rpath);
-            if (!RunSettingsModal(cv, game_opts, "CONFIG POR JOGO: " + entries[static_cast<std::size_t>(selected)].display_title)) {
+            auto game_opts = MakePerGameOptions(global_opts, rpath, en);
+            const std::string modal_title =
+                std::string(T(en, "CONFIG DO JOGO: ", "GAME SETTINGS: ")) +
+                entries[static_cast<std::size_t>(selected)].display_title;
+            if (!RunSettingsModal(cv, game_opts, modal_title, &en)) {
                 break;
             }
             SavePerGameIni(game_opts, rpath);
@@ -953,7 +1142,6 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
             redraw = true;
         }
 
-        // Touch screen card tap
         if (pad.has_touch && !prev_touch) {
             const int tx = static_cast<int>(pad.touch_x * kScreenW);
             const int ty = static_cast<int>(pad.touch_y * kScreenH);
@@ -976,7 +1164,7 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
             const std::string& rpath = entries[static_cast<std::size_t>(selected)].full_path;
             SaveGlobalIni(global_opts);
             SaveLastFolder(folder);
-            const auto eff = EffectiveOptions(global_opts, rpath);
+            const auto eff = EffectiveOptions(global_opts, rpath, en);
             FillLaunchConfig(eff, rpath, out_cfg);
             chosen = true;
             break;
@@ -990,13 +1178,24 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
             redraw = true;
         }
 
-        if (down != 0 || pad.has_touch || std::fabs(pad.left_x) > 0.12f || std::fabs(pad.left_y) > 0.12f) {
+        if (down != 0 || pad.raw_held != prev_held || pad.has_touch ||
+            pad.has_motion != prev_motion ||
+            std::fabs(pad.left_x) > 0.05f || std::fabs(pad.left_y) > 0.05f ||
+            std::fabs(pad.right_x) > 0.05f || std::fabs(pad.right_y) > 0.05f ||
+            std::fabs(pad.left_x - prev_lx) > 0.01f || std::fabs(pad.left_y - prev_ly) > 0.01f ||
+            std::fabs(pad.right_x - prev_rx) > 0.01f || std::fabs(pad.right_y - prev_ry) > 0.01f) {
             redraw = true;
         }
+        prev_held = pad.raw_held;
+        prev_lx = pad.left_x;
+        prev_ly = pad.left_y;
+        prev_rx = pad.right_x;
+        prev_ry = pad.right_y;
+        prev_motion = pad.has_motion;
 
         if (redraw) {
             scroll = std::clamp(scroll, std::max(0, selected - kVisible + 1), selected);
-            DrawMainScreen(cv, folder, entries, selected, scroll, global_opts, pad);
+            DrawMainScreen(cv, folder, entries, selected, scroll, global_opts, pad, lsfg_ready);
             cv.Present();
         }
         Switch2SleepMs(16);

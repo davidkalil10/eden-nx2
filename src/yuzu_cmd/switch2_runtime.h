@@ -64,6 +64,7 @@ bool Switch2FbInit(void);
 std::uint32_t* Switch2FbBegin(std::uint32_t* out_stride_pixels);
 void Switch2FbEnd(void);
 void Switch2FbClose(void);
+void Switch2ScheduleReturnToLauncher(const char* argv0);
 
 } // extern "C"
 

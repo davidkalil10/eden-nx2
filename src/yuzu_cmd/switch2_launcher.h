@@ -21,15 +21,19 @@ struct Switch2LaunchConfig {
     bool docked_mode = false;
     float resolution_scale = 1.0f;
     bool gpu_fast = true;
+    bool cpu_unsafe = true;
+    int frame_gen_mult = 0; // 0 = Off, 2..4 = Lossless Scaling multiplier
+    int show_fps_mode = 1;  // 0 = Off, 1 = FPS + Speed, 2 = Detailed
     bool cpu_boost = true;
     int address_space_mode = 1; // 0 = 36-bit compact, 1 = 38-bit balanced, 2 = 39-bit full
     int jit_blocks_ahead = 8;
     bool shader_cache = true;
     std::string language = "pt-BR";
+    bool ui_english = false;
 };
 
 // Opens the 1280x720 graphical ROM selector & settings dashboard.
-// Returns true when a game is chosen (fills out_cfg); returns false to exit cleanly.
+// Returns true when a game is chosen (fills out_cfg); returns false to exit to hbmenu.
 bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg);
 
 #endif // __SWITCH2__

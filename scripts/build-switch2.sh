@@ -99,6 +99,7 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \
     -DBUILD_TESTING=OFF \
     -DYUZU_DISABLE_LLVM=ON \
     -DYUZU_STATIC_BUILD=ON \
+    -DENABLE_LSFG=ON \
     -DCMAKE_CXX_SCAN_FOR_MODULES=OFF
 
 cmake --build "${BUILD_DIR}" --target ${TARGET} --parallel "${JOBS}"

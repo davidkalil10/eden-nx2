@@ -22,6 +22,8 @@
 #include <tuple>
 #include "core/frontend/emu_window.h"
 #include "core/frontend/graphics_context.h"
+#include "common/overlay_panels.h"
+#include "core/perf_stats.h"
 #include "dynarmic/backend/arm64/switch2_code_block.h"
 #include "hid_core/frontend/emulated_controller.h"
 #include "hid_core/hid_core.h"
@@ -101,6 +103,7 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 }
 #endif
 
+#ifndef __SWITCH2__
 static void OnStateChanged(const Network::RoomMember::State& state) {
     switch (state) {
     case Network::RoomMember::State::Idle:
@@ -195,6 +198,7 @@ static void OnStatusMessageReceived(const Network::StatusMessageEntry& msg) {
     if (!message.empty())
         std::cout << std::endl << "* " << message << std::endl << std::endl;
 }
+#endif
 
 #ifdef __SWITCH2__
 
@@ -223,12 +227,121 @@ public:
     }
 };
 
+void UpdateSwitch2FpsOverlay(const std::string& text) {
+    auto& panel = Common::GetOverlayPanels()[0];
+    std::scoped_lock lk{panel.mutex};
+    if (text.empty()) {
+        panel.enabled = false;
+        panel.pixels.clear();
+        panel.width = 0;
+        panel.height = 0;
+        ++panel.version;
+        return;
+    }
+
+    struct Glyph {
+        char ch;
+        std::array<std::string_view, 7> rows;
+    };
+    static constexpr std::array<Glyph, 29> kGlyphs{{
+        {'0', {"01110", "10001", "10011", "10101", "11001", "10001", "01110"}},
+        {'1', {"00100", "01100", "00100", "00100", "00100", "00100", "01110"}},
+        {'2', {"01110", "10001", "00001", "00010", "00100", "01000", "11111"}},
+        {'3', {"11110", "00001", "00001", "01110", "00001", "00001", "11110"}},
+        {'4', {"00010", "00110", "01010", "10010", "11111", "00010", "00010"}},
+        {'5', {"11111", "10000", "11110", "00001", "00001", "10001", "01110"}},
+        {'6', {"00110", "01000", "10000", "11110", "10001", "10001", "01110"}},
+        {'7', {"11111", "00001", "00010", "00100", "01000", "01000", "01000"}},
+        {'8', {"01110", "10001", "10001", "01110", "10001", "10001", "01110"}},
+        {'9', {"01110", "10001", "10001", "01111", "00001", "00010", "01100"}},
+        {'.', {"00000", "00000", "00000", "00000", "00000", "01100", "01100"}},
+        {'%', {"11001", "11010", "00010", "00100", "01000", "01011", "10011"}},
+        {' ', {"00000", "00000", "00000", "00000", "00000", "00000", "00000"}},
+        {'|', {"00100", "00100", "00100", "00100", "00100", "00100", "00100"}},
+        {'A', {"01110", "10001", "10001", "11111", "10001", "10001", "10001"}},
+        {'C', {"01110", "10001", "10000", "10000", "10000", "10001", "01110"}},
+        {'D', {"11110", "10001", "10001", "10001", "10001", "10001", "11110"}},
+        {'E', {"11111", "10000", "10000", "11110", "10000", "10000", "11111"}},
+        {'F', {"11111", "10000", "10000", "11110", "10000", "10000", "10000"}},
+        {'G', {"01110", "10001", "10000", "10111", "10001", "10001", "01110"}},
+        {'H', {"10001", "10001", "10001", "11111", "10001", "10001", "10001"}},
+        {'K', {"10001", "10010", "10100", "11000", "10100", "10010", "10001"}},
+        {'L', {"10000", "10000", "10000", "10000", "10000", "10000", "11111"}},
+        {'N', {"10001", "11001", "10101", "10011", "10001", "10001", "10001"}},
+        {'O', {"01110", "10001", "10001", "10001", "10001", "10001", "01110"}},
+        {'P', {"11110", "10001", "10001", "11110", "10000", "10000", "10000"}},
+        {'S', {"01111", "10000", "10000", "01110", "00001", "00001", "11110"}},
+        {'X', {"10001", "10001", "01010", "00100", "01010", "10001", "10001"}},
+        {'-', {"00000", "00000", "00000", "11111", "00000", "00000", "00000"}},
+    }};
+    auto find_glyph = [&](char c) -> const Glyph* {
+        const char up = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        for (const auto& g : kGlyphs) {
+            if (g.ch == up) return &g;
+        }
+        return nullptr;
+    };
+
+    std::vector<std::string_view> lines;
+    std::size_t longest = 0;
+    for (std::size_t pos = 0; pos <= text.size();) {
+        const std::size_t nl = std::min(text.find('\n', pos), text.size());
+        lines.push_back(std::string_view(text).substr(pos, nl - pos));
+        longest = std::max(longest, nl - pos);
+        pos = nl + 1;
+    }
+
+    constexpr u32 kScale = 3;
+    constexpr u32 kPad = 8;
+    constexpr u32 kCellW = 6 * kScale;
+    constexpr u32 kLineH = 9 * kScale;
+    const u32 width = static_cast<u32>(longest) * kCellW + kPad * 2;
+    const u32 height = static_cast<u32>(lines.size()) * kLineH + kPad * 2;
+
+    panel.pixels.assign(std::size_t{width} * height * 4, 0);
+    for (std::size_t i = 3; i < panel.pixels.size(); i += 4) {
+        panel.pixels[i] = 165;
+    }
+
+    for (std::size_t l = 0; l < lines.size(); ++l) {
+        for (std::size_t c = 0; c < lines[l].size(); ++c) {
+            const Glyph* g = find_glyph(lines[l][c]);
+            if (!g) continue;
+            const u32 ox = kPad + static_cast<u32>(c) * kCellW;
+            const u32 oy = kPad + static_cast<u32>(l) * kLineH;
+            for (u32 gy = 0; gy < 7 * kScale; ++gy) {
+                if (g->rows[gy / kScale][0] == '\0') continue;
+                for (u32 gx = 0; gx < 5 * kScale; ++gx) {
+                    if (g->rows[gy / kScale][gx / kScale] != '1') continue;
+                    u8* px = &panel.pixels[(std::size_t{oy + gy} * width + ox + gx) * 4];
+                    px[0] = 240;
+                    px[1] = 255;
+                    px[2] = 245;
+                    px[3] = 255;
+                }
+            }
+        }
+    }
+    panel.width = width;
+    panel.height = height;
+    panel.anchor = Common::OverlayAnchor::TopLeft;
+    panel.drop = 0.0f;
+    panel.enabled = true;
+    ++panel.version;
+}
+
 void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg, std::size_t& active_pad_index,
                               Core::HID::NpadIdType& active_npad_id) {
     Settings::values.renderer_backend.SetValue(Settings::RendererBackend::Vulkan);
     Settings::values.cpu_backend.SetValue(Settings::CpuBackend::Dynarmic);
     Settings::values.cpuopt_fastmem.SetValue(false);
+    Settings::values.cpu_accuracy.SetValue(cfg.cpu_unsafe ? Settings::CpuAccuracy::Unsafe
+                                                          : Settings::CpuAccuracy::Auto);
     Settings::values.use_disk_shader_cache.SetValue(cfg.shader_cache);
+    Settings::values.frame_gen.SetValue(cfg.frame_gen_mult >= 2);
+    if (cfg.frame_gen_mult >= 2) {
+        Settings::values.frame_gen_multiplier.SetValue(static_cast<u32>(cfg.frame_gen_mult));
+    }
 
     g_switch2_address_space_mode = cfg.address_space_mode;
     g_switch2_jit_blocks_ahead = cfg.jit_blocks_ahead;
@@ -242,10 +355,14 @@ void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg, std::size_t& activ
     else if (cfg.resolution_scale >= 1.3f) res_setup = Settings::ResolutionSetup::Res3_2X;
     Settings::values.resolution_setup.SetValue(res_setup);
 
-    // GPU accuracy
+    // GPU accuracy & performance flags
     if (cfg.gpu_fast) {
         Settings::values.gpu_accuracy.SetValue(Settings::GpuAccuracy::Low);
         Settings::values.use_reactive_flushing.SetValue(false);
+        Settings::values.use_asynchronous_shaders.SetValue(true);
+        Settings::values.use_asynchronous_gpu_emulation.SetValue(true);
+        Settings::values.dma_accuracy.SetValue(Settings::DmaAccuracy::Unsafe);
+        Settings::values.barrier_feedback_loops.SetValue(false);
     } else {
         Settings::values.gpu_accuracy.SetValue(Settings::GpuAccuracy::High);
         Settings::values.use_reactive_flushing.SetValue(true);
@@ -468,6 +585,7 @@ int main(int argc, char** argv) {
         Switch2BootTrace(buf);
     }
 
+    bool should_return_to_launcher = false;
     if (load_result == Core::SystemResultStatus::Success) {
         system->GPU().Start();
         system->GetCpuManager().OnGpuReady();
@@ -478,9 +596,18 @@ int main(int argc, char** argv) {
                 [](VideoCore::LoadCallbackStage, size_t, size_t) {});
         }
 
+        // Disable per-line synchronous SD flush during gameplay for smoothness.
+        Settings::values.log_flush_line.SetValue(false);
+        Settings::values.log_filter.SetValue("*:Error");
+        Common::Log::Initialize();
+
         system->RegisterExitCallback([] {});
         void(system->Run());
         Switch2BootTrace("06: system.Run() ok");
+
+        if (launch_cfg.show_fps_mode > 0) {
+            UpdateSwitch2FpsOverlay("0 FPS  0%");
+        }
 
         Switch2PadSnapshot pad{};
         Switch2PadSnapshot prev_pad{};
@@ -488,14 +615,27 @@ int main(int argc, char** argv) {
         auto* active_ctrl = system->HIDCore().GetEmulatedController(active_npad_id);
         Core::HID::VibrationValue last_l{Core::HID::DEFAULT_VIBRATION_VALUE};
         Core::HID::VibrationValue last_r{Core::HID::DEFAULT_VIBRATION_VALUE};
+        u32 loop_iters = 0;
 
         while (Switch2PollInput(&pad, true)) {
             ForwardSwitch2Input(*input_subsystem, pad, prev_pad, active_pad_index,
                                 launch_cfg.controller_profile, prev_touch);
             if (active_ctrl != nullptr) {
-                auto vl = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Left);
-                auto vr = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Right);
-                if (!(vl == last_l) || !(vr == last_r)) {
+                const auto vl = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Left);
+                const auto vr = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Right);
+                const bool diff_l =
+                    vl.low_amplitude != last_l.low_amplitude ||
+                    vl.high_amplitude != last_l.high_amplitude ||
+                    ((vl.low_amplitude != 0.0f || vl.high_amplitude != 0.0f) &&
+                     (vl.low_frequency != last_l.low_frequency ||
+                      vl.high_frequency != last_l.high_frequency));
+                const bool diff_r =
+                    vr.low_amplitude != last_r.low_amplitude ||
+                    vr.high_amplitude != last_r.high_amplitude ||
+                    ((vr.low_amplitude != 0.0f || vr.high_amplitude != 0.0f) &&
+                     (vr.low_frequency != last_r.low_frequency ||
+                      vr.high_frequency != last_r.high_frequency));
+                if (diff_l || diff_r) {
                     Switch2SetVibration(vl.low_amplitude, vl.low_frequency, vl.high_amplitude,
                                         vl.high_frequency, vr.low_amplitude, vr.low_frequency,
                                         vr.high_amplitude, vr.high_frequency);
@@ -503,11 +643,38 @@ int main(int argc, char** argv) {
                     last_r = vr;
                 }
             }
+            if (launch_cfg.show_fps_mode > 0 && (++loop_iters % 200u) == 0u) {
+                const auto perf = system->GetAndResetPerfStats();
+                char line[128];
+                if (launch_cfg.show_fps_mode == 2) {
+                    const char* mode_str =
+                        (Settings::values.use_docked_mode.GetValue() == Settings::ConsoleMode::Docked)
+                            ? "DOCKED"
+                            : "HANDHELD";
+                    if (launch_cfg.frame_gen_mult >= 2) {
+                        std::snprintf(line, sizeof(line), "%.0f FPS  %.0f%%\n%s %.2gX  LSFG %dX",
+                                      perf.average_game_fps, perf.emulation_speed * 100.0,
+                                      mode_str, launch_cfg.resolution_scale,
+                                      launch_cfg.frame_gen_mult);
+                    } else {
+                        std::snprintf(line, sizeof(line), "%.0f FPS  %.0f%%\n%s %.2gX",
+                                      perf.average_game_fps, perf.emulation_speed * 100.0,
+                                      mode_str, launch_cfg.resolution_scale);
+                    }
+                } else {
+                    std::snprintf(line, sizeof(line), "%.0f FPS  %.0f%%",
+                                  perf.average_game_fps, perf.emulation_speed * 100.0);
+                }
+                UpdateSwitch2FpsOverlay(line);
+            }
             Switch2SleepMs(4);
         }
+        // If Horizon didn't request exit (e.g. Home/Close), the user held [+]+[-] -> relaunch UI.
+        should_return_to_launcher = Switch2MainLoop();
     }
 
     Switch2BootTrace("99: shutdown");
+    UpdateSwitch2FpsOverlay("");
     Switch2SetCpuBoost(false);
     Switch2SetVibration(0, 160.0f, 0, 320.0f, 0, 160.0f, 0, 320.0f);
     system->DetachDebugger();
@@ -522,6 +689,9 @@ int main(int argc, char** argv) {
     input_subsystem.reset();
     Common::Log::Stop();
     Dynarmic::Backend::Arm64::Switch2JitPool::Shutdown();
+    if (should_return_to_launcher) {
+        Switch2ScheduleReturnToLauncher(argc > 0 ? argv[0] : nullptr);
+    }
     return 0;
 }
 

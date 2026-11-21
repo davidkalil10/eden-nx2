@@ -8,7 +8,11 @@
 include_directories(.)
 
 # Stuff in here may or may not use modules.
-set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+if (NINTENDO_SWITCH2)
+    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+else()
+    set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+endif()
 
 # Dynarmic
 if ((ARCHITECTURE_x86_64 OR ARCHITECTURE_arm64 OR ARCHITECTURE_riscv64 OR ARCHITECTURE_loongarch64) AND NOT YUZU_STATIC_ROOM)

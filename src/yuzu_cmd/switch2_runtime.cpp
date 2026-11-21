@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <string>
 
 #define u128 libnx_u128
 #define s128 libnx_s128
@@ -36,7 +38,7 @@ struct Switch2SensorAndMotorState {
 };
 
 Switch2SensorAndMotorState g_pad_dev{};
-int g_plus_minus_hold_frames = 0;
+u64 g_plus_minus_hold_start_tick = 0;
 
 Framebuffer g_fb{};
 bool g_fb_initialized = false;
@@ -80,6 +82,9 @@ extern "C" {
 extern char __start__[];
 
 struct __pthread_t;
+int __syscall_thread_detach(struct __pthread_t*);
+void __libnx_exception_handler(ThreadExceptionDump* ctx);
+
 int __syscall_thread_detach(struct __pthread_t*) {
     // newlib's pthread_detach calls this syscall hook; libnx omits it (ENOSYS),
     // which causes every std::thread::detach() in Eden to throw std::system_error.
@@ -158,7 +163,7 @@ void Switch2InitInput(void) {
         g_pad_dev = {};
         g_pad_initialized = true;
     }
-    g_plus_minus_hold_frames = 0;
+    g_plus_minus_hold_start_tick = 0;
 }
 
 bool Switch2PollInput(Switch2PadSnapshot* out, bool allow_plus_minus_exit) {
@@ -184,11 +189,15 @@ bool Switch2PollInput(Switch2PadSnapshot* out, bool allow_plus_minus_exit) {
     const u64 down = padGetButtonsDown(&g_pad);
 
     if (allow_plus_minus_exit && (held & HidNpadButton_Plus) && (held & HidNpadButton_Minus)) {
-        if (++g_plus_minus_hold_frames >= 30) {
+        const u64 now = armGetSystemTick();
+        if (g_plus_minus_hold_start_tick == 0) {
+            g_plus_minus_hold_start_tick = now;
+        } else if (armTicksToNs(now - g_plus_minus_hold_start_tick) >= 2000000000ULL) {
+            g_plus_minus_hold_start_tick = 0;
             return false;
         }
     } else {
-        g_plus_minus_hold_frames = 0;
+        g_plus_minus_hold_start_tick = 0;
     }
 
     if (out == nullptr) {
@@ -342,6 +351,34 @@ void Switch2FbClose(void) {
         framebufferClose(&g_fb);
         g_fb = {};
         g_fb_initialized = false;
+    }
+}
+
+void Switch2ScheduleReturnToLauncher(const char* argv0) {
+    std::error_code ec;
+    const char* target = nullptr;
+    std::string argv0_str;
+    if (argv0 != nullptr && argv0[0] != '\0') {
+        argv0_str = argv0;
+        if (argv0_str.size() > 4 && std::filesystem::exists(argv0_str, ec)) {
+            target = argv0_str.c_str();
+        }
+    }
+    if (target == nullptr) {
+        static constexpr const char* kCandidates[] = {
+            "sdmc:/switch/eden-nx2/eden-switch2.nro",
+            "sdmc:/switch/eden-nx2/Eden-NX2.nro",
+            "sdmc:/switch/eden-switch2.nro",
+        };
+        for (const char* cand : kCandidates) {
+            if (std::filesystem::exists(cand, ec)) {
+                target = cand;
+                break;
+            }
+        }
+    }
+    if (target != nullptr) {
+        envSetNextLoad(target, target);
     }
 }
 

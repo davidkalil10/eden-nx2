@@ -111,9 +111,16 @@ bool RenameFile(const fs::path& old_path, const fs::path& new_path) {
     }
 
     if (Exists(new_path)) {
+#ifdef __SWITCH2__
+        if (old_path != new_path) {
+            std::error_code rm_ec;
+            fs::remove(new_path, rm_ec);
+        }
+#else
         LOG_ERROR(Common_Filesystem, "Filesystem object at new_path={} exists",
                   PathToUTF8String(new_path));
         return false;
+#endif
     }
 
     std::error_code ec;

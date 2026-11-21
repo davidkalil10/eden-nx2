@@ -436,6 +436,12 @@ Vp9FrameContainer VP9::GetCurrentFrame() {
     {
         // gpu.SyncGuestHost(); epic, why?
         current_frame.info = GetVp9PictureInfo();
+#ifdef __SWITCH2__
+        constexpr u32 kMaxVp9BitstreamSize = 8 * 1024 * 1024;
+        if (current_frame.info.bitstream_size > kMaxVp9BitstreamSize) {
+            current_frame.info.bitstream_size = 0;
+        }
+#endif
         current_frame.bit_stream.resize(current_frame.info.bitstream_size);
         host1x.gmmu_manager.ReadBlock(regs.frame_bitstream_offset.Address(), current_frame.bit_stream.data(), current_frame.info.bitstream_size);
     }

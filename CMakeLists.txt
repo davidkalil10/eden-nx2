@@ -89,6 +89,7 @@ if (NINTENDO_SWITCH2)
     set(ENABLE_WEB_SERVICE OFF CACHE BOOL "" FORCE)
     set(ENABLE_WIFI_SCAN OFF CACHE BOOL "" FORCE)
     set(USE_DISCORD_PRESENCE OFF CACHE BOOL "" FORCE)
+    set(ENABLE_LSFG ON CACHE BOOL "" FORCE)
     set(ENABLE_RESHADE OFF CACHE BOOL "" FORCE)
     set(ENABLE_WERROR OFF CACHE BOOL "" FORCE)
     set(YUZU_ROOM OFF CACHE BOOL "" FORCE)
@@ -120,8 +121,8 @@ cmake_dependent_option(YUZU_USE_BUNDLED_QT "Download bundled Qt binaries" "${MSV
 option(ENABLE_DEBUG_TOOLS "Enable debugging tools (maxwell disassembler, SPIRV translator, etc)" OFF)
 option(ENABLE_WERROR "Enable -Werror diagnostics" ON)
 
-# Lossless Scaling frame generation. Only Android.
-cmake_dependent_option(ENABLE_LSFG "Enable Lossless Scaling frame generation" ON "ANDROID" OFF)
+# Lossless Scaling frame generation.
+cmake_dependent_option(ENABLE_LSFG "Enable Lossless Scaling frame generation" ON "ANDROID OR NINTENDO_SWITCH2" OFF)
 
 option(ENABLE_RESHADE "Enable ReShade FX post-processing effects" ON)
 
