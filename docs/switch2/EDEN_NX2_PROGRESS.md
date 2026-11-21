@@ -1,9 +1,8 @@
 # Eden-NX2 — Nintendo Switch 2 Homebrew Porting Tracker & Engineering Log
 
 > **For any AI or developer resuming this project:**
-> 1. Read **[SWITCH2_PORTING_BIBLE.md](./SWITCH2_PORTING_BIBLE.md)** first — it contains every hard-won rule for Nintendo Switch 2 (`ounce-devkit`, `libounce`, `OunceVK`, `kaiHEN`, `OUN0`, CI Docker recipes, and pitfalls).
-> 2. Read this file (**`EDEN_NX2_PROGRESS.md`**) to see the current phase, architectural decisions, exact file map, and next actionable step.
-> 3. **Always update this file** after completing a phase, fixing a build/runtime issue, or making a new architectural decision.
+> 1. Read this file (**`EDEN_NX2_PROGRESS.md`**) to see the current phase, architectural decisions, exact file map, and next actionable step.
+> 2. **Always update this file** after completing a phase, fixing a build/runtime issue, or making a new architectural decision.
 
 ---
 
@@ -78,7 +77,6 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 - [x] Import `eden-emu/eden` into `davidkalil10/eden-nx2`
 - [x] Fix default branch to `master` (`56e628ad`), delete 155 extraneous branches and 26 upstream tags
 - [x] Clone clean single-branch repo to `D:\Outros projetos\eden_nx2`
-- [x] Copy [SWITCH2_PORTING_BIBLE.md](./SWITCH2_PORTING_BIBLE.md) into `docs/switch2/`
 - [x] Audit `CMakeLists.txt`, `cpmfile.json`, `host_memory.cpp`, `dynarmic/backend/arm64/address_space.cpp`, `vulkan_library.cpp`, `vulkan_surface.cpp`
 - [x] Create living tracker `docs/switch2/EDEN_NX2_PROGRESS.md`
 
@@ -117,7 +115,7 @@ Every major Switch 2 architectural requirement was audited directly in the `eden
 
 | Date | Milestone | Commit / CI | Notes |
 | :--- | :--- | :--- | :--- |
-| **2026-11-20** | **Phase 0 Complete** | `6bb33b3d` | Repo cleaned (1 branch `master`, 0 tags), Switch 2 Bible copied to `docs/switch2/`, full audit of `HostMemory`, `Dynarmic/oaknut`, `Vulkan`, and `CMakeLists.txt` completed. |
+| **2026-11-20** | **Phase 0 Complete** | `6bb33b3d` | Repo cleaned (1 branch `master`, 0 tags), full audit of `HostMemory`, `Dynarmic/oaknut`, `Vulkan`, and `CMakeLists.txt` completed. |
 | **2026-11-20** | **Phase 1 Started (CI Bring-Up #1–#11)** | `ff64743c`..`43a2cb2c` | Full CMake configure green (`devkitPro/SDL3` + `glslang-tools`), **OpenSSL 3.6.2** (`libcrypto.a`/`libssl.a`), **Boost 1.92** (`boost_container` `HAVE_MMAP=0`, `BOOST_HAS_PTHREADS=1`, `sys/resource.h` shim for `boost_context`), `jacinth`, and `hydrocarbon` all compiled green for Switch 2. |
 | **2026-11-20** | **Phase 1 `src/common/` Complete!** | `32f6f4e4` ([Run #44736441818](https://github.com/davidkalil10/eden-nx2/actions/runs/44736441818)) | **`libcommon.a` compiled 100% green** for Switch 2 (`file.cpp` `fopen`, `signal_chain` skipped, `thread.cpp` priority/name guarded). Advancing CI target to `dynarmic shader_recompiler core`. |
 | **2026-11-20** | **Phase 2 `kaiHEN` JIT Wired in `Dynarmic`** | `f33bf253` | Disabled `boost_process` (`debugger.cpp` stubbed on `__SWITCH2__`), implemented `Switch2CodeBlock` + `Switch2JitPool` (96 MiB shared `kaiHEN` pool + `kaihenJitPublishRanges`) replacing `oaknut::CodeBlock` (`sys/mman.h`) across `AddressSpace` / `A64AddressSpace` / `A32AddressSpace` / `spin_lock_arm64.cpp`. |

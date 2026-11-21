@@ -146,7 +146,6 @@ The build script compiles `eden-cli.elf`, packages [`dist/eden-switch2.nro`](./s
 ## <a id="documentation"></a>Documentation
 
 - **[Switch 2 Porting Progress & Engineering Log](./docs/switch2/EDEN_NX2_PROGRESS.md)** — Architecture Decision Records (ADRs), phased roadmap, and milestone changelog.
-- **[Switch 2 Homebrew Porting Bible](./docs/switch2/SWITCH2_PORTING_BIBLE.md)** — Hardware rules and lessons learned for `ounce-devkit`, `libounce`, `OunceVK`, `kaiHEN`, and `OUN0` NRO packaging.
 - **[Build Script](./scripts/build-switch2.sh)** & **[GitHub Actions Workflow](./.github/workflows/build-switch2.yml)** — Full cross-compilation and packaging pipeline.
 - **[NRO Verification Script](./tools/verify_switch2_package.py)** — Automated `OUN0` + `kaiHEN` binary verification.
 

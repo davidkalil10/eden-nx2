@@ -67,3 +67,6 @@ vulkansdk*.exe
 
 # Build-time generated external sources
 externals/generated
+
+# Local-only Switch 2 reference notes
+docs/switch2/SWITCH2_PORTING_BIBLE.md
