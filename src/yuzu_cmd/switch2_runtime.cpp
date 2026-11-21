@@ -66,6 +66,30 @@ void __libnx_exception_handler(ThreadExceptionDump* ctx) {
     std::fclose(file);
 }
 
+void* Switch2GetNativeWindow(void) {
+    return nwindowGetDefault();
+}
+
+void Switch2GetWindowDimensions(uint32_t* w, uint32_t* h) {
+    uint32_t width = 1280;
+    uint32_t height = 720;
+    nwindowGetDimensions(nwindowGetDefault(), &width, &height);
+    if (width == 0 || height == 0) {
+        width = 1280;
+        height = 720;
+    }
+    *w = width;
+    *h = height;
+}
+
+void Switch2SleepMs(uint64_t ms) {
+    svcSleepThread(ms * 1000000ULL);
+}
+
+bool Switch2MainLoop(void) {
+    return appletMainLoop();
+}
+
 } // extern "C"
 
 #endif

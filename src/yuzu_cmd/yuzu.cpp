@@ -12,12 +12,20 @@
 #ifdef __SWITCH2__
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include "core/frontend/emu_window.h"
+#include "core/frontend/graphics_context.h"
 #include "dynarmic/backend/arm64/switch2_code_block.h"
-extern "C" bool appletMainLoop(void);
+extern "C" {
+void* Switch2GetNativeWindow(void);
+void Switch2GetWindowDimensions(std::uint32_t* w, std::uint32_t* h);
+void Switch2SleepMs(std::uint64_t ms);
+bool Switch2MainLoop(void);
+}
 
 static void Switch2BootTrace(const char* stage) {
     std::error_code ec;
@@ -34,8 +42,10 @@ static void Switch2BootTrace(const char* stage) {
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
+#ifndef __SWITCH2__
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL_main.h>
+#endif
 
 #include <format>
 
@@ -176,6 +186,173 @@ static void OnStatusMessageReceived(const Network::StatusMessageEntry& msg) {
     if (!message.empty())
         std::cout << std::endl << "* " << message << std::endl << std::endl;
 }
+
+#ifdef __SWITCH2__
+
+namespace {
+
+class DummyContext final : public Core::Frontend::GraphicsContext {};
+
+class EmuWindowSwitch2 final : public Core::Frontend::EmuWindow {
+public:
+    EmuWindowSwitch2() {
+        std::uint32_t w = 1280;
+        std::uint32_t h = 720;
+        Switch2GetWindowDimensions(&w, &h);
+        window_info.type = Core::Frontend::WindowSystemType::Switch2;
+        window_info.render_surface = Switch2GetNativeWindow();
+        NotifyClientAreaSizeChanged({w, h});
+        UpdateCurrentFramebufferLayout(w, h);
+    }
+
+    std::unique_ptr<Core::Frontend::GraphicsContext> CreateSharedContext() const override {
+        return std::make_unique<DummyContext>();
+    }
+
+    bool IsShown() const override {
+        return true;
+    }
+};
+
+} // namespace
+
+int main(int argc, char** argv) {
+    (void)argc;
+    (void)argv;
+
+    std::set_terminate([]() {
+        std::error_code ec;
+        std::filesystem::create_directories("sdmc:/switch/eden-nx2", ec);
+        if (FILE* f = std::fopen("sdmc:/switch/eden-nx2/crash.txt", "a")) {
+            if (auto ex = std::current_exception()) {
+                try {
+                    std::rethrow_exception(ex);
+                } catch (const std::exception& e) {
+                    std::fprintf(f, "std::terminate: %s\n", e.what());
+                } catch (...) {
+                    std::fprintf(f, "std::terminate: unknown exception\n");
+                }
+            } else {
+                std::fprintf(f, "std::terminate: no active exception\n");
+            }
+            std::fflush(f);
+            std::fclose(f);
+        }
+        std::abort();
+    });
+
+    {
+        std::error_code ec;
+        std::filesystem::create_directories("sdmc:/switch/eden-nx2", ec);
+        if (FILE* f = std::fopen("sdmc:/switch/eden-nx2/boot_trace.txt", "w")) {
+            std::fprintf(f, "00: main enter (argc=%d)\n", argc);
+            std::fflush(f);
+            std::fclose(f);
+        }
+    }
+
+    Settings::values.log_flush_line.SetValue(true);
+    Common::Log::Initialize();
+    Common::Log::SetColorConsoleBackendEnabled(false);
+    Common::Log::Start();
+    Switch2BootTrace("01: Log started");
+
+    std::error_code ec;
+    std::filesystem::create_directories("sdmc:/switch/eden-nx2/roms", ec);
+
+    Settings::values.renderer_backend.SetValue(Settings::RendererBackend::Vulkan);
+    Settings::values.cpu_backend.SetValue(Settings::CpuBackend::Dynarmic);
+    Settings::values.cpuopt_fastmem.SetValue(false);
+    auto& player1 = Settings::values.players.GetValue()[0];
+    player1.connected = true;
+    player1.controller_type = Settings::ControllerType::ProController;
+
+    std::string rom_path;
+    if (std::filesystem::exists("sdmc:/switch/eden-nx2/roms", ec)) {
+        for (const auto& entry : std::filesystem::directory_iterator("sdmc:/switch/eden-nx2/roms", ec)) {
+            if (!entry.is_regular_file(ec)) {
+                continue;
+            }
+            std::string ext = entry.path().extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            if (ext == ".nsp" || ext == ".xci" || ext == ".nro") {
+                rom_path = entry.path().string();
+                break;
+            }
+        }
+    }
+
+    if (rom_path.empty()) {
+        Switch2BootTrace("02: No ROM found in sdmc:/switch/eden-nx2/roms");
+        return 0;
+    }
+
+    {
+        std::string msg = "02: ROM=" + rom_path;
+        Switch2BootTrace(msg.c_str());
+    }
+
+    auto system = std::make_unique<Core::System>();
+    auto input_subsystem = std::make_unique<InputCommon::InputSubsystem>();
+    input_subsystem->Initialize();
+    auto emu_window = std::make_unique<EmuWindowSwitch2>();
+    Switch2BootTrace("03: System/Window created");
+
+    system->Initialize();
+    system->ApplySettings();
+    system->SetContentProvider(std::make_unique<FileSys::ContentProviderUnion>());
+    system->SetFilesystem(std::make_shared<FileSys::RealVfsFilesystem>());
+    system->GetFileSystemController().CreateFactories(*system->GetFilesystem());
+    system->GetUserChannel().clear();
+    Switch2BootTrace("04: System initialized");
+
+    Service::AM::FrontendAppletParameters load_parameters{
+        .applet_id = Service::AM::AppletId::Application,
+    };
+    const Core::SystemResultStatus load_result =
+        system->Load(*emu_window, rom_path, load_parameters);
+    {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "05: system.Load result=%d", static_cast<int>(load_result));
+        Switch2BootTrace(buf);
+    }
+
+    if (load_result == Core::SystemResultStatus::Success) {
+        system->GPU().Start();
+        system->GetCpuManager().OnGpuReady();
+
+        if (Settings::values.use_disk_shader_cache.GetValue()) {
+            system->Renderer().ReadRasterizer()->LoadDiskResources(
+                system->GetApplicationProcessProgramID(), std::stop_token{},
+                [](VideoCore::LoadCallbackStage, size_t, size_t) {});
+        }
+
+        system->RegisterExitCallback([] {});
+        void(system->Run());
+        Switch2BootTrace("06: system.Run() ok");
+
+        while (Switch2MainLoop()) {
+            Switch2SleepMs(16);
+        }
+    }
+
+    Switch2BootTrace("99: shutdown");
+    system->DetachDebugger();
+    if (system->IsPoweredOn()) {
+        system->Pause();
+        system->ShutdownMainProcess();
+    }
+    emu_window.reset();
+    input_subsystem->Shutdown();
+    input_subsystem.reset();
+    system.reset();
+    Dynarmic::Backend::Arm64::Switch2JitPool::Shutdown();
+    return 0;
+}
+
+#else
 
 struct SdlState {
     Core::System system{};
@@ -473,10 +650,9 @@ extern "C" void SDL_AppQuit(void *appstate, SDL_AppResult result) {
         }
     }
     delete state;
-#ifdef __SWITCH2__
-    Dynarmic::Backend::Arm64::Switch2JitPool::Shutdown();
-#endif
 }
+
+#endif
 
 #define VMA_IMPLEMENTATION
 #include "video_core/vulkan_common/vma.h"
