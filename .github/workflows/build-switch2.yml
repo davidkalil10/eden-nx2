@@ -107,6 +107,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Eden-NX2 ${{ github.ref_name }} (Nintendo Switch 2)
+          body_path: docs/switch2/RELEASE_NOTES.md
           files: dist/eden-switch2.nro
           generate_release_notes: true
           prerelease: false

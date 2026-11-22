@@ -1,0 +1,39 @@
+name: Sync Latest Release Notes
+
+on:
+  push:
+    branches: [ master, main ]
+    paths: [ "docs/switch2/RELEASE_NOTES.md" ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional tag to update (defaults to latest release)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  sync-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update GitHub Release description
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if [ -n "$TARGET_TAG" ]; then
+            TAG="$TARGET_TAG"
+          else
+            TAG="$(gh release list --limit 1 --json tagName --jq '.[0].tagName')"
+          fi
+          if [ -z "$TAG" ]; then
+            echo "No release found to update."
+            exit 0
+          fi
+          echo "Updating release notes for $TAG..."
+          gh release edit "$TAG" --notes-file docs/switch2/RELEASE_NOTES.md
