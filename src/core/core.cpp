@@ -75,38 +75,119 @@ namespace Core {
 
 FileSys::VirtualFile GetGameFileFromPath(const FileSys::VirtualFilesystem& vfs,
                                          const std::string& path) {
-    // To account for split 00+01+etc files.
-    std::string dir_name;
-    std::string filename;
-    Common::SplitPath(path, &dir_name, &filename, nullptr);
-
-    if (filename == "00") {
-        const auto dir = vfs->OpenDirectory(dir_name, FileSys::OpenMode::Read);
+    auto open_split_dir = [&](const std::string& dir_path) -> FileSys::VirtualFile {
+        const auto dir = vfs->OpenDirectory(dir_path, FileSys::OpenMode::Read);
+        if (dir == nullptr) {
+            return nullptr;
+        }
+        auto first = dir->GetFile("00");
+        if (first == nullptr) {
+            return nullptr;
+        }
         std::vector<FileSys::VirtualFile> concat;
+        concat.push_back(std::move(first));
 
-        for (u32 i = 0; i < 0x10; ++i) {
-            const auto file_name = std::format("{:02X}", i);
-            auto next = dir->GetFile(file_name);
-
-            if (next != nullptr) {
-                concat.push_back(std::move(next));
-            } else {
-                next = dir->GetFile(file_name);
-
+        // Prefer standard decimal naming (00, 01, ..., 09, 10, ..., 99) used by splitNSP/SAK/DBI;
+        // fall back to hex (0A..0F) if 10 is absent.
+        bool hex_mode = false;
+        for (u32 i = 1; i < 100; ++i) {
+            const std::string dec_name = std::format("{:02d}", i);
+            auto next = (!hex_mode) ? dir->GetFile(dec_name) : nullptr;
+            if (next == nullptr && i >= 10 && i < 16) {
+                const std::string hex_upper = std::format("{:02X}", i);
+                const std::string hex_lower = std::format("{:02x}", i);
+                next = dir->GetFile(hex_upper);
                 if (next == nullptr) {
-                    break;
+                    next = dir->GetFile(hex_lower);
                 }
-
-                concat.push_back(std::move(next));
+                if (next != nullptr) {
+                    hex_mode = true;
+                }
             }
+            if (next == nullptr) {
+                break;
+            }
+            concat.push_back(std::move(next));
         }
 
         return FileSys::ConcatenatedVfsFile::MakeConcatenatedFile(dir->GetName(),
                                                                   std::move(concat));
+    };
+
+    // Case 1: Split folder passed directly (e.g. "Game.nsp" or "Game" containing 00, 01, ...).
+    if (Common::FS::IsDir(path)) {
+        if (auto split = open_split_dir(path); split != nullptr) {
+            return split;
+        }
+        return vfs->OpenFile(path + "/main", FileSys::OpenMode::Read);
     }
 
-    if (Common::FS::IsDir(path)) {
-        return vfs->OpenFile(path + "/main", FileSys::OpenMode::Read);
+    // Case 2: "00" file inside a split directory (e.g. "Game.nsp/00").
+    std::string dir_name;
+    std::string filename;
+    std::string ext;
+    Common::SplitPath(path, &dir_name, &filename, &ext);
+    const std::string full_name = filename + ext;
+    const std::string lower_name = Common::ToLower(full_name);
+
+    if (full_name == "00") {
+        if (auto split = open_split_dir(dir_name); split != nullptr) {
+            return split;
+        }
+    }
+
+    // Case 3: Dot-numbered split files: "Game.nsp.00" (+ .01, .02...) or 7-Zip "Game.nsp.001" (+ .002...).
+    auto try_dot_split = [&](std::string_view suffix, int start_idx, int max_idx,
+                             bool three_digits) -> FileSys::VirtualFile {
+        if (path.size() <= suffix.size() || !lower_name.ends_with(suffix)) {
+            return nullptr;
+        }
+        const std::string base_path = path.substr(0, path.size() - suffix.size());
+        const std::string virtual_name =
+            full_name.substr(0, full_name.size() - suffix.size());
+        std::vector<FileSys::VirtualFile> concat;
+        for (int i = start_idx; i <= max_idx; ++i) {
+            const std::string part_path =
+                three_digits ? std::format("{}.{:03d}", base_path, i)
+                             : std::format("{}.{:02d}", base_path, i);
+            auto next = vfs->OpenFile(part_path, FileSys::OpenMode::Read);
+            if (next == nullptr) {
+                break;
+            }
+            concat.push_back(std::move(next));
+        }
+        if (concat.empty()) {
+            return nullptr;
+        }
+        return FileSys::ConcatenatedVfsFile::MakeConcatenatedFile(std::string(virtual_name),
+                                                                  std::move(concat));
+    };
+
+    if (auto split = try_dot_split(".00", 0, 99, false); split != nullptr) {
+        return split;
+    }
+    if (auto split = try_dot_split(".001", 1, 999, true); split != nullptr) {
+        return split;
+    }
+
+    // Case 4: ".xc0/.xc1/..." or ".ns0/.ns1/..." split containers.
+    if (lower_name.ends_with(".xc0") || lower_name.ends_with(".ns0")) {
+        const bool is_xci = lower_name.ends_with(".xc0");
+        const std::string base_path = path.substr(0, path.size() - 1);
+        const std::string virtual_name =
+            full_name.substr(0, full_name.size() - 1) + (is_xci ? "i" : "p");
+        std::vector<FileSys::VirtualFile> concat;
+        for (int i = 0; i < 10; ++i) {
+            auto next = vfs->OpenFile(base_path + std::to_string(i), FileSys::OpenMode::Read);
+            if (next == nullptr) {
+                break;
+            }
+            concat.push_back(std::move(next));
+        }
+        if (!concat.empty()) {
+            return FileSys::ConcatenatedVfsFile::MakeConcatenatedFile(std::string(virtual_name),
+                                                                      std::move(concat));
+        }
     }
 
     return vfs->OpenFile(path, FileSys::OpenMode::Read);

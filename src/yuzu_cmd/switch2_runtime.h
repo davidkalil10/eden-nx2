@@ -30,6 +30,15 @@ enum Switch2ButtonBits : std::uint64_t {
     SWITCH2_BTN_SR     = 1ULL << 17,
 };
 
+enum Switch2PhysicalStyle : std::uint8_t {
+    SWITCH2_STYLE_NONE = 0,
+    SWITCH2_STYLE_HANDHELD = 1,
+    SWITCH2_STYLE_PRO = 2,
+    SWITCH2_STYLE_JOY_DUAL = 3,
+    SWITCH2_STYLE_JOY_LEFT = 4,
+    SWITCH2_STYLE_JOY_RIGHT = 5,
+};
+
 struct Switch2PadSnapshot {
     std::uint32_t buttons;
     std::uint64_t raw_down;
@@ -45,6 +54,8 @@ struct Switch2PadSnapshot {
     bool has_touch;
     float touch_x;
     float touch_y;
+    bool connected;
+    std::uint8_t physical_style;
 };
 
 void* Switch2GetNativeWindow(void);
@@ -54,8 +65,12 @@ bool Switch2MainLoop(void);
 
 void Switch2InitInput(void);
 bool Switch2PollInput(Switch2PadSnapshot* out, bool allow_plus_minus_exit);
+void Switch2PollPlayerInput(int player_idx, Switch2PadSnapshot* out);
 void Switch2SetVibration(float l_low_amp, float l_low_freq, float l_high_amp, float l_high_freq,
                          float r_low_amp, float r_low_freq, float r_high_amp, float r_high_freq);
+void Switch2SetPlayerVibration(int player_idx, float l_low_amp, float l_low_freq, float l_high_amp,
+                               float l_high_freq, float r_low_amp, float r_low_freq,
+                               float r_high_amp, float r_high_freq);
 void Switch2SetCpuBoost(bool enable);
 void Switch2GetMemoryStats(std::uint64_t* out_used, std::uint64_t* out_total);
 std::uint64_t Switch2GetCoreMask(void);

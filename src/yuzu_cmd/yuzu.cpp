@@ -342,9 +342,32 @@ void UpdateSwitch2FpsOverlay(const std::string& text) {
     ++panel.version;
 }
 
-void ScanSwitch2AddonDir(FileSys::ManualContentProvider& provider, FileSys::VfsFilesystem& vfs,
-                         const std::string& dir, const std::string& skip_path, bool filter_upd,
-                         bool filter_dlc, bool recurse_one) {
+bool IsSwitch2SplitDirPath(const std::filesystem::path& p) {
+    std::error_code ec;
+    return std::filesystem::is_regular_file(p / "00", ec) && !ec;
+}
+
+bool IsSwitch2AddonContainerName(const std::string& lower_name) {
+    auto ends_with = [&](std::string_view suf) {
+        return lower_name.size() >= suf.size() &&
+               lower_name.compare(lower_name.size() - suf.size(), suf.size(), suf) == 0;
+    };
+    if (ends_with(".nsp") || ends_with(".nsz") || ends_with(".xci") || ends_with(".xcz")) {
+        return true;
+    }
+    if (ends_with(".nsp.00") || ends_with(".nsz.00") || ends_with(".xci.00") ||
+        ends_with(".xcz.00") || ends_with(".nsp.001") || ends_with(".nsz.001") ||
+        ends_with(".xci.001") || ends_with(".xcz.001") || ends_with(".xc0") ||
+        ends_with(".ns0")) {
+        return true;
+    }
+    return false;
+}
+
+void ScanSwitch2AddonDir(FileSys::ManualContentProvider& provider,
+                         const FileSys::VirtualFilesystem& vfs, const std::string& dir,
+                         const std::string& skip_path, bool filter_upd, bool filter_dlc,
+                         bool recurse_one) {
     try {
         std::error_code ec;
         if (dir.empty() || !std::filesystem::is_directory(dir, ec) || ec) return;
@@ -353,7 +376,31 @@ void ScanSwitch2AddonDir(FileSys::ManualContentProvider& provider, FileSys::VfsF
         for (; !ec && it != end; it.increment(ec)) {
             const auto& entry = *it;
             const std::string p = entry.path().generic_string();
+            if (p == skip_path) continue;
+            const std::string lower_name = Common::ToLower(entry.path().filename().string());
+            auto passes_filters = [&]() {
+                if (filter_upd &&
+                    lower_name.find("upd") == std::string::npos &&
+                    lower_name.find("patch") == std::string::npos &&
+                    lower_name.find("[v") == std::string::npos) {
+                    return false;
+                }
+                if (filter_dlc &&
+                    lower_name.find("dlc") == std::string::npos &&
+                    lower_name.find("aoc") == std::string::npos) {
+                    return false;
+                }
+                return true;
+            };
             if (entry.is_directory(ec)) {
+                if (IsSwitch2SplitDirPath(entry.path())) {
+                    if (passes_filters()) {
+                        if (auto f = Core::GetGameFileFromPath(vfs, p)) {
+                            provider.AddEntriesFromContainer(f, false);
+                        }
+                    }
+                    continue;
+                }
                 if (recurse_one) {
                     const std::string dname = entry.path().filename().string();
                     if (!dname.empty() && dname[0] != '.') {
@@ -363,22 +410,10 @@ void ScanSwitch2AddonDir(FileSys::ManualContentProvider& provider, FileSys::VfsF
                 }
                 continue;
             }
-            if (!entry.is_regular_file(ec) || p == skip_path) continue;
-            const std::string ext = Common::ToLower(entry.path().extension().string());
-            if (ext != ".nsp" && ext != ".nsz" && ext != ".xci" && ext != ".xcz") continue;
-            const std::string lower_name = Common::ToLower(entry.path().filename().string());
-            if (filter_upd &&
-                lower_name.find("upd") == std::string::npos &&
-                lower_name.find("patch") == std::string::npos &&
-                lower_name.find("[v") == std::string::npos) {
-                continue;
-            }
-            if (filter_dlc &&
-                lower_name.find("dlc") == std::string::npos &&
-                lower_name.find("aoc") == std::string::npos) {
-                continue;
-            }
-            if (auto f = vfs.OpenFile(p, FileSys::OpenMode::Read)) {
+            if (!entry.is_regular_file(ec)) continue;
+            if (!IsSwitch2AddonContainerName(lower_name)) continue;
+            if (!passes_filters()) continue;
+            if (auto f = Core::GetGameFileFromPath(vfs, p)) {
                 provider.AddEntriesFromContainer(f, false);
             }
         }
@@ -386,12 +421,16 @@ void ScanSwitch2AddonDir(FileSys::ManualContentProvider& provider, FileSys::VfsF
     }
 }
 
-void RegisterSwitch2Addons(FileSys::ManualContentProvider& provider, FileSys::VfsFilesystem& vfs,
-                           const Switch2LaunchConfig& cfg) {
+void RegisterSwitch2Addons(FileSys::ManualContentProvider& provider,
+                           const FileSys::VirtualFilesystem& vfs, const Switch2LaunchConfig& cfg) {
     auto add_file = [&](const std::string& path) {
         std::error_code ec;
-        if (path.empty() || !std::filesystem::is_regular_file(path, ec)) return;
-        if (auto f = vfs.OpenFile(path, FileSys::OpenMode::Read)) {
+        if (path.empty()) return;
+        if (!std::filesystem::is_regular_file(path, ec) &&
+            !IsSwitch2SplitDirPath(std::filesystem::path(path))) {
+            return;
+        }
+        if (auto f = Core::GetGameFileFromPath(vfs, path)) {
             provider.AddEntriesFromContainer(f, false);
         }
     };
@@ -419,7 +458,10 @@ void RegisterSwitch2Addons(FileSys::ManualContentProvider& provider, FileSys::Vf
                                          : cfg.dlc_pkg.substr(start, bar - start);
             if (!item.empty()) {
                 std::error_code ec;
-                if (std::filesystem::is_directory(item, ec)) {
+                const std::filesystem::path item_p(item);
+                if (IsSwitch2SplitDirPath(item_p)) {
+                    add_file(item);
+                } else if (std::filesystem::is_directory(item_p, ec)) {
                     ScanSwitch2AddonDir(provider, vfs, item, cfg.rom_path, false, false, true);
                 } else {
                     add_file(item);
@@ -431,8 +473,154 @@ void RegisterSwitch2Addons(FileSys::ManualContentProvider& provider, FileSys::Vf
     }
 }
 
-void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg, std::size_t& active_pad_index,
-                              Core::HID::NpadIdType& active_npad_id) {
+struct Switch2PlayerBinding {
+    bool enabled = false;
+    std::size_t pad_index = 0;
+    Core::HID::NpadIdType npad_id = Core::HID::NpadIdType::Player1;
+    Switch2ControllerProfile effective_profile = Switch2ControllerProfile::ProController;
+    std::uint8_t last_physical_style = SWITCH2_STYLE_NONE;
+};
+
+Settings::ControllerType Switch2ProfileToEdenType(Switch2ControllerProfile profile) {
+    switch (profile) {
+    case Switch2ControllerProfile::Handheld:
+        return Settings::ControllerType::Handheld;
+    case Switch2ControllerProfile::DualJoycon:
+        return Settings::ControllerType::DualJoyconDetached;
+    case Switch2ControllerProfile::RightJoycon:
+        return Settings::ControllerType::RightJoycon;
+    case Switch2ControllerProfile::LeftJoycon:
+        return Settings::ControllerType::LeftJoycon;
+    default:
+        return Settings::ControllerType::ProController;
+    }
+}
+
+Switch2ControllerProfile ResolveSwitch2P1Profile(Switch2ControllerProfile cfg_p1,
+                                                 std::uint8_t phys_style) {
+    if (cfg_p1 != Switch2ControllerProfile::Auto) {
+        return cfg_p1;
+    }
+    switch (phys_style) {
+    case SWITCH2_STYLE_HANDHELD:
+        return Switch2ControllerProfile::Handheld;
+    case SWITCH2_STYLE_JOY_DUAL:
+        return Switch2ControllerProfile::DualJoycon;
+    case SWITCH2_STYLE_JOY_LEFT:
+        return Switch2ControllerProfile::LeftJoycon;
+    case SWITCH2_STYLE_JOY_RIGHT:
+        return Switch2ControllerProfile::RightJoycon;
+    default:
+        return Switch2ControllerProfile::ProController;
+    }
+}
+
+bool ResolveSwitch2ExtraPlayer(Switch2PlayerSlotMode mode, bool phys_connected,
+                               std::uint8_t phys_style, Switch2ControllerProfile* out_profile) {
+    if (mode == Switch2PlayerSlotMode::Off) {
+        return false;
+    }
+    if (mode == Switch2PlayerSlotMode::Auto) {
+        if (!phys_connected) {
+            return false;
+        }
+        switch (phys_style) {
+        case SWITCH2_STYLE_JOY_LEFT:
+            *out_profile = Switch2ControllerProfile::LeftJoycon;
+            break;
+        case SWITCH2_STYLE_JOY_RIGHT:
+            *out_profile = Switch2ControllerProfile::RightJoycon;
+            break;
+        case SWITCH2_STYLE_JOY_DUAL:
+            *out_profile = Switch2ControllerProfile::DualJoycon;
+            break;
+        default:
+            *out_profile = Switch2ControllerProfile::ProController;
+            break;
+        }
+        return true;
+    }
+    switch (mode) {
+    case Switch2PlayerSlotMode::DualJoycon:
+        *out_profile = Switch2ControllerProfile::DualJoycon;
+        break;
+    case Switch2PlayerSlotMode::RightJoycon:
+        *out_profile = Switch2ControllerProfile::RightJoycon;
+        break;
+    case Switch2PlayerSlotMode::LeftJoycon:
+        *out_profile = Switch2ControllerProfile::LeftJoycon;
+        break;
+    default:
+        *out_profile = Switch2ControllerProfile::ProController;
+        break;
+    }
+    return true;
+}
+
+void ConfigureSwitch2Controllers(const Switch2LaunchConfig& cfg,
+                                 const std::array<Switch2PadSnapshot, 4>& pads,
+                                 std::array<Switch2PlayerBinding, 4>& bindings,
+                                 bool apply_console_mode) {
+    auto& players = Settings::values.players.GetValue();
+    for (auto& p : players) {
+        p.connected = false;
+    }
+    bindings = {};
+
+    static constexpr std::array<Core::HID::NpadIdType, 4> kPlayerNpads{{
+        Core::HID::NpadIdType::Player1,
+        Core::HID::NpadIdType::Player2,
+        Core::HID::NpadIdType::Player3,
+        Core::HID::NpadIdType::Player4,
+    }};
+
+    // Player 1
+    const Switch2ControllerProfile p1_eff =
+        ResolveSwitch2P1Profile(cfg.controller_profile, pads[0].physical_style);
+    bindings[0].enabled = true;
+    bindings[0].effective_profile = p1_eff;
+    bindings[0].last_physical_style = pads[0].physical_style;
+    if (p1_eff == Switch2ControllerProfile::Handheld) {
+        if (apply_console_mode) {
+            Settings::values.use_docked_mode.SetValue(Settings::ConsoleMode::Handheld);
+        }
+        players[8].connected = true;
+        players[8].controller_type = Settings::ControllerType::Handheld;
+        bindings[0].pad_index = 8;
+        bindings[0].npad_id = Core::HID::NpadIdType::Handheld;
+    } else {
+        if (apply_console_mode) {
+            Settings::values.use_docked_mode.SetValue(cfg.docked_mode
+                                                          ? Settings::ConsoleMode::Docked
+                                                          : Settings::ConsoleMode::Handheld);
+        }
+        players[0].connected = true;
+        players[0].controller_type = Switch2ProfileToEdenType(p1_eff);
+        bindings[0].pad_index = 0;
+        bindings[0].npad_id = Core::HID::NpadIdType::Player1;
+    }
+
+    // Players 2..4
+    for (int p = 1; p < 4; ++p) {
+        const Switch2PlayerSlotMode slot_mode = (p == 1) ? cfg.controller_p2 : cfg.controller_p34;
+        bindings[static_cast<std::size_t>(p)].last_physical_style =
+            pads[static_cast<std::size_t>(p)].physical_style;
+        Switch2ControllerProfile eff = Switch2ControllerProfile::ProController;
+        if (ResolveSwitch2ExtraPlayer(slot_mode, pads[static_cast<std::size_t>(p)].connected,
+                                      pads[static_cast<std::size_t>(p)].physical_style, &eff)) {
+            players[static_cast<std::size_t>(p)].connected = true;
+            players[static_cast<std::size_t>(p)].controller_type = Switch2ProfileToEdenType(eff);
+            bindings[static_cast<std::size_t>(p)].enabled = true;
+            bindings[static_cast<std::size_t>(p)].pad_index = static_cast<std::size_t>(p);
+            bindings[static_cast<std::size_t>(p)].npad_id = kPlayerNpads[static_cast<std::size_t>(p)];
+            bindings[static_cast<std::size_t>(p)].effective_profile = eff;
+        }
+    }
+}
+
+void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg,
+                              const std::array<Switch2PadSnapshot, 4>& pads,
+                              std::array<Switch2PlayerBinding, 4>& bindings) {
     Settings::values.renderer_backend.SetValue(Settings::RendererBackend::Vulkan);
     Settings::values.cpu_backend.SetValue(Settings::CpuBackend::Dynarmic);
     Settings::values.cpuopt_fastmem.SetValue(false);
@@ -533,42 +721,7 @@ void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg, std::size_t& activ
         }
     }
 
-    // Disconnect all emulated controllers first so profiles apply cleanly
-    auto& players = Settings::values.players.GetValue();
-    for (auto& p : players) {
-        p.connected = false;
-    }
-
-    if (cfg.controller_profile == Switch2ControllerProfile::Handheld) {
-        Settings::values.use_docked_mode.SetValue(Settings::ConsoleMode::Handheld);
-        players[8].connected = true;
-        players[8].controller_type = Settings::ControllerType::Handheld;
-        active_pad_index = 8;
-        active_npad_id = Core::HID::NpadIdType::Handheld;
-    } else {
-        Settings::values.use_docked_mode.SetValue(cfg.docked_mode ? Settings::ConsoleMode::Docked
-                                                                  : Settings::ConsoleMode::Handheld);
-        Settings::ControllerType ctrl_type = Settings::ControllerType::ProController;
-        switch (cfg.controller_profile) {
-        case Switch2ControllerProfile::DualJoycon:
-            ctrl_type = Settings::ControllerType::DualJoyconDetached;
-            break;
-        case Switch2ControllerProfile::RightJoycon:
-            ctrl_type = Settings::ControllerType::RightJoycon;
-            break;
-        case Switch2ControllerProfile::LeftJoycon:
-            ctrl_type = Settings::ControllerType::LeftJoycon;
-            break;
-        default:
-            ctrl_type = Settings::ControllerType::ProController;
-            break;
-        }
-        players[0].connected = true;
-        players[0].controller_type = ctrl_type;
-        active_pad_index = 0;
-        active_npad_id = Core::HID::NpadIdType::Player1;
-    }
-
+    ConfigureSwitch2Controllers(cfg, pads, bindings, true);
     Settings::UpdateRescalingInfo();
 }
 
@@ -641,7 +794,7 @@ void ApplySwitch2LiveSettings(Core::System& system, const Switch2LaunchConfig& c
 void ForwardSwitch2Input(InputCommon::InputSubsystem& input_subsystem,
                          const Switch2PadSnapshot& pad, Switch2PadSnapshot& prev,
                          std::size_t pad_index, Switch2ControllerProfile profile,
-                         bool& prev_touch) {
+                         bool forward_touch, bool& prev_touch) {
     auto* gamepad = input_subsystem.GetVirtualGamepad();
     if (gamepad != nullptr) {
         const std::uint32_t changed = pad.buttons ^ prev.buttons;
@@ -651,14 +804,18 @@ void ForwardSwitch2Input(InputCommon::InputSubsystem& input_subsystem,
             }
         }
 
-        // SL/SR mapping (physical SL/SR bits 16/17, plus L/ZL as SL and R/ZR as SR for single Joy-Con comfort)
-        const bool single_jc = (profile == Switch2ControllerProfile::RightJoycon ||
-                                profile == Switch2ControllerProfile::LeftJoycon);
+        // SL/SR mapping: real single Joy-Cons send native SL/SR (bits 16/17);
+        // Pro/Handheld emulating a single Joy-Con also alias ZL/ZR to SL/SR for comfort.
+        const bool is_real_single_jc = (pad.physical_style == SWITCH2_STYLE_JOY_LEFT ||
+                                        pad.physical_style == SWITCH2_STYLE_JOY_RIGHT);
+        const bool single_jc_alias =
+            !is_real_single_jc && (profile == Switch2ControllerProfile::RightJoycon ||
+                                   profile == Switch2ControllerProfile::LeftJoycon);
         const auto calc_sl = [&](std::uint32_t btns) {
-            return (btns & (1u << 16)) != 0 || (single_jc && (btns & (1u << 8)) != 0);
+            return (btns & (1u << 16)) != 0 || (single_jc_alias && (btns & (1u << 8)) != 0);
         };
         const auto calc_sr = [&](std::uint32_t btns) {
-            return (btns & (1u << 17)) != 0 || (single_jc && (btns & (1u << 9)) != 0);
+            return (btns & (1u << 17)) != 0 || (single_jc_alias && (btns & (1u << 9)) != 0);
         };
         const bool sl_now = calc_sl(pad.buttons);
         const bool sl_prev = calc_sl(prev.buttons);
@@ -673,11 +830,12 @@ void ForwardSwitch2Input(InputCommon::InputSubsystem& input_subsystem,
             gamepad->SetButtonState(pad_index, 21, sr_now); // SRRight
         }
 
-        // Sticks (for RightJoycon single mode, mirror left stick to right stick if right stick is idle)
+        // Sticks (when Pro/Handheld emulates RightJoycon, mirror left stick to right stick if idle)
         float rx = pad.right_x;
         float ry = pad.right_y;
-        if (profile == Switch2ControllerProfile::RightJoycon &&
-            std::fabs(rx) < 0.12f && std::fabs(ry) < 0.12f) {
+        const bool mirror_right = !is_real_single_jc &&
+                                  profile == Switch2ControllerProfile::RightJoycon;
+        if (mirror_right && std::fabs(rx) < 0.12f && std::fabs(ry) < 0.12f) {
             rx = pad.left_x;
             ry = pad.left_y;
         }
@@ -686,8 +844,7 @@ void ForwardSwitch2Input(InputCommon::InputSubsystem& input_subsystem,
                                       pad.left_x, pad.left_y);
         }
         if (rx != prev.right_x || ry != prev.right_y ||
-            (profile == Switch2ControllerProfile::RightJoycon &&
-             (pad.left_x != prev.left_x || pad.left_y != prev.left_y))) {
+            (mirror_right && (pad.left_x != prev.left_x || pad.left_y != prev.left_y))) {
             gamepad->SetStickPosition(pad_index, InputCommon::VirtualGamepad::VirtualStick::Right,
                                       rx, ry);
         }
@@ -698,17 +855,19 @@ void ForwardSwitch2Input(InputCommon::InputSubsystem& input_subsystem,
         }
     }
 
-    if (auto* touch = input_subsystem.GetTouchScreen()) {
-        if (pad.has_touch) {
-            if (!prev_touch) {
-                touch->TouchPressed(pad.touch_x, pad.touch_y, 0);
-            } else {
-                touch->TouchMoved(pad.touch_x, pad.touch_y, 0);
+    if (forward_touch) {
+        if (auto* touch = input_subsystem.GetTouchScreen()) {
+            if (pad.has_touch) {
+                if (!prev_touch) {
+                    touch->TouchPressed(pad.touch_x, pad.touch_y, 0);
+                } else {
+                    touch->TouchMoved(pad.touch_x, pad.touch_y, 0);
+                }
+                prev_touch = true;
+            } else if (prev_touch) {
+                touch->ReleaseAllTouch();
+                prev_touch = false;
             }
-            prev_touch = true;
-        } else if (prev_touch) {
-            touch->ReleaseAllTouch();
-            prev_touch = false;
         }
     }
 
@@ -778,9 +937,12 @@ int main(int argc, char** argv) {
         Switch2BootTrace(msg.c_str());
     }
 
-    std::size_t active_pad_index = 0;
-    Core::HID::NpadIdType active_npad_id = Core::HID::NpadIdType::Player1;
-    ApplySwitch2LaunchConfig(launch_cfg, active_pad_index, active_npad_id);
+    std::array<Switch2PadSnapshot, 4> init_pads{};
+    for (int p = 0; p < 4; ++p) {
+        Switch2PollPlayerInput(p, &init_pads[static_cast<std::size_t>(p)]);
+    }
+    std::array<Switch2PlayerBinding, 4> player_bindings{};
+    ApplySwitch2LaunchConfig(launch_cfg, init_pads, player_bindings);
 
     auto manual_provider = std::make_unique<FileSys::ManualContentProvider>();
     auto system = std::make_unique<Core::System>();
@@ -798,7 +960,7 @@ int main(int argc, char** argv) {
     system->SetContentProvider(std::move(content_provider));
     system->SetFilesystem(std::make_shared<FileSys::RealVfsFilesystem>());
     system->GetFileSystemController().CreateFactories(*system->GetFilesystem());
-    RegisterSwitch2Addons(*manual_provider, *system->GetFilesystem(), launch_cfg);
+    RegisterSwitch2Addons(*manual_provider, system->GetFilesystem(), launch_cfg);
     system->GetUserChannel().clear();
     Switch2BootTrace("04: System initialized");
 
@@ -841,12 +1003,31 @@ int main(int argc, char** argv) {
         Common::SetCurrentThreadName("Switch2Input");
         Common::SetCurrentThreadPriority(Common::ThreadPriority::Low);
 
-        Switch2PadSnapshot pad{};
-        Switch2PadSnapshot prev_pad{};
+        std::array<Switch2PadSnapshot, 4> pads{};
+        std::array<Switch2PadSnapshot, 4> prev_pads{};
         bool prev_touch = false;
-        auto* active_ctrl = system->HIDCore().GetEmulatedController(active_npad_id);
-        Core::HID::VibrationValue last_l{Core::HID::DEFAULT_VIBRATION_VALUE};
-        Core::HID::VibrationValue last_r{Core::HID::DEFAULT_VIBRATION_VALUE};
+        std::array<Core::HID::EmulatedController*, 4> active_ctrls{};
+        std::array<Core::HID::VibrationValue, 4> last_l{};
+        std::array<Core::HID::VibrationValue, 4> last_r{};
+        for (int p = 0; p < 4; ++p) {
+            last_l[static_cast<std::size_t>(p)] = Core::HID::DEFAULT_VIBRATION_VALUE;
+            last_r[static_cast<std::size_t>(p)] = Core::HID::DEFAULT_VIBRATION_VALUE;
+        }
+        auto refresh_emulated_ctrls = [&]() {
+            for (int p = 0; p < 4; ++p) {
+                const auto& b = player_bindings[static_cast<std::size_t>(p)];
+                active_ctrls[static_cast<std::size_t>(p)] =
+                    b.enabled ? system->HIDCore().GetEmulatedController(b.npad_id) : nullptr;
+            }
+        };
+        auto stop_all_vibration = [&]() {
+            for (int p = 0; p < 4; ++p) {
+                Switch2SetPlayerVibration(p, 0, 160.0f, 0, 320.0f, 0, 160.0f, 0, 320.0f);
+                last_l[static_cast<std::size_t>(p)] = Core::HID::DEFAULT_VIBRATION_VALUE;
+                last_r[static_cast<std::size_t>(p)] = Core::HID::DEFAULT_VIBRATION_VALUE;
+            }
+        };
+        refresh_emulated_ctrls();
         u32 loop_iters = 0;
 
         launch_cfg.docked_mode =
@@ -857,7 +1038,41 @@ int main(int argc, char** argv) {
         std::string quick_msg;
         bool exit_to_launcher = false;
 
-        while (Switch2PollInput(&pad, true)) {
+        while (Switch2PollInput(&pads[0], true)) {
+            for (int p = 1; p < 4; ++p) {
+                Switch2PollPlayerInput(p, &pads[static_cast<std::size_t>(p)]);
+            }
+
+            // Detect hot-plug or Joy-Con detach/reattach for any Auto-configured player slot.
+            bool need_ctrl_reload = false;
+            if (launch_cfg.controller_profile == Switch2ControllerProfile::Auto &&
+                pads[0].physical_style != player_bindings[0].last_physical_style) {
+                need_ctrl_reload = true;
+            }
+            for (int p = 1; p < 4; ++p) {
+                const Switch2PlayerSlotMode sm =
+                    (p == 1) ? launch_cfg.controller_p2 : launch_cfg.controller_p34;
+                if (sm == Switch2PlayerSlotMode::Auto &&
+                    pads[static_cast<std::size_t>(p)].physical_style !=
+                        player_bindings[static_cast<std::size_t>(p)].last_physical_style) {
+                    need_ctrl_reload = true;
+                }
+            }
+            if (need_ctrl_reload) {
+                const bool old_docked =
+                    (Settings::values.use_docked_mode.GetValue() == Settings::ConsoleMode::Docked);
+                ConfigureSwitch2Controllers(launch_cfg, pads, player_bindings, true);
+                system->HIDCore().ReloadInputDevices();
+                refresh_emulated_ctrls();
+                const bool new_docked =
+                    (Settings::values.use_docked_mode.GetValue() == Settings::ConsoleMode::Docked);
+                launch_cfg.docked_mode = new_docked;
+                if (old_docked != new_docked) {
+                    system->GetAppletManager().OperationModeChanged();
+                }
+            }
+
+            const auto& pad = pads[0];
             const bool lr_plus_combo =
                 (pad.raw_held & SWITCH2_BTN_L) && (pad.raw_held & SWITCH2_BTN_R) &&
                 (pad.raw_held & SWITCH2_BTN_PLUS) &&
@@ -867,11 +1082,15 @@ int main(int argc, char** argv) {
                 quick_msg.clear();
                 if (quick_menu_open) {
                     Switch2PadSnapshot neutral{};
-                    ForwardSwitch2Input(*input_subsystem, neutral, prev_pad, active_pad_index,
-                                        launch_cfg.controller_profile, prev_touch);
-                    Switch2SetVibration(0, 160.0f, 0, 320.0f, 0, 160.0f, 0, 320.0f);
-                    last_l = Core::HID::DEFAULT_VIBRATION_VALUE;
-                    last_r = Core::HID::DEFAULT_VIBRATION_VALUE;
+                    for (int p = 0; p < 4; ++p) {
+                        const auto& b = player_bindings[static_cast<std::size_t>(p)];
+                        if (b.enabled) {
+                            ForwardSwitch2Input(*input_subsystem, neutral,
+                                                prev_pads[static_cast<std::size_t>(p)], b.pad_index,
+                                                b.effective_profile, p == 0, prev_touch);
+                        }
+                    }
+                    stop_all_vibration();
                     Switch2RenderQuickMenuOverlay(launch_cfg, volume_pct, quick_sel, quick_msg);
                 } else {
                     Switch2HideQuickMenuOverlay();
@@ -883,7 +1102,7 @@ int main(int argc, char** argv) {
                     quick_menu_open = false;
                     Switch2HideQuickMenuOverlay();
                 } else if (down & (SWITCH2_BTN_UP | SWITCH2_BTN_DOWN)) {
-                    constexpr int kQuickCount = 12;
+                    constexpr int kQuickCount = 14;
                     if (down & SWITCH2_BTN_UP) quick_sel = (quick_sel + kQuickCount - 1) % kQuickCount;
                     if (down & SWITCH2_BTN_DOWN) quick_sel = (quick_sel + 1) % kQuickCount;
                     quick_msg.clear();
@@ -892,6 +1111,7 @@ int main(int argc, char** argv) {
                     const int dir = (down & SWITCH2_BTN_LEFT) ? -1 : 1;
                     bool setting_changed = false;
                     bool docked_changed = false;
+                    bool ctrl_changed = false;
                     switch (quick_sel) {
                     case 0: {
                         static constexpr std::array<int, 4> kSpeeds{{100, 0, 150, 200}};
@@ -940,7 +1160,49 @@ int main(int argc, char** argv) {
                         volume_pct = std::clamp(volume_pct + dir * 10, 0, 150);
                         setting_changed = true;
                         break;
-                    case 9:
+                    case 9: {
+                        static constexpr std::array<Switch2ControllerProfile, 6> kP1Profiles{{
+                            Switch2ControllerProfile::ProController,
+                            Switch2ControllerProfile::Auto,
+                            Switch2ControllerProfile::Handheld,
+                            Switch2ControllerProfile::DualJoycon,
+                            Switch2ControllerProfile::RightJoycon,
+                            Switch2ControllerProfile::LeftJoycon,
+                        }};
+                        int idx = 0;
+                        for (int i = 0; i < 6; ++i) {
+                            if (kP1Profiles[static_cast<std::size_t>(i)] == launch_cfg.controller_profile) {
+                                idx = i;
+                                break;
+                            }
+                        }
+                        idx = (idx + dir + 6) % 6;
+                        launch_cfg.controller_profile = kP1Profiles[static_cast<std::size_t>(idx)];
+                        ctrl_changed = true;
+                        break;
+                    }
+                    case 10: {
+                        static constexpr std::array<Switch2PlayerSlotMode, 6> kP2Modes{{
+                            Switch2PlayerSlotMode::Auto,
+                            Switch2PlayerSlotMode::Off,
+                            Switch2PlayerSlotMode::ProController,
+                            Switch2PlayerSlotMode::DualJoycon,
+                            Switch2PlayerSlotMode::RightJoycon,
+                            Switch2PlayerSlotMode::LeftJoycon,
+                        }};
+                        int idx = 0;
+                        for (int i = 0; i < 6; ++i) {
+                            if (kP2Modes[static_cast<std::size_t>(i)] == launch_cfg.controller_p2) {
+                                idx = i;
+                                break;
+                            }
+                        }
+                        idx = (idx + dir + 6) % 6;
+                        launch_cfg.controller_p2 = kP2Modes[static_cast<std::size_t>(idx)];
+                        ctrl_changed = true;
+                        break;
+                    }
+                    case 11:
                         if (down & SWITCH2_BTN_A) {
                             const bool ok = Switch2SavePerGameQuickConfig(launch_cfg);
                             quick_msg =
@@ -951,14 +1213,14 @@ int main(int argc, char** argv) {
                             redraw_qm = true;
                         }
                         break;
-                    case 10:
+                    case 12:
                         if (down & SWITCH2_BTN_A) {
                             exit_to_launcher = true;
                             quick_menu_open = false;
                             Switch2HideQuickMenuOverlay();
                         }
                         break;
-                    case 11:
+                    case 13:
                         if (down & SWITCH2_BTN_A) {
                             quick_menu_open = false;
                             Switch2HideQuickMenuOverlay();
@@ -972,6 +1234,21 @@ int main(int argc, char** argv) {
                         quick_msg.clear();
                         redraw_qm = true;
                     }
+                    if (ctrl_changed) {
+                        const bool old_docked =
+                            (Settings::values.use_docked_mode.GetValue() == Settings::ConsoleMode::Docked);
+                        ConfigureSwitch2Controllers(launch_cfg, pads, player_bindings, true);
+                        system->HIDCore().ReloadInputDevices();
+                        refresh_emulated_ctrls();
+                        const bool new_docked =
+                            (Settings::values.use_docked_mode.GetValue() == Settings::ConsoleMode::Docked);
+                        launch_cfg.docked_mode = new_docked;
+                        if (old_docked != new_docked) {
+                            system->GetAppletManager().OperationModeChanged();
+                        }
+                        quick_msg.clear();
+                        redraw_qm = true;
+                    }
                 }
                 if (exit_to_launcher) {
                     break;
@@ -980,29 +1257,37 @@ int main(int argc, char** argv) {
                     Switch2RenderQuickMenuOverlay(launch_cfg, volume_pct, quick_sel, quick_msg);
                 }
             } else {
-                ForwardSwitch2Input(*input_subsystem, pad, prev_pad, active_pad_index,
-                                    launch_cfg.controller_profile, prev_touch);
-                if (active_ctrl != nullptr) {
-                    const auto vl = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Left);
-                    const auto vr = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Right);
-                    const bool diff_l =
-                        vl.low_amplitude != last_l.low_amplitude ||
-                        vl.high_amplitude != last_l.high_amplitude ||
-                        ((vl.low_amplitude != 0.0f || vl.high_amplitude != 0.0f) &&
-                         (vl.low_frequency != last_l.low_frequency ||
-                          vl.high_frequency != last_l.high_frequency));
-                    const bool diff_r =
-                        vr.low_amplitude != last_r.low_amplitude ||
-                        vr.high_amplitude != last_r.high_amplitude ||
-                        ((vr.low_amplitude != 0.0f || vr.high_amplitude != 0.0f) &&
-                         (vr.low_frequency != last_r.low_frequency ||
-                          vr.high_frequency != last_r.high_frequency));
-                    if (diff_l || diff_r) {
-                        Switch2SetVibration(vl.low_amplitude, vl.low_frequency, vl.high_amplitude,
-                                            vl.high_frequency, vr.low_amplitude, vr.low_frequency,
-                                            vr.high_amplitude, vr.high_frequency);
-                        last_l = vl;
-                        last_r = vr;
+                for (int p = 0; p < 4; ++p) {
+                    const auto idx = static_cast<std::size_t>(p);
+                    const auto& b = player_bindings[idx];
+                    if (!b.enabled) {
+                        continue;
+                    }
+                    ForwardSwitch2Input(*input_subsystem, pads[idx], prev_pads[idx], b.pad_index,
+                                        b.effective_profile, p == 0, prev_touch);
+                    if (auto* ctrl = active_ctrls[idx]; ctrl != nullptr) {
+                        const auto vl = ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Left);
+                        const auto vr = ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Right);
+                        const bool diff_l =
+                            vl.low_amplitude != last_l[idx].low_amplitude ||
+                            vl.high_amplitude != last_l[idx].high_amplitude ||
+                            ((vl.low_amplitude != 0.0f || vl.high_amplitude != 0.0f) &&
+                             (vl.low_frequency != last_l[idx].low_frequency ||
+                              vl.high_frequency != last_l[idx].high_frequency));
+                        const bool diff_r =
+                            vr.low_amplitude != last_r[idx].low_amplitude ||
+                            vr.high_amplitude != last_r[idx].high_amplitude ||
+                            ((vr.low_amplitude != 0.0f || vr.high_amplitude != 0.0f) &&
+                             (vr.low_frequency != last_r[idx].low_frequency ||
+                              vr.high_frequency != last_r[idx].high_frequency));
+                        if (diff_l || diff_r) {
+                            Switch2SetPlayerVibration(p, vl.low_amplitude, vl.low_frequency,
+                                                      vl.high_amplitude, vl.high_frequency,
+                                                      vr.low_amplitude, vr.low_frequency,
+                                                      vr.high_amplitude, vr.high_frequency);
+                            last_l[idx] = vl;
+                            last_r[idx] = vr;
+                        }
                     }
                 }
             }
@@ -1068,7 +1353,9 @@ int main(int argc, char** argv) {
     Switch2HideQuickMenuOverlay();
     UpdateSwitch2FpsOverlay("");
     Switch2SetCpuBoost(false);
-    Switch2SetVibration(0, 160.0f, 0, 320.0f, 0, 160.0f, 0, 320.0f);
+    for (int p = 0; p < 4; ++p) {
+        Switch2SetPlayerVibration(p, 0, 160.0f, 0, 320.0f, 0, 160.0f, 0, 320.0f);
+    }
     system->DetachDebugger();
     if (system->IsPoweredOn()) {
         system->Pause();

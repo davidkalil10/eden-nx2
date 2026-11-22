@@ -339,14 +339,20 @@ struct GameEntry {
     std::string ext;
     std::uint64_t size_bytes = 0;
     bool is_dir = false;
+    bool is_split = false;
+    int split_parts = 0;
     std::vector<std::uint32_t> icon56;
 };
 
-std::string ToLowerExt(const std::filesystem::path& p) {
-    std::string ext = p.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(),
+std::string ToLowerAscii(std::string_view s) {
+    std::string out(s);
+    std::transform(out.begin(), out.end(), out.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return ext;
+    return out;
+}
+
+std::string ToLowerExt(const std::filesystem::path& p) {
+    return ToLowerAscii(p.extension().string());
 }
 
 bool IsAddonExt(std::string_view ext) {
@@ -355,6 +361,129 @@ bool IsAddonExt(std::string_view ext) {
 
 bool IsSupportedRomExt(std::string_view ext) {
     return IsAddonExt(ext) || ext == ".nup" || ext == ".nro" || ext == ".nca";
+}
+
+std::string PeekContainerExtFromFile(const std::filesystem::path& file_path) {
+    std::FILE* f = std::fopen(file_path.generic_string().c_str(), "rb");
+    if (!f) return ".nsp";
+    unsigned char hdr[0x104]{};
+    const std::size_t n = std::fread(hdr, 1, sizeof(hdr), f);
+    std::fclose(f);
+    if (n >= 4 && std::memcmp(hdr, "PFS0", 4) == 0) return ".nsp";
+    if (n >= 0x104 && std::memcmp(hdr + 0x100, "HEAD", 4) == 0) return ".xci";
+    return ".nsp";
+}
+
+// Detects FAT32 split folders (e.g. "Game.nsp/" or "Game/" containing 00, 01, 02, ...).
+bool DetectSplitFolder(const std::filesystem::path& dir_path, std::string* out_ext,
+                       std::uint64_t* out_bytes, int* out_parts) {
+    std::error_code ec;
+    const auto p00 = dir_path / "00";
+    if (!std::filesystem::is_regular_file(p00, ec) || ec) {
+        return false;
+    }
+    std::uint64_t total = std::filesystem::file_size(p00, ec);
+    if (ec) total = 0;
+    int parts = 1;
+    bool hex_mode = false;
+    for (int i = 1; i < 100; ++i) {
+        char buf[8];
+        std::snprintf(buf, sizeof(buf), "%02d", i);
+        std::filesystem::path next = dir_path / buf;
+        ec.clear();
+        bool found = (!hex_mode && std::filesystem::is_regular_file(next, ec) && !ec);
+        if (!found && i >= 10 && i < 16) {
+            std::snprintf(buf, sizeof(buf), "%02X", i);
+            next = dir_path / buf;
+            ec.clear();
+            found = std::filesystem::is_regular_file(next, ec) && !ec;
+            if (!found) {
+                std::snprintf(buf, sizeof(buf), "%02x", i);
+                next = dir_path / buf;
+                ec.clear();
+                found = std::filesystem::is_regular_file(next, ec) && !ec;
+            }
+            if (found) hex_mode = true;
+        }
+        if (!found) break;
+        ec.clear();
+        const auto sz = std::filesystem::file_size(next, ec);
+        if (!ec) total += sz;
+        ++parts;
+    }
+    if (out_ext) {
+        const std::string dir_ext = ToLowerExt(dir_path);
+        *out_ext = IsAddonExt(dir_ext) ? dir_ext : PeekContainerExtFromFile(p00);
+    }
+    if (out_bytes) *out_bytes = total;
+    if (out_parts) *out_parts = parts;
+    return true;
+}
+
+// Detects loose split lead files: "Game.nsp.00", 7-Zip "Game.nsp.001", "Game.xc0", "Game.ns0".
+bool DetectSplitLeadFile(const std::filesystem::path& file_path, std::string* out_ext,
+                         std::string* out_title, std::uint64_t* out_bytes, int* out_parts) {
+    const std::string fname = file_path.filename().string();
+    const std::string lower = ToLowerAscii(fname);
+    const std::string full = file_path.generic_string();
+    std::error_code ec;
+
+    auto check_dot_split = [&](std::string_view suffix, int start_idx, int max_idx,
+                               bool three_digits) -> bool {
+        if (lower.size() <= suffix.size() + 4) return false;
+        if (lower.compare(lower.size() - suffix.size(), suffix.size(), suffix) != 0) return false;
+        const std::string base_name = fname.substr(0, fname.size() - suffix.size());
+        const std::filesystem::path base_p(base_name);
+        const std::string base_ext = ToLowerExt(base_p);
+        if (!IsAddonExt(base_ext)) return false;
+
+        const std::string base_full = full.substr(0, full.size() - suffix.size());
+        std::uint64_t total = 0;
+        int parts = 0;
+        for (int i = start_idx; i <= max_idx; ++i) {
+            char sbuf[16];
+            std::snprintf(sbuf, sizeof(sbuf), three_digits ? ".%03d" : ".%02d", i);
+            ec.clear();
+            const std::string part = base_full + sbuf;
+            if (!std::filesystem::is_regular_file(part, ec) || ec) break;
+            const auto sz = std::filesystem::file_size(part, ec);
+            if (!ec) total += sz;
+            ++parts;
+        }
+        if (parts <= 0) return false;
+        if (out_ext) *out_ext = base_ext;
+        if (out_title) *out_title = base_p.stem().string();
+        if (out_bytes) *out_bytes = total;
+        if (out_parts) *out_parts = parts;
+        return true;
+    };
+
+    if (check_dot_split(".00", 0, 99, false)) return true;
+    if (check_dot_split(".001", 1, 999, true)) return true;
+
+    if (lower.size() > 4 &&
+        (lower.compare(lower.size() - 4, 4, ".xc0") == 0 ||
+         lower.compare(lower.size() - 4, 4, ".ns0") == 0)) {
+        const bool is_xci = (lower.compare(lower.size() - 4, 4, ".xc0") == 0);
+        const std::string base_full = full.substr(0, full.size() - 1);
+        std::uint64_t total = 0;
+        int parts = 0;
+        for (int i = 0; i < 10; ++i) {
+            ec.clear();
+            const std::string part = base_full + std::to_string(i);
+            if (!std::filesystem::is_regular_file(part, ec) || ec) break;
+            const auto sz = std::filesystem::file_size(part, ec);
+            if (!ec) total += sz;
+            ++parts;
+        }
+        if (parts <= 0) return false;
+        if (out_ext) *out_ext = is_xci ? ".xci" : ".nsp";
+        if (out_title) *out_title = file_path.stem().string();
+        if (out_bytes) *out_bytes = total;
+        if (out_parts) *out_parts = parts;
+        return true;
+    }
+    return false;
 }
 
 template <typename Fn>
@@ -479,19 +608,65 @@ std::vector<GameEntry> ScanDirectory(const std::string& folder) {
         if (fname.empty() || fname[0] == '.') return;
         const bool is_dir = dir_entry.is_directory(entry_ec);
         if (entry_ec) return;
-        const std::string ext = is_dir ? "" : ToLowerExt(dir_entry.path());
-        if (!is_dir && !IsSupportedRomExt(ext)) return;
+
+        if (is_dir) {
+            std::string split_ext;
+            std::uint64_t total_sz = 0;
+            int parts = 0;
+            if (DetectSplitFolder(dir_entry.path(), &split_ext, &total_sz, &parts)) {
+                GameEntry item;
+                item.name = fname;
+                const std::string dir_ext = ToLowerExt(dir_entry.path());
+                item.display_title =
+                    IsSupportedRomExt(dir_ext) ? dir_entry.path().stem().string() : fname;
+                item.full_path = dir_entry.path().generic_string();
+                item.ext = split_ext;
+                item.is_dir = false;
+                item.is_split = true;
+                item.split_parts = parts;
+                item.size_bytes = total_sz;
+                list.push_back(std::move(item));
+                return;
+            }
+            GameEntry item;
+            item.name = fname;
+            item.display_title = fname;
+            item.full_path = dir_entry.path().generic_string();
+            item.ext = "";
+            item.is_dir = true;
+            list.push_back(std::move(item));
+            return;
+        }
+
+        std::string split_ext;
+        std::string split_title;
+        std::uint64_t total_sz = 0;
+        int parts = 0;
+        if (DetectSplitLeadFile(dir_entry.path(), &split_ext, &split_title, &total_sz, &parts)) {
+            GameEntry item;
+            item.name = fname;
+            item.display_title = split_title;
+            item.full_path = dir_entry.path().generic_string();
+            item.ext = split_ext;
+            item.is_dir = false;
+            item.is_split = true;
+            item.split_parts = parts;
+            item.size_bytes = total_sz;
+            list.push_back(std::move(item));
+            return;
+        }
+
+        const std::string ext = ToLowerExt(dir_entry.path());
+        if (!IsSupportedRomExt(ext)) return;
         GameEntry item;
         item.name = fname;
-        item.display_title = is_dir ? fname : dir_entry.path().stem().string();
+        item.display_title = dir_entry.path().stem().string();
         item.full_path = dir_entry.path().generic_string();
         item.ext = ext;
-        item.is_dir = is_dir;
-        if (!is_dir) {
-            const auto sz = dir_entry.file_size(entry_ec);
-            item.size_bytes = entry_ec ? 0 : sz;
-            TryLoadNroMetadata(item);
-        }
+        item.is_dir = false;
+        const auto sz = dir_entry.file_size(entry_ec);
+        item.size_bytes = entry_ec ? 0 : sz;
+        TryLoadNroMetadata(item);
         list.push_back(std::move(item));
     });
     std::sort(list.begin(), list.end(), [](const GameEntry& a, const GameEntry& b) {
@@ -560,11 +735,27 @@ std::vector<SettingOption> MakeDefaultOptions() {
     return {
         {"controller",
          "Controle (Player 1)", "Controller (Player 1)",
-         "Perfil de controle. Para Let's Go Pikachu use Handheld ou Joy-Con Direito.",
-         "Controller profile. For Let's Go Pikachu use Handheld or Right Joy-Con.",
-         {"pro_controller", "handheld", "dual_joycon", "right_joycon", "left_joycon"},
-         {"Pro Controller", "Handheld (Portatil / Let's Go)", "Dual Joy-Con", "Joy-Con Direito (Let's Go)", "Joy-Con Esquerdo"},
-         {"Pro Controller", "Handheld (Portable / Let's Go)", "Dual Joy-Con", "Right Joy-Con (Let's Go)", "Left Joy-Con"},
+         "Auto detecta o controle real do Switch 2 (inclusive Joy-Cons individuais p/ 1-2-Switch).",
+         "Auto matches your real Switch 2 controller (including single Joy-Cons for 1-2-Switch).",
+         {"pro_controller", "auto", "handheld", "dual_joycon", "right_joycon", "left_joycon"},
+         {"Pro Controller", "Auto (Switch 2 Real)", "Handheld (Portatil / Let's Go)", "Dual Joy-Con", "Joy-Con Direito", "Joy-Con Esquerdo"},
+         {"Pro Controller", "Auto (Real Switch 2)", "Handheld (Portable / Let's Go)", "Dual Joy-Con", "Right Joy-Con", "Left Joy-Con"},
+         0, true},
+        {"controller_p2",
+         "Controle (Player 2)", "Controller (Player 2)",
+         "Auto conecta o Player 2 automaticamente (Joy-Con individual ou Pro Controller).",
+         "Auto connects Player 2 automatically (single Joy-Con or Pro Controller).",
+         {"auto", "off", "pro_controller", "dual_joycon", "right_joycon", "left_joycon"},
+         {"Auto (Se Conectado)", "Desligado", "Pro Controller", "Dual Joy-Con", "Joy-Con Direito", "Joy-Con Esquerdo"},
+         {"Auto (If Connected)", "Off", "Pro Controller", "Dual Joy-Con", "Right Joy-Con", "Left Joy-Con"},
+         0, true},
+        {"controller_p34",
+         "Controles (P3 e P4)", "Controllers (P3 & P4)",
+         "Auto conecta Players 3 e 4 quando houver 3 ou 4 controles pareados no Switch 2.",
+         "Auto connects Players 3 & 4 whenever 3 or 4 controllers are paired on Switch 2.",
+         {"auto", "off", "pro_controller", "dual_joycon", "right_joycon", "left_joycon"},
+         {"Auto (Se Conectados)", "Desligado", "Pro Controller", "Dual Joy-Con", "Joy-Con Direito", "Joy-Con Esquerdo"},
+         {"Auto (If Connected)", "Off", "Pro Controller", "Dual Joy-Con", "Right Joy-Con", "Left Joy-Con"},
          0, true},
         {"console_mode",
          "Modo do Console", "Console Mode",
@@ -821,12 +1012,40 @@ AddonLists ScanAddonListsOnce() {
                             if (fname.empty() || fname[0] == '.') return;
                             const std::string full = e.path().generic_string();
                             if (e.is_directory(ec)) {
+                                std::string split_ext;
+                                std::uint64_t total_sz = 0;
+                                int parts = 0;
+                                if (DetectSplitFolder(e.path(), &split_ext, &total_sz, &parts)) {
+                                    cache.updates.push_back(
+                                        AddonItem{fname + " (SPLIT)", full, "UPD", total_sz, false});
+                                    return;
+                                }
                                 SafeForEachDirEntry(
                                     full + "/",
                                     [&](const std::filesystem::directory_entry& sub, std::error_code&) {
                                         std::error_code sec;
                                         const std::string sname = sub.path().filename().string();
-                                        if (sname.empty() || sname[0] == '.' || sub.is_directory(sec)) return;
+                                        if (sname.empty() || sname[0] == '.') return;
+                                        if (sub.is_directory(sec)) {
+                                            std::string sext;
+                                            std::uint64_t ssz = 0;
+                                            int sparts = 0;
+                                            if (DetectSplitFolder(sub.path(), &sext, &ssz, &sparts)) {
+                                                cache.updates.push_back(AddonItem{
+                                                    fname + "/" + sname + " (SPLIT)",
+                                                    sub.path().generic_string(), "UPD", ssz, false});
+                                            }
+                                            return;
+                                        }
+                                        std::string sext, stitle;
+                                        std::uint64_t ssz = 0;
+                                        int sparts = 0;
+                                        if (DetectSplitLeadFile(sub.path(), &sext, &stitle, &ssz, &sparts)) {
+                                            cache.updates.push_back(AddonItem{
+                                                fname + "/" + stitle + " (SPLIT)",
+                                                sub.path().generic_string(), "UPD", ssz, false});
+                                            return;
+                                        }
                                         if (IsAddonExt(ToLowerExt(sub.path()))) {
                                             const auto sz = sub.file_size(sec);
                                             cache.updates.push_back(AddonItem{
@@ -834,6 +1053,14 @@ AddonLists ScanAddonListsOnce() {
                                                 "UPD", sec ? 0 : sz, false});
                                         }
                                     });
+                                return;
+                            }
+                            std::string sext, stitle;
+                            std::uint64_t ssz = 0;
+                            int sparts = 0;
+                            if (DetectSplitLeadFile(e.path(), &sext, &stitle, &ssz, &sparts)) {
+                                cache.updates.push_back(
+                                    AddonItem{stitle + " (SPLIT)", full, "UPD", ssz, false});
                                 return;
                             }
                             if (IsAddonExt(ToLowerExt(e.path()))) {
@@ -852,13 +1079,41 @@ AddonLists ScanAddonListsOnce() {
                             if (fname.empty() || fname[0] == '.') return;
                             const std::string full = e.path().generic_string();
                             if (e.is_directory(ec)) {
+                                std::string split_ext;
+                                std::uint64_t total_sz = 0;
+                                int parts = 0;
+                                if (DetectSplitFolder(e.path(), &split_ext, &total_sz, &parts)) {
+                                    cache.dlcs.push_back(
+                                        AddonItem{fname + " (SPLIT)", full, "DLC", total_sz, false});
+                                    return;
+                                }
                                 cache.dlcs.push_back(AddonItem{fname, full, "DIR", 0, true});
                                 SafeForEachDirEntry(
                                     full + "/",
                                     [&](const std::filesystem::directory_entry& sub, std::error_code&) {
                                         std::error_code sec;
                                         const std::string sname = sub.path().filename().string();
-                                        if (sname.empty() || sname[0] == '.' || sub.is_directory(sec)) return;
+                                        if (sname.empty() || sname[0] == '.') return;
+                                        if (sub.is_directory(sec)) {
+                                            std::string sext;
+                                            std::uint64_t ssz = 0;
+                                            int sparts = 0;
+                                            if (DetectSplitFolder(sub.path(), &sext, &ssz, &sparts)) {
+                                                cache.dlcs.push_back(AddonItem{
+                                                    fname + "/" + sname + " (SPLIT)",
+                                                    sub.path().generic_string(), "DLC", ssz, false});
+                                            }
+                                            return;
+                                        }
+                                        std::string sext, stitle;
+                                        std::uint64_t ssz = 0;
+                                        int sparts = 0;
+                                        if (DetectSplitLeadFile(sub.path(), &sext, &stitle, &ssz, &sparts)) {
+                                            cache.dlcs.push_back(AddonItem{
+                                                fname + "/" + stitle + " (SPLIT)",
+                                                sub.path().generic_string(), "DLC", ssz, false});
+                                            return;
+                                        }
                                         if (IsAddonExt(ToLowerExt(sub.path()))) {
                                             const auto sz = sub.file_size(sec);
                                             cache.dlcs.push_back(AddonItem{
@@ -866,6 +1121,14 @@ AddonLists ScanAddonListsOnce() {
                                                 "DLC", sec ? 0 : sz, false});
                                         }
                                     });
+                                return;
+                            }
+                            std::string sext, stitle;
+                            std::uint64_t ssz = 0;
+                            int sparts = 0;
+                            if (DetectSplitLeadFile(e.path(), &sext, &stitle, &ssz, &sparts)) {
+                                cache.dlcs.push_back(
+                                    AddonItem{stitle + " (SPLIT)", full, "DLC", ssz, false});
                                 return;
                             }
                             if (IsAddonExt(ToLowerExt(e.path()))) {
@@ -1002,11 +1265,23 @@ void FillLaunchConfig(const std::vector<SettingOption>& eff, const std::string& 
                       Switch2LaunchConfig* cfg) {
     cfg->rom_path = rom_path;
     const std::string ctrl = GetValue(eff, "controller");
-    if (ctrl == "handheld") cfg->controller_profile = Switch2ControllerProfile::Handheld;
+    if (ctrl == "auto") cfg->controller_profile = Switch2ControllerProfile::Auto;
+    else if (ctrl == "handheld") cfg->controller_profile = Switch2ControllerProfile::Handheld;
     else if (ctrl == "dual_joycon") cfg->controller_profile = Switch2ControllerProfile::DualJoycon;
     else if (ctrl == "right_joycon") cfg->controller_profile = Switch2ControllerProfile::RightJoycon;
     else if (ctrl == "left_joycon") cfg->controller_profile = Switch2ControllerProfile::LeftJoycon;
     else cfg->controller_profile = Switch2ControllerProfile::ProController;
+
+    auto parse_slot = [](const std::string& val) {
+        if (val == "off") return Switch2PlayerSlotMode::Off;
+        if (val == "pro_controller") return Switch2PlayerSlotMode::ProController;
+        if (val == "dual_joycon") return Switch2PlayerSlotMode::DualJoycon;
+        if (val == "right_joycon") return Switch2PlayerSlotMode::RightJoycon;
+        if (val == "left_joycon") return Switch2PlayerSlotMode::LeftJoycon;
+        return Switch2PlayerSlotMode::Auto;
+    };
+    cfg->controller_p2 = parse_slot(GetValue(eff, "controller_p2"));
+    cfg->controller_p34 = parse_slot(GetValue(eff, "controller_p34"));
 
     cfg->docked_mode = (GetValue(eff, "console_mode") == "docked");
     cfg->resolution_scale = std::strtof(GetValue(eff, "resolution").c_str(), nullptr);
@@ -1179,12 +1454,19 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
                                   ? T(en, "Pasta - pressione [A] para abrir", "Folder - press [A] to open")
                                   : (item.author.empty() ? FormatSize(item.size_bytes)
                                                          : (item.author + "  |  " + FormatSize(item.size_bytes)));
+            if (item.is_split) {
+                sub += "  |  SPLIT (" + std::to_string(item.split_parts) + ")";
+            }
             cv.DrawTextMaxWidth(120, cy + 44, 480, sub, kTextMuted, 1);
 
             if (!item.is_dir) {
+                int rx = 602;
                 std::error_code ec;
                 if (std::filesystem::exists(GameConfigPath(item.full_path), ec)) {
-                    cv.DrawPill(602, cy + 20, "CUSTOM", kAccentSoft, kAccent, 1);
+                    cv.DrawPill(rx, cy + 10, "CUSTOM", kAccentSoft, kAccent, 1);
+                }
+                if (item.is_split) {
+                    cv.DrawPill(rx, cy + 38, "SPLIT", PackRGBA(24, 58, 92), kCyan, 1);
                 }
             }
         }
@@ -1253,18 +1535,41 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
     cv.DrawText(1036, 505, pad.has_motion ? "Gyro: OK" : "Gyro: ...",
                 pad.has_motion ? kAccent : kTextMuted, 1);
 
-    cv.FillRect(800, 542, 420, 1, kBorderDim);
-    cv.DrawText(800, 554, T(en, "Menu Rapido no Jogo: aperte [L]+[R]+[+]",
+    auto styleTag = [](std::uint8_t s) -> const char* {
+        switch (s) {
+        case SWITCH2_STYLE_HANDHELD: return "HND";
+        case SWITCH2_STYLE_PRO: return "PRO";
+        case SWITCH2_STYLE_JOY_DUAL: return "DUAL";
+        case SWITCH2_STYLE_JOY_LEFT: return "JC-L";
+        case SWITCH2_STYLE_JOY_RIGHT: return "JC-R";
+        default: return "--";
+        }
+    };
+    Switch2PadSnapshot p_snaps[4]{};
+    p_snaps[0] = pad;
+    for (int p = 1; p < 4; ++p) {
+        Switch2PollPlayerInput(p, &p_snaps[p]);
+    }
+    int px_badge = 800;
+    for (int p = 0; p < 4; ++p) {
+        const bool ok = p_snaps[p].connected;
+        const std::string lbl = "P" + std::to_string(p + 1) + ":" + styleTag(p_snaps[p].physical_style);
+        px_badge += cv.DrawPill(px_badge, 526, lbl, ok ? kAccentSoft : kPanelBg,
+                                ok ? kAccent : kTextMuted, 1) + 6;
+    }
+
+    cv.FillRect(800, 554, 420, 1, kBorderDim);
+    cv.DrawText(800, 564, T(en, "Menu Rapido no Jogo: aperte [L]+[R]+[+]",
                             "In-Game Quick Menu: press [L]+[R]+[+]"),
                 kAccent, 1);
-    cv.DrawText(800, 574, T(en, "Voltar ao Launcher: segure [+]+[-] por 2 seg.",
+    cv.DrawText(800, 582, T(en, "Voltar ao Launcher: segure [+]+[-] por 2 seg.",
                             "Return to Launcher: hold [+]+[-] for 2 sec."),
                 kCyan, 1);
-    cv.DrawText(800, 594, T(en, "Let's Go: [Y] -> Handheld ou Joy-Con Dir.",
-                            "Let's Go: [Y] -> Handheld or Right Joy-Con"),
+    cv.DrawText(800, 600, T(en, "Split FAT32: pastas 00/01, .nsp.00 ou .001",
+                            "FAT32 Split: 00/01 folders, .nsp.00 or .001"),
                 kAmber, 1);
-    cv.DrawText(800, 614, T(en, "LSFG: coloque Lossless.dll em sdmc:/switch/eden-nx2/",
-                            "LSFG: put Lossless.dll in sdmc:/switch/eden-nx2/"),
+    cv.DrawText(800, 618, T(en, "1-2-Switch / Coop: use Auto em P1/P2 ([Y])",
+                            "1-2-Switch / Coop: set P1/P2 to Auto ([Y])"),
                 kTextMuted, 1);
 
     // Bottom footer hints
@@ -1331,13 +1636,30 @@ bool RunSdBrowserModal(Canvas& cv, const std::string& start_dir, bool allow_pick
             if (fname.empty() || fname[0] == '.') return;
             const bool is_dir = e.is_directory(ec);
             if (ec) return;
-            if (!is_dir && !IsAddonExt(ToLowerExt(e.path()))) return;
-            std::uint64_t sz = 0;
-            if (!is_dir) {
-                sz = e.file_size(ec);
-                if (ec) sz = 0;
+            if (is_dir) {
+                std::string sext;
+                std::uint64_t ssz = 0;
+                int sparts = 0;
+                if (DetectSplitFolder(e.path(), &sext, &ssz, &sparts)) {
+                    sub.push_back(BrowserItem{fname + " (SPLIT)", e.path().generic_string(), ssz,
+                                              false, false});
+                    return;
+                }
+                sub.push_back(BrowserItem{fname, e.path().generic_string(), 0, true, false});
+                return;
             }
-            sub.push_back(BrowserItem{fname, e.path().generic_string(), sz, is_dir, false});
+            std::string sext, stitle;
+            std::uint64_t ssz = 0;
+            int sparts = 0;
+            if (DetectSplitLeadFile(e.path(), &sext, &stitle, &ssz, &sparts)) {
+                sub.push_back(
+                    BrowserItem{stitle + " (SPLIT)", e.path().generic_string(), ssz, false, false});
+                return;
+            }
+            if (!IsAddonExt(ToLowerExt(e.path()))) return;
+            std::uint64_t sz = e.file_size(ec);
+            if (ec) sz = 0;
+            sub.push_back(BrowserItem{fname, e.path().generic_string(), sz, false, false});
         });
         std::sort(sub.begin(), sub.end(), [](const BrowserItem& a, const BrowserItem& b) {
             if (a.is_dir != b.is_dir) return a.is_dir;
@@ -2485,6 +2807,29 @@ bool Switch2SavePerGameQuickConfig(const Switch2LaunchConfig& cfg) {
     const char* fps_str = (cfg.show_fps_mode == 2) ? "detailed"
                                                    : (cfg.show_fps_mode == 1 ? "on" : "off");
 
+    auto ctrl1_key = [](Switch2ControllerProfile p) -> const char* {
+        switch (p) {
+        case Switch2ControllerProfile::Auto: return "auto";
+        case Switch2ControllerProfile::Handheld: return "handheld";
+        case Switch2ControllerProfile::DualJoycon: return "dual_joycon";
+        case Switch2ControllerProfile::RightJoycon: return "right_joycon";
+        case Switch2ControllerProfile::LeftJoycon: return "left_joycon";
+        default: return "pro_controller";
+        }
+    };
+    auto slot_key = [](Switch2PlayerSlotMode m) -> const char* {
+        switch (m) {
+        case Switch2PlayerSlotMode::Off: return "off";
+        case Switch2PlayerSlotMode::ProController: return "pro_controller";
+        case Switch2PlayerSlotMode::DualJoycon: return "dual_joycon";
+        case Switch2PlayerSlotMode::RightJoycon: return "right_joycon";
+        case Switch2PlayerSlotMode::LeftJoycon: return "left_joycon";
+        default: return "auto";
+        }
+    };
+
+    set_kv("controller", ctrl1_key(cfg.controller_profile));
+    set_kv("controller_p2", slot_key(cfg.controller_p2));
     set_kv("speed_limit", speed_str);
     set_kv("vsync_mode", vsync_str);
     set_kv("scaling_filter", sf_str);
@@ -2505,7 +2850,7 @@ bool Switch2SavePerGameQuickConfig(const Switch2LaunchConfig& cfg) {
 void Switch2RenderQuickMenuOverlay(const Switch2LaunchConfig& cfg, int volume_pct, int selected,
                                    const std::string& status_msg) {
     constexpr int kW = 760;
-    constexpr int kH = 596;
+    constexpr int kH = 648;
     std::vector<std::uint32_t> buf(static_cast<std::size_t>(kW) * kH, PackRGBA(0, 0, 0, 0));
 
     auto fill_rect = [&](int x, int y, int w, int h, std::uint32_t col) {
@@ -2626,6 +2971,26 @@ void Switch2RenderQuickMenuOverlay(const Switch2LaunchConfig& cfg, int volume_pc
             : (cfg.show_fps_mode == 1 ? T(en, "FPS + Veloc.", "FPS + Speed")
                                       : T(en, "Desligado", "Off"));
     const std::string vol_val = std::to_string(std::clamp(volume_pct, 0, 150)) + "%";
+    auto p1_label = [&](Switch2ControllerProfile p) -> std::string {
+        switch (p) {
+        case Switch2ControllerProfile::Auto: return T(en, "Auto (Switch 2)", "Auto (Switch 2)");
+        case Switch2ControllerProfile::Handheld: return "Handheld";
+        case Switch2ControllerProfile::DualJoycon: return "Dual Joy-Con";
+        case Switch2ControllerProfile::RightJoycon: return T(en, "Joy-Con Dir.", "Right Joy-Con");
+        case Switch2ControllerProfile::LeftJoycon: return T(en, "Joy-Con Esq.", "Left Joy-Con");
+        default: return "Pro Controller";
+        }
+    };
+    auto p2_label = [&](Switch2PlayerSlotMode m) -> std::string {
+        switch (m) {
+        case Switch2PlayerSlotMode::Off: return T(en, "Desligado", "Off");
+        case Switch2PlayerSlotMode::ProController: return "Pro Controller";
+        case Switch2PlayerSlotMode::DualJoycon: return "Dual Joy-Con";
+        case Switch2PlayerSlotMode::RightJoycon: return T(en, "Joy-Con Dir.", "Right Joy-Con");
+        case Switch2PlayerSlotMode::LeftJoycon: return T(en, "Joy-Con Esq.", "Left Joy-Con");
+        default: return T(en, "Auto (Conect.)", "Auto (Connect)");
+        }
+    };
 
     struct QuickRow {
         std::string label;
@@ -2635,7 +3000,7 @@ void Switch2RenderQuickMenuOverlay(const Switch2LaunchConfig& cfg, int volume_pc
         std::uint32_t action_fg = 0;
     };
 
-    const std::array<QuickRow, 12> rows{{
+    const std::array<QuickRow, 14> rows{{
         {T(en, "Limite de Veloc.", "Speed Limit"), speed_val},
         {"VSync (Vulkan)", vsync_val},
         {T(en, "Upscaler (Filtro)", "Upscaler (Filter)"), sf_val},
@@ -2645,6 +3010,8 @@ void Switch2RenderQuickMenuOverlay(const Switch2LaunchConfig& cfg, int volume_pc
         {"Clock (FastLoad)", boost_val},
         {T(en, "Mostrar FPS", "Show FPS"), fps_val},
         {T(en, "Volume do Audio", "Audio Volume"), vol_val},
+        {T(en, "Controle P1", "Controller P1"), p1_label(cfg.controller_profile)},
+        {T(en, "Controle P2", "Controller P2"), p2_label(cfg.controller_p2)},
         {T(en, "[ Salvar no Perfil do Jogo ]", "[ Save to Game Profile ]"), "", true,
          PackRGBA(18, 66, 54, 245), kAccent},
         {T(en, "[ Voltar ao Launcher ]", "[ Return to Launcher ]"), "", true,
@@ -2656,34 +3023,34 @@ void Switch2RenderQuickMenuOverlay(const Switch2LaunchConfig& cfg, int volume_pc
     for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
         const auto& r = rows[static_cast<std::size_t>(i)];
         const bool is_sel = (i == selected);
-        const int ry = 58 + i * 37;
+        const int ry = 56 + i * 35;
         const std::uint32_t bg =
             is_sel ? (r.is_action ? r.action_bg : PackRGBA(30, 52, 76, 250))
                    : (r.is_action ? PackRGBA(20, 30, 48, 232) : PackRGBA(22, 32, 50, 232));
         const std::uint32_t border = is_sel ? kAccent : kBorderDim;
-        draw_rounded(20, ry, kW - 40, 33, 8, bg, border);
+        draw_rounded(20, ry, kW - 40, 31, 7, bg, border);
 
         if (r.is_action) {
             const int text_w = static_cast<int>(r.label.size()) * 16;
             const int tx = std::max(32, (kW - text_w) / 2);
-            draw_text(tx, ry + 8, kW - 64, r.label, is_sel ? kTextPrimary : r.action_fg, 2);
+            draw_text(tx, ry + 7, kW - 64, r.label, is_sel ? kTextPrimary : r.action_fg, 2);
         } else {
-            draw_text(32, ry + 8, 328, r.label, is_sel ? kTextPrimary : kTextMuted, 2);
+            draw_text(32, ry + 7, 328, r.label, is_sel ? kTextPrimary : kTextMuted, 2);
             const std::string val_disp = is_sel ? ("< " + r.value + " >") : r.value;
-            draw_text(368, ry + 8, 364, val_disp, is_sel ? kAccent : kCyan, 2);
+            draw_text(368, ry + 7, 364, val_disp, is_sel ? kAccent : kCyan, 2);
         }
     }
 
-    fill_rect(22, 508, kW - 44, 1, kBorderDim);
+    fill_rect(22, 554, kW - 44, 1, kBorderDim);
     if (!status_msg.empty()) {
-        draw_text(28, 520, kW - 56, status_msg, kAccent, 2);
+        draw_text(28, 566, kW - 56, status_msg, kAccent, 2);
     } else {
-        draw_text(28, 520, kW - 56,
+        draw_text(28, 566, kW - 56,
                   T(en, "Mudancas ao vivo! Salve no perfil do jogo.",
                     "Changes apply live! Save to game profile."),
                   kTextMuted, 2);
     }
-    draw_text(28, 556, kW - 56,
+    draw_text(28, 604, kW - 56,
               T(en, "^/v Nav  </> Muda  [A] OK  [B] Fechar",
                 "^/v Nav  </> Edit  [A] OK  [B] Close"),
               kCyan, 2);

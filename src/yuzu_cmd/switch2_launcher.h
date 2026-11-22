@@ -9,7 +9,17 @@
 
 enum class Switch2ControllerProfile {
     ProController,
+    Auto,
     Handheld,
+    DualJoycon,
+    RightJoycon,
+    LeftJoycon,
+};
+
+enum class Switch2PlayerSlotMode {
+    Auto,
+    Off,
+    ProController,
     DualJoycon,
     RightJoycon,
     LeftJoycon,
@@ -18,6 +28,8 @@ enum class Switch2ControllerProfile {
 struct Switch2LaunchConfig {
     std::string rom_path;
     Switch2ControllerProfile controller_profile = Switch2ControllerProfile::ProController;
+    Switch2PlayerSlotMode controller_p2 = Switch2PlayerSlotMode::Auto;
+    Switch2PlayerSlotMode controller_p34 = Switch2PlayerSlotMode::Auto;
     bool docked_mode = false;
     float resolution_scale = 1.0f;
     int scaling_filter = 0; // 0=Bilinear, 1=FSR, 2=SGSR, 3=ScaleForce, 4=MMPX, 5=Lanczos, 6=Nearest
