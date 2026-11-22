@@ -43,4 +43,12 @@ struct Switch2LaunchConfig {
 // Returns true when a game is chosen (fills out_cfg); returns false to exit/restart.
 bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg, const char* self_nro_path = nullptr);
 
+// Saves live-editable settings from the in-game quick menu into this game's per-game .ini.
+bool Switch2SavePerGameQuickConfig(const Switch2LaunchConfig& cfg);
+
+// Draws the in-game Quick Menu (L+R+(+)) into Common::GetOverlayPanels()[2] (Center anchor).
+void Switch2RenderQuickMenuOverlay(const Switch2LaunchConfig& cfg, int volume_pct, int selected,
+                                   const std::string& status_msg);
+void Switch2HideQuickMenuOverlay();
+
 #endif // __SWITCH2__

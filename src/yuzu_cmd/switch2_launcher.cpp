@@ -17,6 +17,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -24,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/overlay_panels.h"
 #include "common/stb.h"
 #ifdef HAS_LSFG
 #include "video_core/frame_gen/lossless_dll.h"
@@ -1252,14 +1254,15 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
                 pad.has_motion ? kAccent : kTextMuted, 1);
 
     cv.FillRect(800, 542, 420, 1, kBorderDim);
-    cv.DrawText(800, 554, T(en, "Dica Let's Go Pikachu / Eevee:", "Tip Let's Go Pikachu / Eevee:"),
-                kAmber, 1);
-    cv.DrawText(800, 572, T(en, "Aperte [Y] -> Controle = Handheld ou Joy-Con Dir.",
-                            "Press [Y] -> Controller = Handheld or Right Joy-Con"),
-                kTextPrimary, 1);
-    cv.DrawText(800, 594, T(en, "Voltar ao Launcher: segure [+]+[-] por 2 seg.",
+    cv.DrawText(800, 554, T(en, "Menu Rapido no Jogo: aperte [L]+[R]+[+]",
+                            "In-Game Quick Menu: press [L]+[R]+[+]"),
+                kAccent, 1);
+    cv.DrawText(800, 574, T(en, "Voltar ao Launcher: segure [+]+[-] por 2 seg.",
                             "Return to Launcher: hold [+]+[-] for 2 sec."),
                 kCyan, 1);
+    cv.DrawText(800, 594, T(en, "Let's Go: [Y] -> Handheld ou Joy-Con Dir.",
+                            "Let's Go: [Y] -> Handheld or Right Joy-Con"),
+                kAmber, 1);
     cv.DrawText(800, 614, T(en, "LSFG: coloque Lossless.dll em sdmc:/switch/eden-nx2/",
                             "LSFG: put Lossless.dll in sdmc:/switch/eden-nx2/"),
                 kTextMuted, 1);
@@ -2436,6 +2439,275 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg, const char* self_nro_path)
 
     Switch2FbClose();
     return chosen;
+}
+
+bool Switch2SavePerGameQuickConfig(const Switch2LaunchConfig& cfg) {
+    if (cfg.rom_path.empty()) return false;
+    std::error_code ec;
+    std::filesystem::create_directories("sdmc:/switch/eden-nx2/games", ec);
+    const std::string path = GameConfigPath(cfg.rom_path);
+
+    std::vector<std::pair<std::string, std::string>> entries;
+    if (std::ifstream in(path); in) {
+        for (std::string line; std::getline(in, line);) {
+            while (!line.empty() && std::isspace(static_cast<unsigned char>(line.back()))) {
+                line.pop_back();
+            }
+            const std::size_t eq = line.find('=');
+            if (eq == std::string::npos) continue;
+            entries.emplace_back(line.substr(0, eq), line.substr(eq + 1));
+        }
+    }
+
+    auto set_kv = [&](const std::string& k, const std::string& v) {
+        for (auto& kv : entries) {
+            if (kv.first == k) {
+                kv.second = v;
+                return;
+            }
+        }
+        entries.emplace_back(k, v);
+    };
+
+    const char* speed_str = (cfg.speed_limit <= 0)
+                                ? "off"
+                                : (cfg.speed_limit == 150 ? "150"
+                                                          : (cfg.speed_limit == 200 ? "200" : "100"));
+    const char* vsync_str = (cfg.vsync_mode == 1)
+                                ? "off"
+                                : (cfg.vsync_mode == 2 ? "mailbox"
+                                                       : (cfg.vsync_mode == 3 ? "fifo" : "relaxed"));
+    static constexpr std::array<const char*, 7> kSfKeys{
+        {"bilinear", "fsr", "sgsr", "scaleforce", "mmpx", "lanczos", "nearest"}};
+    const char* sf_str = kSfKeys[static_cast<std::size_t>(std::clamp(cfg.scaling_filter, 0, 6))];
+    const char* aa_str = (cfg.anti_aliasing == 1) ? "fxaa"
+                                                  : (cfg.anti_aliasing == 2 ? "smaa" : "none");
+    const char* fps_str = (cfg.show_fps_mode == 2) ? "detailed"
+                                                   : (cfg.show_fps_mode == 1 ? "on" : "off");
+
+    set_kv("speed_limit", speed_str);
+    set_kv("vsync_mode", vsync_str);
+    set_kv("scaling_filter", sf_str);
+    set_kv("anti_aliasing", aa_str);
+    set_kv("console_mode", cfg.docked_mode ? "docked" : "handheld");
+    set_kv("gpu_mode", cfg.gpu_fast ? "fast" : "accurate");
+    set_kv("fastload_boost", cfg.cpu_boost ? "on" : "off");
+    set_kv("show_fps", fps_str);
+
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) return false;
+    for (const auto& [k, v] : entries) {
+        out << k << '=' << v << '\n';
+    }
+    return static_cast<bool>(out);
+}
+
+void Switch2RenderQuickMenuOverlay(const Switch2LaunchConfig& cfg, int volume_pct, int selected,
+                                   const std::string& status_msg) {
+    constexpr int kW = 760;
+    constexpr int kH = 596;
+    std::vector<std::uint32_t> buf(static_cast<std::size_t>(kW) * kH, PackRGBA(0, 0, 0, 0));
+
+    auto fill_rect = [&](int x, int y, int w, int h, std::uint32_t col) {
+        const int x0 = std::max(0, x);
+        const int y0 = std::max(0, y);
+        const int x1 = std::min(kW, x + w);
+        const int y1 = std::min(kH, y + h);
+        for (int py = y0; py < y1; ++py) {
+            std::fill(buf.begin() + py * kW + x0, buf.begin() + py * kW + x1, col);
+        }
+    };
+
+    auto draw_rounded = [&](int x, int y, int w, int h, int radius, std::uint32_t fill,
+                            std::uint32_t border) {
+        if (w <= 0 || h <= 0) return;
+        const int r = std::min({radius, w / 2, h / 2});
+        const int x0 = std::max(0, x);
+        const int y0 = std::max(0, y);
+        const int x1 = std::min(kW, x + w);
+        const int y1 = std::min(kH, y + h);
+        const int r_sq = r * r;
+        const int inner_r_sq = std::max(0, (r - 2) * (r - 2));
+        for (int py = y0; py < y1; ++py) {
+            const int dy_top = y + r - 1 - py;
+            const int dy_bot = py - (y + h - r);
+            const int cy = (dy_top > 0) ? dy_top : (dy_bot > 0 ? dy_bot : 0);
+            std::uint32_t* row = buf.data() + py * kW;
+            const bool on_h_edge = (py == y || py == y + 1 || py == y + h - 1 || py == y + h - 2);
+            for (int px = x0; px < x1; ++px) {
+                const int dx_left = x + r - 1 - px;
+                const int dx_right = px - (x + w - r);
+                const int cx = (dx_left > 0) ? dx_left : (dx_right > 0 ? dx_right : 0);
+                const int dist_sq = cx * cx + cy * cy;
+                if (cx > 0 && cy > 0 && dist_sq > r_sq) continue;
+                const bool on_v_edge = (px == x || px == x + 1 || px == x + w - 1 || px == x + w - 2);
+                const bool is_border =
+                    border != 0 && (on_h_edge || on_v_edge ||
+                                    (cx > 0 && cy > 0 && dist_sq >= inner_r_sq));
+                row[px] = is_border ? border : fill;
+            }
+        }
+    };
+
+    auto draw_text = [&](int x, int y, int max_w, std::string_view text, std::uint32_t color,
+                         int scale = 2) {
+        const int step = 8 * scale;
+        const int max_chars = std::max(0, max_w / step);
+        std::string clipped(text);
+        if (static_cast<int>(clipped.size()) > max_chars && max_chars >= 3) {
+            clipped.resize(static_cast<std::size_t>(max_chars - 2));
+            clipped += "..";
+        }
+        for (std::size_t i = 0; i < clipped.size(); ++i) {
+            unsigned char ch = static_cast<unsigned char>(clipped[i]);
+            if (ch < 32 || ch > 126) ch = '?';
+            const auto& glyph = kFont8x8[ch - 32];
+            const int gx = x + static_cast<int>(i) * step;
+            for (int gy = 0; gy < 8; ++gy) {
+                const std::uint8_t bits = glyph[static_cast<std::size_t>(gy)];
+                if (bits == 0) continue;
+                for (int b = 0; b < 8; ++b) {
+                    if (!(bits & (0x80u >> b))) continue;
+                    const int px0 = gx + b * scale;
+                    const int py0 = y + gy * scale;
+                    for (int sy = 0; sy < scale; ++sy) {
+                        const int py = py0 + sy;
+                        if (py < 0 || py >= kH) continue;
+                        std::uint32_t* row = buf.data() + py * kW;
+                        for (int sx = 0; sx < scale; ++sx) {
+                            const int px = px0 + sx;
+                            if (px >= 0 && px < kW) row[px] = color;
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    const bool en = cfg.ui_english;
+
+    // Outer translucent panel
+    draw_rounded(0, 0, kW, kH, 16, PackRGBA(14, 21, 34, 236), kAccent);
+
+    // Header
+    draw_text(28, 16, 480,
+              T(en, "MENU RAPIDO  [L+R+(+)]", "QUICK MENU  [L+R+(+)]"), kAccent, 2);
+    draw_text(548, 16, 190, "EDEN-NX2", kCyan, 2);
+    fill_rect(22, 48, kW - 44, 2, kBorderDim);
+
+    // Value strings
+    const std::string speed_val =
+        (cfg.speed_limit <= 0)
+            ? T(en, "Desligado", "Off (Unlocked)")
+            : (cfg.speed_limit == 150 ? "150%"
+                                      : (cfg.speed_limit == 200 ? "200%"
+                                                                : T(en, "100% (Padrao)", "100% (Default)")));
+    const std::string vsync_val =
+        (cfg.vsync_mode == 1)
+            ? T(en, "Desligado", "Off (Immediate)")
+            : (cfg.vsync_mode == 2 ? "Mailbox"
+                                   : (cfg.vsync_mode == 3 ? "FIFO" : "Relaxed"));
+    static constexpr std::array<const char*, 7> kSfLabels{
+        {"Bilinear", "AMD FSR 1.0", "SGSR (3D)", "ScaleForce", "MMPX (2D)", "Lanczos", "Nearest"}};
+    const std::string sf_val = kSfLabels[static_cast<std::size_t>(std::clamp(cfg.scaling_filter, 0, 6))];
+    const std::string aa_val =
+        (cfg.anti_aliasing == 1)
+            ? T(en, "FXAA (Leve)", "FXAA (Fast)")
+            : (cfg.anti_aliasing == 2 ? T(en, "SMAA (Alto)", "SMAA (High)")
+                                      : T(en, "Desligado", "Off"));
+    const std::string mode_val = cfg.docked_mode ? "Docked (1080p)" : "Handheld (720p)";
+    const std::string gpu_val =
+        cfg.gpu_fast ? T(en, "Fast (Rapido)", "Fast") : "Accurate";
+    const std::string boost_val =
+        cfg.cpu_boost ? "FastLoad (CPU+)" : T(en, "Normal (GPU Max)", "Normal (Full GPU)");
+    const std::string fps_val =
+        (cfg.show_fps_mode == 2)
+            ? T(en, "Detalhado", "Detailed (X-Ray)")
+            : (cfg.show_fps_mode == 1 ? T(en, "FPS + Veloc.", "FPS + Speed")
+                                      : T(en, "Desligado", "Off"));
+    const std::string vol_val = std::to_string(std::clamp(volume_pct, 0, 150)) + "%";
+
+    struct QuickRow {
+        std::string label;
+        std::string value;
+        bool is_action = false;
+        std::uint32_t action_bg = 0;
+        std::uint32_t action_fg = 0;
+    };
+
+    const std::array<QuickRow, 12> rows{{
+        {T(en, "Limite de Veloc.", "Speed Limit"), speed_val},
+        {"VSync (Vulkan)", vsync_val},
+        {T(en, "Upscaler (Filtro)", "Upscaler (Filter)"), sf_val},
+        {"Anti-Aliasing", aa_val},
+        {T(en, "Modo do Console", "Console Mode"), mode_val},
+        {T(en, "Precisao da GPU", "GPU Accuracy"), gpu_val},
+        {"Clock (FastLoad)", boost_val},
+        {T(en, "Mostrar FPS", "Show FPS"), fps_val},
+        {T(en, "Volume do Audio", "Audio Volume"), vol_val},
+        {T(en, "[ Salvar no Perfil do Jogo ]", "[ Save to Game Profile ]"), "", true,
+         PackRGBA(18, 66, 54, 245), kAccent},
+        {T(en, "[ Voltar ao Launcher ]", "[ Return to Launcher ]"), "", true,
+         PackRGBA(88, 28, 36, 245), PackRGBA(255, 195, 195, 255)},
+        {T(en, "[ Continuar Jogo ]", "[ Resume Game ]"), "", true,
+         PackRGBA(24, 52, 78, 245), kCyan},
+    }};
+
+    for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
+        const auto& r = rows[static_cast<std::size_t>(i)];
+        const bool is_sel = (i == selected);
+        const int ry = 58 + i * 37;
+        const std::uint32_t bg =
+            is_sel ? (r.is_action ? r.action_bg : PackRGBA(30, 52, 76, 250))
+                   : (r.is_action ? PackRGBA(20, 30, 48, 232) : PackRGBA(22, 32, 50, 232));
+        const std::uint32_t border = is_sel ? kAccent : kBorderDim;
+        draw_rounded(20, ry, kW - 40, 33, 8, bg, border);
+
+        if (r.is_action) {
+            const int text_w = static_cast<int>(r.label.size()) * 16;
+            const int tx = std::max(32, (kW - text_w) / 2);
+            draw_text(tx, ry + 8, kW - 64, r.label, is_sel ? kTextPrimary : r.action_fg, 2);
+        } else {
+            draw_text(32, ry + 8, 328, r.label, is_sel ? kTextPrimary : kTextMuted, 2);
+            const std::string val_disp = is_sel ? ("< " + r.value + " >") : r.value;
+            draw_text(368, ry + 8, 364, val_disp, is_sel ? kAccent : kCyan, 2);
+        }
+    }
+
+    fill_rect(22, 508, kW - 44, 1, kBorderDim);
+    if (!status_msg.empty()) {
+        draw_text(28, 520, kW - 56, status_msg, kAccent, 2);
+    } else {
+        draw_text(28, 520, kW - 56,
+                  T(en, "Mudancas ao vivo! Salve no perfil do jogo.",
+                    "Changes apply live! Save to game profile."),
+                  kTextMuted, 2);
+    }
+    draw_text(28, 556, kW - 56,
+              T(en, "^/v Nav  </> Muda  [A] OK  [B] Fechar",
+                "^/v Nav  </> Edit  [A] OK  [B] Close"),
+              kCyan, 2);
+
+    auto& panel = Common::GetOverlayPanel(Common::OverlayPanelId::Cheats);
+    std::scoped_lock lock{panel.mutex};
+    panel.pixels.resize(buf.size() * 4);
+    std::memcpy(panel.pixels.data(), buf.data(), panel.pixels.size());
+    panel.width = kW;
+    panel.height = kH;
+    panel.anchor = Common::OverlayAnchor::Center;
+    panel.drop = 0.0f;
+    panel.enabled = true;
+    ++panel.version;
+}
+
+void Switch2HideQuickMenuOverlay() {
+    auto& panel = Common::GetOverlayPanel(Common::OverlayPanelId::Cheats);
+    std::scoped_lock lock{panel.mutex};
+    panel.enabled = false;
+    panel.pixels.clear();
+    panel.width = 0;
+    panel.height = 0;
+    ++panel.version;
 }
 
 #endif // __SWITCH2__

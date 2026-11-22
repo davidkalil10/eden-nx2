@@ -572,6 +572,72 @@ void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg, std::size_t& activ
     Settings::UpdateRescalingInfo();
 }
 
+void ApplySwitch2LiveSettings(Core::System& system, const Switch2LaunchConfig& cfg,
+                              int volume_pct, bool docked_changed) {
+    if (cfg.speed_limit <= 0) {
+        Settings::values.use_speed_limit.SetValue(false);
+    } else {
+        Settings::values.use_speed_limit.SetValue(true);
+        Settings::values.speed_limit.SetValue(static_cast<u16>(cfg.speed_limit));
+    }
+
+    const Settings::VSyncMode vsync =
+        (cfg.vsync_mode == 1)
+            ? Settings::VSyncMode::Immediate
+            : (cfg.vsync_mode == 2
+                   ? Settings::VSyncMode::Mailbox
+                   : (cfg.vsync_mode == 3 ? Settings::VSyncMode::Fifo
+                                          : Settings::VSyncMode::FifoRelaxed));
+    Settings::values.vsync_mode.SetValue(vsync);
+
+    static constexpr std::array<Settings::ScalingFilter, 7> kScalingFilters{{
+        Settings::ScalingFilter::Bilinear,
+        Settings::ScalingFilter::Fsr,
+        Settings::ScalingFilter::Sgsr,
+        Settings::ScalingFilter::ScaleForce,
+        Settings::ScalingFilter::Mmpx,
+        Settings::ScalingFilter::Lanczos,
+        Settings::ScalingFilter::NearestNeighbor,
+    }};
+    const int sf_idx = std::clamp(cfg.scaling_filter, 0, static_cast<int>(kScalingFilters.size()) - 1);
+    Settings::values.scaling_filter.SetValue(kScalingFilters[static_cast<std::size_t>(sf_idx)]);
+    Settings::values.fsr_sharpening_slider.SetValue(40);
+
+    const Settings::AntiAliasing aa_mode =
+        (cfg.anti_aliasing == 1)
+            ? Settings::AntiAliasing::Fxaa
+            : (cfg.anti_aliasing == 2 ? Settings::AntiAliasing::Smaa
+                                      : Settings::AntiAliasing::None);
+    Settings::values.anti_aliasing.SetValue(aa_mode);
+
+    Settings::values.use_docked_mode.SetValue(cfg.docked_mode ? Settings::ConsoleMode::Docked
+                                                              : Settings::ConsoleMode::Handheld);
+    if (docked_changed) {
+        system.GetAppletManager().OperationModeChanged();
+    }
+
+    if (cfg.gpu_fast) {
+        Settings::values.gpu_accuracy.SetValue(Settings::GpuAccuracy::Low);
+        Settings::values.use_reactive_flushing.SetValue(false);
+        Settings::values.dma_accuracy.SetValue(Settings::DmaAccuracy::Unsafe);
+        Settings::values.barrier_feedback_loops.SetValue(false);
+        Settings::values.skip_cpu_inner_invalidation.SetValue(true);
+    } else {
+        Settings::values.gpu_accuracy.SetValue(Settings::GpuAccuracy::High);
+        Settings::values.use_reactive_flushing.SetValue(true);
+        Settings::values.dma_accuracy.SetValue(Settings::DmaAccuracy::Safe);
+        Settings::values.barrier_feedback_loops.SetValue(true);
+        Settings::values.skip_cpu_inner_invalidation.SetValue(false);
+    }
+    Settings::UpdateGPUAccuracy();
+
+    Switch2SetCpuBoost(cfg.cpu_boost);
+    Settings::values.volume.SetValue(static_cast<u8>(std::clamp(volume_pct, 0, 150)));
+    if (cfg.show_fps_mode == 0) {
+        UpdateSwitch2FpsOverlay("");
+    }
+}
+
 void ForwardSwitch2Input(InputCommon::InputSubsystem& input_subsystem,
                          const Switch2PadSnapshot& pad, Switch2PadSnapshot& prev,
                          std::size_t pad_index, Switch2ControllerProfile profile,
@@ -783,30 +849,161 @@ int main(int argc, char** argv) {
         Core::HID::VibrationValue last_r{Core::HID::DEFAULT_VIBRATION_VALUE};
         u32 loop_iters = 0;
 
+        launch_cfg.docked_mode =
+            (Settings::values.use_docked_mode.GetValue() == Settings::ConsoleMode::Docked);
+        bool quick_menu_open = false;
+        int quick_sel = 0;
+        int volume_pct = static_cast<int>(Settings::values.volume.GetValue());
+        std::string quick_msg;
+        bool exit_to_launcher = false;
+
         while (Switch2PollInput(&pad, true)) {
-            ForwardSwitch2Input(*input_subsystem, pad, prev_pad, active_pad_index,
-                                launch_cfg.controller_profile, prev_touch);
-            if (active_ctrl != nullptr) {
-                const auto vl = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Left);
-                const auto vr = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Right);
-                const bool diff_l =
-                    vl.low_amplitude != last_l.low_amplitude ||
-                    vl.high_amplitude != last_l.high_amplitude ||
-                    ((vl.low_amplitude != 0.0f || vl.high_amplitude != 0.0f) &&
-                     (vl.low_frequency != last_l.low_frequency ||
-                      vl.high_frequency != last_l.high_frequency));
-                const bool diff_r =
-                    vr.low_amplitude != last_r.low_amplitude ||
-                    vr.high_amplitude != last_r.high_amplitude ||
-                    ((vr.low_amplitude != 0.0f || vr.high_amplitude != 0.0f) &&
-                     (vr.low_frequency != last_r.low_frequency ||
-                      vr.high_frequency != last_r.high_frequency));
-                if (diff_l || diff_r) {
-                    Switch2SetVibration(vl.low_amplitude, vl.low_frequency, vl.high_amplitude,
-                                        vl.high_frequency, vr.low_amplitude, vr.low_frequency,
-                                        vr.high_amplitude, vr.high_frequency);
-                    last_l = vl;
-                    last_r = vr;
+            const bool lr_plus_combo =
+                (pad.raw_held & SWITCH2_BTN_L) && (pad.raw_held & SWITCH2_BTN_R) &&
+                (pad.raw_held & SWITCH2_BTN_PLUS) &&
+                ((pad.raw_down & (SWITCH2_BTN_L | SWITCH2_BTN_R | SWITCH2_BTN_PLUS)) != 0);
+            if (lr_plus_combo) {
+                quick_menu_open = !quick_menu_open;
+                quick_msg.clear();
+                if (quick_menu_open) {
+                    Switch2PadSnapshot neutral{};
+                    ForwardSwitch2Input(*input_subsystem, neutral, prev_pad, active_pad_index,
+                                        launch_cfg.controller_profile, prev_touch);
+                    Switch2SetVibration(0, 160.0f, 0, 320.0f, 0, 160.0f, 0, 320.0f);
+                    last_l = Core::HID::DEFAULT_VIBRATION_VALUE;
+                    last_r = Core::HID::DEFAULT_VIBRATION_VALUE;
+                    Switch2RenderQuickMenuOverlay(launch_cfg, volume_pct, quick_sel, quick_msg);
+                } else {
+                    Switch2HideQuickMenuOverlay();
+                }
+            } else if (quick_menu_open) {
+                const std::uint64_t down = pad.raw_down;
+                bool redraw_qm = false;
+                if (down & SWITCH2_BTN_B) {
+                    quick_menu_open = false;
+                    Switch2HideQuickMenuOverlay();
+                } else if (down & (SWITCH2_BTN_UP | SWITCH2_BTN_DOWN)) {
+                    constexpr int kQuickCount = 12;
+                    if (down & SWITCH2_BTN_UP) quick_sel = (quick_sel + kQuickCount - 1) % kQuickCount;
+                    if (down & SWITCH2_BTN_DOWN) quick_sel = (quick_sel + 1) % kQuickCount;
+                    quick_msg.clear();
+                    redraw_qm = true;
+                } else if (down & (SWITCH2_BTN_LEFT | SWITCH2_BTN_RIGHT | SWITCH2_BTN_A)) {
+                    const int dir = (down & SWITCH2_BTN_LEFT) ? -1 : 1;
+                    bool setting_changed = false;
+                    bool docked_changed = false;
+                    switch (quick_sel) {
+                    case 0: {
+                        static constexpr std::array<int, 4> kSpeeds{{100, 0, 150, 200}};
+                        int idx = 0;
+                        for (int i = 0; i < 4; ++i) {
+                            if (kSpeeds[static_cast<std::size_t>(i)] == launch_cfg.speed_limit) {
+                                idx = i;
+                                break;
+                            }
+                        }
+                        idx = (idx + dir + 4) % 4;
+                        launch_cfg.speed_limit = kSpeeds[static_cast<std::size_t>(idx)];
+                        setting_changed = true;
+                        break;
+                    }
+                    case 1:
+                        launch_cfg.vsync_mode = (launch_cfg.vsync_mode + dir + 4) % 4;
+                        setting_changed = true;
+                        break;
+                    case 2:
+                        launch_cfg.scaling_filter = (launch_cfg.scaling_filter + dir + 7) % 7;
+                        setting_changed = true;
+                        break;
+                    case 3:
+                        launch_cfg.anti_aliasing = (launch_cfg.anti_aliasing + dir + 3) % 3;
+                        setting_changed = true;
+                        break;
+                    case 4:
+                        launch_cfg.docked_mode = !launch_cfg.docked_mode;
+                        setting_changed = true;
+                        docked_changed = true;
+                        break;
+                    case 5:
+                        launch_cfg.gpu_fast = !launch_cfg.gpu_fast;
+                        setting_changed = true;
+                        break;
+                    case 6:
+                        launch_cfg.cpu_boost = !launch_cfg.cpu_boost;
+                        setting_changed = true;
+                        break;
+                    case 7:
+                        launch_cfg.show_fps_mode = (launch_cfg.show_fps_mode + dir + 3) % 3;
+                        setting_changed = true;
+                        break;
+                    case 8:
+                        volume_pct = std::clamp(volume_pct + dir * 10, 0, 150);
+                        setting_changed = true;
+                        break;
+                    case 9:
+                        if (down & SWITCH2_BTN_A) {
+                            const bool ok = Switch2SavePerGameQuickConfig(launch_cfg);
+                            quick_msg =
+                                ok ? (launch_cfg.ui_english ? "Saved to game profile!"
+                                                            : "Salvo no perfil do jogo!")
+                                   : (launch_cfg.ui_english ? "Error saving profile!"
+                                                            : "Erro ao salvar perfil!");
+                            redraw_qm = true;
+                        }
+                        break;
+                    case 10:
+                        if (down & SWITCH2_BTN_A) {
+                            exit_to_launcher = true;
+                            quick_menu_open = false;
+                            Switch2HideQuickMenuOverlay();
+                        }
+                        break;
+                    case 11:
+                        if (down & SWITCH2_BTN_A) {
+                            quick_menu_open = false;
+                            Switch2HideQuickMenuOverlay();
+                        }
+                        break;
+                    default:
+                        break;
+                    }
+                    if (setting_changed) {
+                        ApplySwitch2LiveSettings(*system, launch_cfg, volume_pct, docked_changed);
+                        quick_msg.clear();
+                        redraw_qm = true;
+                    }
+                }
+                if (exit_to_launcher) {
+                    break;
+                }
+                if (redraw_qm && quick_menu_open) {
+                    Switch2RenderQuickMenuOverlay(launch_cfg, volume_pct, quick_sel, quick_msg);
+                }
+            } else {
+                ForwardSwitch2Input(*input_subsystem, pad, prev_pad, active_pad_index,
+                                    launch_cfg.controller_profile, prev_touch);
+                if (active_ctrl != nullptr) {
+                    const auto vl = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Left);
+                    const auto vr = active_ctrl->GetActualVibrationValue(Core::HID::DeviceIndex::Right);
+                    const bool diff_l =
+                        vl.low_amplitude != last_l.low_amplitude ||
+                        vl.high_amplitude != last_l.high_amplitude ||
+                        ((vl.low_amplitude != 0.0f || vl.high_amplitude != 0.0f) &&
+                         (vl.low_frequency != last_l.low_frequency ||
+                          vl.high_frequency != last_l.high_frequency));
+                    const bool diff_r =
+                        vr.low_amplitude != last_r.low_amplitude ||
+                        vr.high_amplitude != last_r.high_amplitude ||
+                        ((vr.low_amplitude != 0.0f || vr.high_amplitude != 0.0f) &&
+                         (vr.low_frequency != last_r.low_frequency ||
+                          vr.high_frequency != last_r.high_frequency));
+                    if (diff_l || diff_r) {
+                        Switch2SetVibration(vl.low_amplitude, vl.low_frequency, vl.high_amplitude,
+                                            vl.high_frequency, vr.low_amplitude, vr.low_frequency,
+                                            vr.high_amplitude, vr.high_frequency);
+                        last_l = vl;
+                        last_r = vr;
+                    }
                 }
             }
             if (launch_cfg.show_fps_mode > 0 && (++loop_iters % 100u) == 0u) {
@@ -855,14 +1052,20 @@ int main(int argc, char** argv) {
             }
             Switch2SleepMs(8);
         }
-        // If Horizon didn't request exit (e.g. Home/Close), the user held [+]+[-] -> relaunch UI.
-        should_return_to_launcher = Switch2MainLoop();
+        // If Horizon didn't request exit (e.g. Home/Close), the user held [+]+[-] or chose Return -> relaunch UI.
+        should_return_to_launcher = exit_to_launcher || Switch2MainLoop();
     } else {
         // Return cleanly to the launcher when a title fails to load (e.g. unsupported Switch 2 package).
         should_return_to_launcher = Switch2MainLoop();
     }
 
     Switch2BootTrace("99: shutdown");
+    // Restore thread priority & speed limit BEFORE pausing CoreTiming so unlocked speed limit
+    // cannot starve shutdown or keep HostTiming spinning at 6,000 Hz.
+    Common::SetCurrentThreadPriority(Common::ThreadPriority::High);
+    Settings::values.use_speed_limit.SetValue(true);
+    Settings::values.speed_limit.SetValue(100);
+    Switch2HideQuickMenuOverlay();
     UpdateSwitch2FpsOverlay("");
     Switch2SetCpuBoost(false);
     Switch2SetVibration(0, 160.0f, 0, 320.0f, 0, 160.0f, 0, 320.0f);

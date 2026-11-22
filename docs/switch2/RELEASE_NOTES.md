@@ -7,6 +7,10 @@
 ---
 
 ### What's New / Novidades
+- **Live In-Game Quick Menu (`L + R + (+)`):**
+  - Open an on-screen overlay menu directly over any running game with **`L + R + (+)`** to tweak **Speed Limit**, **VSync**, **GPU Upscaler (FSR/SGSR/ScaleForce/MMPX/Lanczos)**, **Anti-Aliasing (FXAA/SMAA)**, **Docked/Handheld Mode**, **GPU Accuracy**, **Clock (FastLoad)**, **FPS Overlay**, and **Audio Volume** in real time while watching live FPS/visual changes — plus **Save to Game Profile** or **Return to Launcher** with one press!
+- **Fixed Exit Hang with Unlocked Speed Limit (`Speed Limit = Off`):**
+  - Fixed a `CoreTiming::Advance` infinite drain loop and thread priority starvation when closing a game with Speed Limit disabled (`+` + `-` or Quick Menu exit now returns cleanly to the launcher).
 - **Built-In GitHub Auto-Updater (`[L]` in Launcher):**
   - Checks `davidkalil10/eden-nx2` latest GitHub Release directly from your Switch 2, downloads `eden-switch2.nro` with a live progress bar, verifies `NRO0` + `OUN0` headers before replacing on SD, and relaunches into the new version.
 - **Major Switch 2 Performance & Memory Tuning:**
@@ -57,7 +61,7 @@ sdmc:/
 
 ### Controls
 - **Launcher:** `D-Pad` / Touch to browse · **`A`** Launch / Open · **`B`** Parent folder · **`X`** Global Settings · **`Y`** Per-Game Settings (Update / DLC / Overrides) · **`L`** Auto-Updater · **`-`** PT/EN · **`+`** Exit
-- **In-Game:** Hold **`+` + `-` (~2s)** to close the active game and return to the launcher.
+- **In-Game:** Press **`L` + `R` + `+`** to open the live **Quick Menu** · Hold **`+` + `-` (~2s)** to close the active game and return to the launcher.
 
 ---
 

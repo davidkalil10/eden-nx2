@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <tuple>
 #include "common/cpu_features.h"
 #include "common/cpu_features.h"
@@ -129,8 +130,9 @@ void CoreTiming::SyncPause(bool is_paused) {
             pause_event.Set();
         }
         event.Set();
-        while (paused_set != is_paused)
-            ;
+        while (paused_set != is_paused) {
+            std::this_thread::yield();
+        }
     }
 
     if (!is_paused) {
@@ -247,7 +249,8 @@ std::optional<s64> CoreTiming::Advance() {
     std::scoped_lock lock{advance_lock, basic_lock};
     global_timer = GetGlobalTimeNs().count();
 
-    while (!event_queue.empty() && event_queue.top().time <= global_timer) {
+    while (!(is_multicore && paused.load(std::memory_order_relaxed)) &&
+           !event_queue.empty() && event_queue.top().time <= global_timer) {
         const Event& evt = event_queue.top();
 
         if (const auto event_type{evt.type.lock()}) {
@@ -285,6 +288,12 @@ std::optional<s64> CoreTiming::Advance() {
                 auto next_time{evt.time + next_schedule_time};
                 if (evt.time < pause_end_time) {
                     next_time = pause_end_time + next_schedule_time;
+                } else if (is_multicore &&
+                           next_time < global_timer - std::max<s64>(next_schedule_time * 8,
+                                                                    50'000'000LL)) {
+                    // Prevent unbounded catch-up loops (e.g. unlocked speed limit) from pinning
+                    // HostTiming or delaying speed-limit toggles / shutdown.
+                    next_time = global_timer + next_schedule_time;
                 }
 
                 event_queue.update(evt.handle, Event{next_time, event_fifo_id++, evt.type,

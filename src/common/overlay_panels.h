@@ -19,6 +19,7 @@ enum class OverlayAnchor {
     TopLeft,
     BottomLeft,
     TopRight,
+    Center,
 };
 
 /// An image drawn over the game inside the presented frame, so it also shows under gamescope,
@@ -81,11 +82,15 @@ struct OverlayRect {
     constexpr float margin = 4.0f;
     const float width = static_cast<float>(panel.width);
     const float height = static_cast<float>(panel.height);
-    const float x = panel.anchor == OverlayAnchor::TopRight ? right - width - margin
-                                                            : left + margin;
-    const float y = panel.anchor == OverlayAnchor::BottomLeft
-                        ? bottom - height - margin
-                        : top + margin + (bottom - top) * panel.drop;
+    const float x = panel.anchor == OverlayAnchor::Center
+                        ? (left + right - width) * 0.5f
+                        : (panel.anchor == OverlayAnchor::TopRight ? right - width - margin
+                                                                   : left + margin);
+    const float y = panel.anchor == OverlayAnchor::Center
+                        ? (top + bottom - height) * 0.5f
+                        : (panel.anchor == OverlayAnchor::BottomLeft
+                               ? bottom - height - margin
+                               : top + margin + (bottom - top) * panel.drop);
     return {std::floor(x), std::floor(y), width, height};
 }
 
