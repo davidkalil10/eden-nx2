@@ -23,12 +23,14 @@
 #include "dynarmic/interface/exclusive_monitor.h"
 #include "dynarmic/ir/location_descriptor.h"
 #ifdef __SWITCH2__
+#include <atomic>
 #include <variant>
 #include <vector>
 #include "dynarmic/ir/terminal.h"
 
 extern "C" {
 int g_switch2_jit_blocks_ahead = 8;
+std::atomic<std::uint64_t> g_switch2_stat_jit_blocks{0};
 }
 #endif
 
@@ -220,6 +222,9 @@ EmittedBlockInfo AddressSpace::Emit(IR::Block block) {
     UnprotectCodeMemory();
 
     EmittedBlockInfo block_info = EmitArm64(code, std::move(block), GetEmitConfig(), fastmem_manager, GetRemainingSize());
+#ifdef __SWITCH2__
+    g_switch2_stat_jit_blocks.fetch_add(1, std::memory_order_relaxed);
+#endif
 
     ASSERT(block_entries.insert({block.Location(), block_info.entry_point}).second);
     ASSERT(reverse_block_entries.insert({block_info.entry_point, block.Location()}).second);

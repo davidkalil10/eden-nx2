@@ -609,8 +609,24 @@ std::vector<SettingOption> MakeDefaultOptions() {
          "Exibe contador de FPS e velocidade no canto superior esquerdo do jogo.",
          "Displays FPS and emulation speed counter at top-left in game.",
          {"on", "detailed", "off"},
-         {"FPS + Velocidade", "Detalhado (FPS + Modo)", "Desligado"},
-         {"FPS + Speed", "Detailed (FPS + Mode)", "Off"},
+         {"FPS + Velocidade", "Detalhado (FPS + Raio-X)", "Desligado"},
+         {"FPS + Speed", "Detailed (FPS + X-Ray)", "Off"},
+         0, true},
+        {"vsync_mode",
+         "VSync (Vulkan)", "VSync (Vulkan)",
+         "Relaxed/Desligado evita travar em 30 FPS quando cai de 60 FPS.",
+         "Relaxed/Off avoids locking to 30 FPS when dropping below 60 FPS.",
+         {"relaxed", "off", "mailbox", "fifo"},
+         {"Relaxed (Padrao)", "Desligado (Immediate)", "Mailbox (Sem Tearing)", "FIFO (Rigido)"},
+         {"Relaxed (Default)", "Off (Immediate)", "Mailbox (Tear-Free)", "FIFO (Strict)"},
+         0, true},
+        {"speed_limit",
+         "Limite de Veloc.", "Speed Limit",
+         "100% trava na taxa original do Switch (30/60). Desligado destrava FPS.",
+         "100% locks to native Switch speed (30/60). Off unlocks framerate.",
+         {"100", "off", "150", "200"},
+         {"100% (Padrao)", "Desligado (Destravado)", "150%", "200%"},
+         {"100% (Default)", "Off (Unlocked)", "150%", "200%"},
          0, true},
         {"fastload_boost",
          "Clock (FastLoad)", "Clock (FastLoad)",
@@ -985,6 +1001,12 @@ void FillLaunchConfig(const std::vector<SettingOption>& eff, const std::string& 
 
     const std::string fps = GetValue(eff, "show_fps");
     cfg->show_fps_mode = (fps == "detailed") ? 2 : (fps == "on" ? 1 : 0);
+
+    const std::string vs = GetValue(eff, "vsync_mode");
+    cfg->vsync_mode = (vs == "off") ? 1 : (vs == "mailbox" ? 2 : (vs == "fifo" ? 3 : 0));
+
+    const std::string sl = GetValue(eff, "speed_limit");
+    cfg->speed_limit = (sl == "off") ? 0 : (sl == "150" ? 150 : (sl == "200" ? 200 : 100));
 
     cfg->cpu_boost = (GetValue(eff, "fastload_boost") == "on");
 

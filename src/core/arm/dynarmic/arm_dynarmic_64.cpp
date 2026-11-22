@@ -16,7 +16,13 @@
 #include "core/hle/kernel/k_process.h"
 #include "dynarmic/interface/A64/config.h"
 #if defined(__SWITCH2__)
+#include <atomic>
 #include "dynarmic/backend/arm64/switch2_code_block.h"
+extern "C" {
+std::atomic<std::uint64_t> g_switch2_stat_icache_inv{0};
+std::atomic<std::uint64_t> g_switch2_stat_excl_cb{0};
+std::atomic<std::uint64_t> g_switch2_stat_svcs{0};
+}
 #endif
 
 namespace Core {
@@ -74,27 +80,45 @@ void DynarmicCallbacks64::MemoryWrite128(u64 vaddr, Dynarmic::A64::Vector value)
 }
 
 bool DynarmicCallbacks64::MemoryWriteExclusive8(u64 vaddr, std::uint8_t value, std::uint8_t expected) {
+#if defined(__SWITCH2__)
+    g_switch2_stat_excl_cb.fetch_add(1, std::memory_order_relaxed);
+#endif
     return CheckMemoryAccess(vaddr, 1, Kernel::DebugWatchpointType::Write) &&
             m_memory.WriteExclusive8(vaddr, value, expected);
 }
 bool DynarmicCallbacks64::MemoryWriteExclusive16(u64 vaddr, std::uint16_t value, std::uint16_t expected) {
+#if defined(__SWITCH2__)
+    g_switch2_stat_excl_cb.fetch_add(1, std::memory_order_relaxed);
+#endif
     return CheckMemoryAccess(vaddr, 2, Kernel::DebugWatchpointType::Write) &&
             m_memory.WriteExclusive16(vaddr, value, expected);
 }
 bool DynarmicCallbacks64::MemoryWriteExclusive32(u64 vaddr, std::uint32_t value, std::uint32_t expected) {
+#if defined(__SWITCH2__)
+    g_switch2_stat_excl_cb.fetch_add(1, std::memory_order_relaxed);
+#endif
     return CheckMemoryAccess(vaddr, 4, Kernel::DebugWatchpointType::Write) &&
             m_memory.WriteExclusive32(vaddr, value, expected);
 }
 bool DynarmicCallbacks64::MemoryWriteExclusive64(u64 vaddr, std::uint64_t value, std::uint64_t expected) {
+#if defined(__SWITCH2__)
+    g_switch2_stat_excl_cb.fetch_add(1, std::memory_order_relaxed);
+#endif
     return CheckMemoryAccess(vaddr, 8, Kernel::DebugWatchpointType::Write) &&
             m_memory.WriteExclusive64(vaddr, value, expected);
 }
 bool DynarmicCallbacks64::MemoryWriteExclusive128(u64 vaddr, Dynarmic::A64::Vector value, Dynarmic::A64::Vector expected) {
+#if defined(__SWITCH2__)
+    g_switch2_stat_excl_cb.fetch_add(1, std::memory_order_relaxed);
+#endif
     return CheckMemoryAccess(vaddr, 16, Kernel::DebugWatchpointType::Write) &&
             m_memory.WriteExclusive128(vaddr, value, expected);
 }
 
 void DynarmicCallbacks64::InstructionCacheOperationRaised(Dynarmic::A64::InstructionCacheOperation op, u64 value) {
+#if defined(__SWITCH2__)
+    g_switch2_stat_icache_inv.fetch_add(1, std::memory_order_relaxed);
+#endif
     last_code_addr = u64(-1); //invalidate cached page
     switch (op) {
     case Dynarmic::A64::InstructionCacheOperation::InvalidateByVAToPoU: {
@@ -138,6 +162,9 @@ void DynarmicCallbacks64::ExceptionRaised(u64 pc, Dynarmic::A64::Exception excep
 }
 
 void DynarmicCallbacks64::CallSVC(u32 svc) {
+#if defined(__SWITCH2__)
+    g_switch2_stat_svcs.fetch_add(1, std::memory_order_relaxed);
+#endif
     m_parent.m_svc = svc;
     m_parent.m_jit->HaltExecution(SupervisorCall);
 }

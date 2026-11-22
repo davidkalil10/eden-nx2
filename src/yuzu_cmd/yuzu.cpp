@@ -12,6 +12,7 @@
 #ifdef __SWITCH2__
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -37,6 +38,10 @@
 extern "C" {
 extern int g_switch2_address_space_mode;
 extern int g_switch2_jit_blocks_ahead;
+extern std::atomic<std::uint64_t> g_switch2_stat_jit_blocks;
+extern std::atomic<std::uint64_t> g_switch2_stat_icache_inv;
+extern std::atomic<std::uint64_t> g_switch2_stat_excl_cb;
+extern std::atomic<std::uint64_t> g_switch2_stat_svcs;
 }
 
 static void Switch2BootTrace(const char* stage) {
@@ -244,7 +249,7 @@ void UpdateSwitch2FpsOverlay(const std::string& text) {
         char ch;
         std::array<std::string_view, 7> rows;
     };
-    static constexpr std::array<Glyph, 29> kGlyphs{{
+    static constexpr std::array<Glyph, 35> kGlyphs{{
         {'0', {"01110", "10001", "10011", "10101", "11001", "10001", "01110"}},
         {'1', {"00100", "01100", "00100", "00100", "00100", "00100", "01110"}},
         {'2', {"01110", "10001", "00001", "00010", "00100", "01000", "11111"}},
@@ -256,6 +261,8 @@ void UpdateSwitch2FpsOverlay(const std::string& text) {
         {'8', {"01110", "10001", "10001", "01110", "10001", "10001", "01110"}},
         {'9', {"01110", "10001", "10001", "01111", "00001", "00010", "01100"}},
         {'.', {"00000", "00000", "00000", "00000", "00000", "01100", "01100"}},
+        {':', {"00000", "00100", "00100", "00000", "00100", "00100", "00000"}},
+        {'>', {"10000", "01000", "00100", "00010", "00100", "01000", "10000"}},
         {'%', {"11001", "11010", "00010", "00100", "01000", "01011", "10011"}},
         {' ', {"00000", "00000", "00000", "00000", "00000", "00000", "00000"}},
         {'|', {"00100", "00100", "00100", "00100", "00100", "00100", "00100"}},
@@ -266,12 +273,16 @@ void UpdateSwitch2FpsOverlay(const std::string& text) {
         {'F', {"11111", "10000", "10000", "11110", "10000", "10000", "10000"}},
         {'G', {"01110", "10001", "10000", "10111", "10001", "10001", "01110"}},
         {'H', {"10001", "10001", "10001", "11111", "10001", "10001", "10001"}},
+        {'I', {"01110", "00100", "00100", "00100", "00100", "00100", "01110"}},
+        {'J', {"00111", "00010", "00010", "00010", "10010", "10010", "01100"}},
         {'K', {"10001", "10010", "10100", "11000", "10100", "10010", "10001"}},
         {'L', {"10000", "10000", "10000", "10000", "10000", "10000", "11111"}},
         {'N', {"10001", "11001", "10101", "10011", "10001", "10001", "10001"}},
         {'O', {"01110", "10001", "10001", "10001", "10001", "10001", "01110"}},
         {'P', {"11110", "10001", "10001", "11110", "10000", "10000", "10000"}},
         {'S', {"01111", "10000", "10000", "01110", "00001", "00001", "11110"}},
+        {'T', {"11111", "00100", "00100", "00100", "00100", "00100", "00100"}},
+        {'V', {"10001", "10001", "10001", "10001", "10001", "01010", "00100"}},
         {'X', {"10001", "10001", "01010", "00100", "01010", "10001", "10001"}},
         {'-', {"00000", "00000", "00000", "11111", "00000", "00000", "00000"}},
     }};
@@ -447,7 +458,20 @@ void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg, std::size_t& activ
 
     // Vulkan presentation, dynamic state & Switch 2 unified memory tuning
     Settings::values.async_presentation.SetValue(true);
-    Settings::values.vsync_mode.SetValue(Settings::VSyncMode::FifoRelaxed);
+    const Settings::VSyncMode vsync =
+        (cfg.vsync_mode == 1)
+            ? Settings::VSyncMode::Immediate
+            : (cfg.vsync_mode == 2
+                   ? Settings::VSyncMode::Mailbox
+                   : (cfg.vsync_mode == 3 ? Settings::VSyncMode::Fifo
+                                          : Settings::VSyncMode::FifoRelaxed));
+    Settings::values.vsync_mode.SetValue(vsync);
+    if (cfg.speed_limit <= 0) {
+        Settings::values.use_speed_limit.SetValue(false);
+    } else {
+        Settings::values.use_speed_limit.SetValue(true);
+        Settings::values.speed_limit.SetValue(static_cast<u16>(cfg.speed_limit));
+    }
     Settings::values.dyna_state.SetValue(Settings::ExtendedDynamicState::EDS3);
     Settings::values.vram_usage_mode.SetValue(Settings::VramUsageMode::Aggressive);
     Settings::values.gpu_clock.SetValue(Settings::GpuClock::Boost);
@@ -772,19 +796,30 @@ int main(int argc, char** argv) {
                         ? (perf.average_game_fps * static_cast<double>(launch_cfg.frame_gen_mult))
                         : perf.average_game_fps;
                 if (launch_cfg.show_fps_mode == 2) {
+                    const unsigned long long j_cnt =
+                        g_switch2_stat_jit_blocks.exchange(0, std::memory_order_relaxed);
+                    const unsigned long long i_cnt =
+                        g_switch2_stat_icache_inv.exchange(0, std::memory_order_relaxed);
+                    const unsigned long long e_cnt =
+                        g_switch2_stat_excl_cb.exchange(0, std::memory_order_relaxed);
+                    const unsigned long long s_cnt =
+                        g_switch2_stat_svcs.exchange(0, std::memory_order_relaxed);
                     const char* mode_str =
                         (Settings::values.use_docked_mode.GetValue() == Settings::ConsoleMode::Docked)
                             ? "DOCKED"
                             : "HANDHELD";
                     if (launch_cfg.frame_gen_mult >= 2) {
-                        std::snprintf(line, sizeof(line), "%.0f->%.0f FPS  %.0f%%\n%s %.2gX  LSFG %dX",
+                        std::snprintf(line, sizeof(line),
+                                      "%.0f->%.0f FPS  %.0f%%\n%s %.2gX  LSFG %dX\nJ:%llu I:%llu E:%llu S:%llu",
                                       perf.average_game_fps, out_fps, perf.emulation_speed * 100.0,
                                       mode_str, launch_cfg.resolution_scale,
-                                      launch_cfg.frame_gen_mult);
+                                      launch_cfg.frame_gen_mult, j_cnt, i_cnt, e_cnt, s_cnt);
                     } else {
-                        std::snprintf(line, sizeof(line), "%.0f FPS  %.0f%%\n%s %.2gX",
+                        std::snprintf(line, sizeof(line),
+                                      "%.0f FPS  %.0f%%\n%s %.2gX\nJ:%llu I:%llu E:%llu S:%llu",
                                       perf.average_game_fps, perf.emulation_speed * 100.0,
-                                      mode_str, launch_cfg.resolution_scale);
+                                      mode_str, launch_cfg.resolution_scale, j_cnt, i_cnt, e_cnt,
+                                      s_cnt);
                     }
                 } else {
                     if (launch_cfg.frame_gen_mult >= 2) {

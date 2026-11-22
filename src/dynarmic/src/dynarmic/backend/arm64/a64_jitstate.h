@@ -26,6 +26,8 @@ struct A64JitState {
     alignas(16) std::array<u64, 64> vec{};
 
     u32 exclusive_state = 0;
+    u64 exclusive_address = 0;
+    u64 exclusive_value = 0;
 
     u32 fpsr = 0;
     u32 fpcr = 0;

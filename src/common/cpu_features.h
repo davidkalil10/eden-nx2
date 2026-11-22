@@ -101,7 +101,7 @@ public:
     u64 cntpct_rdtsc_factor;
     u64 gputick_rdtsc_factor;
     bool invariant;
-#elif defined(HAS_NCE)
+#elif defined(HAS_NCE) || defined(__SWITCH2__)
     using FactorType = unsigned __int128;
     [[nodiscard]] inline FactorType GetGuestCNTFRQFactor() const {
         return guest_cntfrq_factor;

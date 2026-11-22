@@ -294,7 +294,10 @@ bool WallClock::IsNative() const {
 u64 WallClock::NsToTicks(std::chrono::nanoseconds ns) const {
     return ns.count() * rdtsc_ns_integer + MultiplyHigh(ns.count(), rdtsc_ns_factor);
 }
-#elif defined(HAS_NCE)
+#elif defined(HAS_NCE) || defined(__SWITCH2__)
+#ifdef __SWITCH2__
+extern "C" u64 __attribute__((weak)) Switch2GetSystemTickFreq(void);
+#endif
 namespace {
 [[nodiscard]] Common::WallClock::FactorType GetFixedPointFactor(u64 num, u64 den) noexcept {
     return (Common::WallClock::FactorType(num) << 64) / den;
@@ -304,7 +307,10 @@ namespace {
 }
 [[nodiscard]] s64 GetHostCNTFRQ() noexcept {
     u64 cntfrq_el0 = 0;
-#ifdef __ANDROID__
+#ifdef __SWITCH2__
+    cntfrq_el0 = Switch2GetSystemTickFreq ? Switch2GetSystemTickFreq() : 19'200'000ULL;
+    return static_cast<s64>(cntfrq_el0);
+#elif defined(__ANDROID__)
     std::string_view board{""};
     char buffer[PROP_VALUE_MAX];
     int len{__system_property_get("ro.product.board", buffer)};
@@ -359,22 +365,23 @@ s64 WallClock::GetGPUTick() const {
 }
 
 s64 WallClock::GetUptime() const {
-    s64 cntvct_el0 = 0;
+    s64 cnt_el0 = 0;
 #ifdef __SWITCH2__
+    // Horizon OS allows EL0 reads of physical counter CNTPCT_EL0 (CNTVCT_EL0 traps in EL0!).
     asm volatile(
         "isb\n\t"
-        "mrs %[cntvct_el0], cntvct_el0\n\t"
-        : [cntvct_el0] "=r"(cntvct_el0)
+        "mrs %[cnt_el0], cntpct_el0\n\t"
+        : [cnt_el0] "=r"(cnt_el0)
     );
 #else
     asm volatile(
         "dsb ish\n\t"
-        "mrs %[cntvct_el0], cntvct_el0\n\t"
+        "mrs %[cnt_el0], cntvct_el0\n\t"
         "dsb ish\n\t"
-        : [cntvct_el0] "=r"(cntvct_el0)
+        : [cnt_el0] "=r"(cnt_el0)
     );
 #endif
-    return cntvct_el0;
+    return cnt_el0;
 }
 
 bool WallClock::IsNative() const {
@@ -426,7 +433,7 @@ const WallClock g_wall_clock = [] {
 #if defined(ARCHITECTURE_x86_64)
     auto const& caps = Common::g_cpu_caps;
     return WallClock(caps.invariant_tsc && caps.tsc_frequency > std::nano::den, caps.tsc_frequency);
-#elif defined(HAS_NCE)
+#elif defined(HAS_NCE) || defined(__SWITCH2__)
     return WallClock(false, 1);
 #else
     return WallClock(true, 1);

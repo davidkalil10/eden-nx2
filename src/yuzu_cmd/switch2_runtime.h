@@ -59,6 +59,7 @@ void Switch2SetVibration(float l_low_amp, float l_low_freq, float l_high_amp, fl
 void Switch2SetCpuBoost(bool enable);
 void Switch2GetMemoryStats(std::uint64_t* out_used, std::uint64_t* out_total);
 std::uint64_t Switch2GetCoreMask(void);
+std::uint64_t Switch2GetSystemTickFreq(void);
 
 bool Switch2FbInit(void);
 std::uint32_t* Switch2FbBegin(std::uint32_t* out_stride_pixels);

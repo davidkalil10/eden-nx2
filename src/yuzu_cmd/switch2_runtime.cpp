@@ -309,6 +309,15 @@ std::uint64_t Switch2GetCoreMask(void) {
     return mask;
 }
 
+std::uint64_t Switch2GetSystemTickFreq(void) {
+    // Derive exact libounce CNTPCT_EL0 frequency via armTicksToNs (never touches trapped CNTFRQ_EL0).
+    const u64 ns_for_10m_ticks = armTicksToNs(10'000'000ULL);
+    if (ns_for_10m_ticks > 0) {
+        return (10'000'000ULL * 1'000'000'000ULL + ns_for_10m_ticks / 2) / ns_for_10m_ticks;
+    }
+    return 19'200'000ULL;
+}
+
 bool Switch2FbInit(void) {
     if (g_fb_initialized) {
         return true;
