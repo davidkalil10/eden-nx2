@@ -7,21 +7,23 @@
 ---
 
 ### What's New / Novidades
+- **Built-In GitHub Auto-Updater (`[L]` in Launcher):**
+  - Checks `davidkalil10/eden-nx2` latest GitHub Release directly from your Switch 2, downloads `eden-switch2.nro` with a live progress bar, verifies `NRO0` + `OUN0` headers before replacing on SD, and relaunches into the new version.
+- **Major Switch 2 Performance & Memory Tuning:**
+  - **Full GPU Clocks by Default:** Changed `FastLoad` clock mode to **Off (Normal / Full GPU)** by default (`FastLoad` boosts CPU but throttles GPU — still available per-game under `[Y]` for CPU-bound titles).
+  - **Vulkan & Unified RAM Upgrades:** Enabled **Asynchronous Presentation**, **Extended Dynamic State 3 (`EDS3`)**, `FifoRelaxed` VSync fallback, **3 parallel shader/pipeline workers** + **2 texture transcode workers**, expanded VRAM cache budget (`3 GiB`, `1 GiB` GC floor), `128 MiB` stream buffer, and `64 MiB` VMA blocks.
+  - **Dynarmic ARM64 JIT & Horizon OS Optimizations:** Built with `-O3 -fomit-frame-pointer`, native ARM64 `cntvct_el0` hardware `WallClock`, fused `LDR [Xpt, Xidx, LSL #3]` + branchless `UBFX` page-table lookups in `CPU Unsafe`, coalesced `kaiHEN` IPC range flushes, `208 MiB` JIT pool (`48 MiB`/core with automatic `144 MiB` fallback), and `svcSetThreadPriority` + adaptive 6-core pinning.
 - **Supported Game Formats:** `.nsp`, `.nsz` (block & solid compressed), `.xci`, `.xcz`, `.nca`, and `.nro`.
-- **Redesigned Per-Game Settings (`[Y]`) & Update / DLC Manager:**
-  - Dedicated **Update Picker** with full readable filenames, sizes, and built-in **SD card file browser**.
+- **Uniform Settings UI & Per-Game Update / DLC Manager (`[Y]`):**
+  - Unified crisp font sizing (`scale = 2`) across all Global `[X]` and Per-Game `[Y]` settings rows.
+  - Dedicated **Update Picker** with readable filenames, sizes, and built-in **SD card file browser**.
   - Dedicated **Multi-Select DLC Manager** (`[X]` checkboxes) supporting multiple DLC files and/or folders per game.
-  - Per-game `.ini` overrides (`sdmc:/switch/eden-nx2/games/`).
 - **Lossless Scaling Frame Generation (`LSFG` 2x / 3x / 4x):**
-  - Fixed Vulkan `shaderFloat16` handling on Switch 2 (`T239` Ampere) and Switch 2 frame-gen pacing.
-  - Place your `Lossless.dll` at `sdmc:/switch/eden-nx2/Lossless.dll` (status badge shows **`LSFG OK`** in the launcher).
+  - Place your `Lossless.dll` at `sdmc:/switch/eden-nx2/Lossless.dll` (top bar badge shows **`LSFG OK`**).
   - On-screen FPS overlay displays `base -> generated FPS` when LSFG is active.
 - **1280×720 Bilingual Graphical Launcher (PT / EN):**
-  - Toggle language anytime with **`-`**, global settings with **`X`**, per-game settings with **`Y`**, touch navigation, and live controller/gyro tester.
+  - Toggle language anytime with **`-`**, global settings with **`X`**, per-game settings with **`Y`**, auto-updater with **`L`**, touch navigation, and live controller/gyro tester.
   - Hold **`+` + `-` (~2 seconds)** in-game to return cleanly to the **Eden-NX2 Launcher**.
-  - Automatic return to launcher if a package fails to load.
-- **Performance & Compatibility:**
-  - Resolution scaling (`0.5x`–`2.0x`), Handheld/Docked profiles, `GPU Fast` / `CPU Unsafe` / `CPU Boost` toggles, disk shader cache, and controller profiles (`Pro Controller`, `Handheld` — recommended for *Pokémon: Let's Go*, `Dual Joy-Con`, `Right/Left Joy-Con`).
 
 ---
 
@@ -52,7 +54,7 @@ sdmc:/
 ---
 
 ### Controls
-- **Launcher:** `D-Pad` / Touch to browse · **`A`** Launch / Open · **`B`** Parent folder · **`X`** Global Settings · **`Y`** Per-Game Settings (Update / DLC / Overrides) · **`-`** PT/EN · **`+`** Exit
+- **Launcher:** `D-Pad` / Touch to browse · **`A`** Launch / Open · **`B`** Parent folder · **`X`** Global Settings · **`Y`** Per-Game Settings (Update / DLC / Overrides) · **`L`** Auto-Updater · **`-`** PT/EN · **`+`** Exit
 - **In-Game:** Hold **`+` + `-` (~2s)** to close the active game and return to the launcher.
 
 ---
