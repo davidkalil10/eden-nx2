@@ -5,6 +5,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <cctype>
+#ifdef __SWITCH2__
+#include <cstdio>
+#include <fstream>
+#endif
 #include "core/core.h"
 #include "core/debugger/debugger.h"
 #include "core/hle/kernel/k_process.h"
@@ -108,6 +112,30 @@ void Break(Core::System& system, BreakReason reason, u64 info1, u64 info2) {
         handle_debug_buffer(info1, info2);
 
         system.CurrentPhysicalCore().LogBacktrace(system.Kernel());
+#ifdef __SWITCH2__
+        if (std::FILE* ef = std::fopen("sdmc:/switch/eden-nx2/last_load_error.txt", "w")) {
+            std::fprintf(ef, "Guest PANIC / Abort (reason=0x%llx)\n",
+                         static_cast<unsigned long long>(reason));
+            std::ifstream pin("sdmc:/switch/eden-nx2/last_guest_panic.txt");
+            int copied = 0;
+            for (std::string pline; pin && std::getline(pin, pline) && copied < 3;) {
+                while (!pline.empty() && (pline.back() == '\r' || pline.back() == '\n')) {
+                    pline.pop_back();
+                }
+                if (!pline.empty()) {
+                    std::fprintf(ef, "%s\n", pline.c_str());
+                    ++copied;
+                }
+            }
+            if (copied == 0) {
+                std::fprintf(ef, "info1=0x%llx info2=0x%llx (check eden_log.txt)\n",
+                             static_cast<unsigned long long>(info1),
+                             static_cast<unsigned long long>(info2));
+            }
+            std::fflush(ef);
+            std::fclose(ef);
+        }
+#endif
     }
 
     const bool should_break = !notification_only;

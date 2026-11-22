@@ -4,6 +4,7 @@
 // SPDX-FileCopyrightText: Copyright 2018 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <cstdio>
 #include <string>
 
 #include <optional>
@@ -282,8 +283,29 @@ private:
         if (text_log) {
             output_log += std::format("Log Text: {}\n", *text_log);
         }
-        LOG_DEBUG(Service_LM, "LogManager {} ({}):\n{}", NameOf(entry.severity),
-                  DestinationToString(destination), output_log);
+        if (entry.severity == LogSeverity::Error || entry.severity == LogSeverity::Fatal) {
+            LOG_ERROR(Service_LM, "LogManager {} ({}):\n{}", NameOf(entry.severity),
+                      DestinationToString(destination), output_log);
+#ifdef __SWITCH2__
+            if (std::FILE* pf = std::fopen("sdmc:/switch/eden-nx2/last_guest_panic.txt", "w")) {
+                if (file_name) {
+                    std::fprintf(pf, "%s:%u (%s)\n", file_name->c_str(),
+                                 line_number.value_or(0),
+                                 function_name ? function_name->c_str() : "");
+                } else if (function_name) {
+                    std::fprintf(pf, "%s\n", function_name->c_str());
+                }
+                if (text_log) {
+                    std::fprintf(pf, "%s\n", text_log->c_str());
+                }
+                std::fflush(pf);
+                std::fclose(pf);
+            }
+#endif
+        } else {
+            LOG_DEBUG(Service_LM, "LogManager {} ({}):\n{}", NameOf(entry.severity),
+                      DestinationToString(destination), output_log);
+        }
     }
 
     static std::string DestinationToString(LogDestination destination) {

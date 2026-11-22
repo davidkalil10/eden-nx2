@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "common/assert.h"
+#include "common/logging.h"
 #include "core/file_sys/vfs/vfs_concat.h"
 #include "core/file_sys/vfs/vfs_static.h"
 
@@ -174,6 +175,10 @@ std::size_t ConcatenatedVfsFile::Read(u8* data, std::size_t length, std::size_t 
 
         // If we encountered a short read, we're done.
         if (actual_read_size < intended_read_size) {
+            LOG_ERROR(Common_Filesystem,
+                      "ConcatenatedVfsFile({}) short read in chunk {} (seek={}, want={}, got={}, chunk_size={})",
+                      name, static_cast<std::size_t>(it - concatenation_map.begin()) - 1,
+                      file_seek, intended_read_size, actual_read_size, file_size);
             break;
         }
     }
