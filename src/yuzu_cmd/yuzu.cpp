@@ -23,6 +23,7 @@
 #include "core/frontend/emu_window.h"
 #include "core/frontend/graphics_context.h"
 #include "common/overlay_panels.h"
+#include "common/thread.h"
 #include "core/perf_stats.h"
 #include "dynarmic/backend/arm64/switch2_code_block.h"
 #include "hid_core/frontend/emulated_controller.h"
@@ -444,6 +445,13 @@ void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg, std::size_t& activ
     else if (cfg.resolution_scale >= 1.3f) res_setup = Settings::ResolutionSetup::Res3_2X;
     Settings::values.resolution_setup.SetValue(res_setup);
 
+    // Vulkan presentation, dynamic state & Switch 2 unified memory tuning
+    Settings::values.async_presentation.SetValue(true);
+    Settings::values.vsync_mode.SetValue(Settings::VSyncMode::FifoRelaxed);
+    Settings::values.dyna_state.SetValue(Settings::ExtendedDynamicState::EDS3);
+    Settings::values.vram_usage_mode.SetValue(Settings::VramUsageMode::Aggressive);
+    Settings::values.gpu_clock.SetValue(Settings::GpuClock::Boost);
+
     // GPU accuracy & performance flags
     if (cfg.gpu_fast) {
         Settings::values.gpu_accuracy.SetValue(Settings::GpuAccuracy::Low);
@@ -452,9 +460,13 @@ void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg, std::size_t& activ
         Settings::values.use_asynchronous_gpu_emulation.SetValue(true);
         Settings::values.dma_accuracy.SetValue(Settings::DmaAccuracy::Unsafe);
         Settings::values.barrier_feedback_loops.SetValue(false);
+        Settings::values.skip_cpu_inner_invalidation.SetValue(true);
     } else {
         Settings::values.gpu_accuracy.SetValue(Settings::GpuAccuracy::High);
         Settings::values.use_reactive_flushing.SetValue(true);
+        Settings::values.use_asynchronous_shaders.SetValue(true);
+        Settings::values.use_asynchronous_gpu_emulation.SetValue(true);
+        Settings::values.skip_cpu_inner_invalidation.SetValue(false);
     }
 
     // Language & Region
@@ -558,10 +570,16 @@ void ForwardSwitch2Input(InputCommon::InputSubsystem& input_subsystem,
             rx = pad.left_x;
             ry = pad.left_y;
         }
-        gamepad->SetStickPosition(pad_index, InputCommon::VirtualGamepad::VirtualStick::Left,
-                                  pad.left_x, pad.left_y);
-        gamepad->SetStickPosition(pad_index, InputCommon::VirtualGamepad::VirtualStick::Right, rx,
-                                  ry);
+        if (pad.left_x != prev.left_x || pad.left_y != prev.left_y) {
+            gamepad->SetStickPosition(pad_index, InputCommon::VirtualGamepad::VirtualStick::Left,
+                                      pad.left_x, pad.left_y);
+        }
+        if (rx != prev.right_x || ry != prev.right_y ||
+            (profile == Switch2ControllerProfile::RightJoycon &&
+             (pad.left_x != prev.left_x || pad.left_y != prev.left_y))) {
+            gamepad->SetStickPosition(pad_index, InputCommon::VirtualGamepad::VirtualStick::Right,
+                                      rx, ry);
+        }
 
         if (pad.has_motion) {
             gamepad->SetMotionState(pad_index, pad.motion_delta_us, pad.gyro[0], pad.gyro[1],
@@ -703,6 +721,10 @@ int main(int argc, char** argv) {
             UpdateSwitch2FpsOverlay("0 FPS  0%");
         }
 
+        // Move input polling loop off Core 0 so it does not compete with CPUCore_0.
+        Common::SetCurrentThreadName("Switch2Input");
+        Common::SetCurrentThreadPriority(Common::ThreadPriority::Low);
+
         Switch2PadSnapshot pad{};
         Switch2PadSnapshot prev_pad{};
         bool prev_touch = false;
@@ -737,7 +759,7 @@ int main(int argc, char** argv) {
                     last_r = vr;
                 }
             }
-            if (launch_cfg.show_fps_mode > 0 && (++loop_iters % 200u) == 0u) {
+            if (launch_cfg.show_fps_mode > 0 && (++loop_iters % 100u) == 0u) {
                 const auto perf = system->GetAndResetPerfStats();
                 char line[128];
                 const double out_fps =
@@ -770,7 +792,7 @@ int main(int argc, char** argv) {
                 }
                 UpdateSwitch2FpsOverlay(line);
             }
-            Switch2SleepMs(4);
+            Switch2SleepMs(8);
         }
         // If Horizon didn't request exit (e.g. Home/Close), the user held [+]+[-] -> relaunch UI.
         should_return_to_launcher = Switch2MainLoop();

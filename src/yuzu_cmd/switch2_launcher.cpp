@@ -611,13 +611,13 @@ std::vector<SettingOption> MakeDefaultOptions() {
          {"FPS + Velocidade", "Detalhado (FPS + Modo)", "Desligado"},
          {"FPS + Speed", "Detailed (FPS + Mode)", "Off"},
          0, true},
-        {"cpu_boost",
-         "CPU Boost (Overclock)", "CPU Boost (Overclock)",
-         "Ativa o clock maximo de carregamento do Switch 2 durante o jogo.",
-         "Requests Switch 2 boost CPU clocks during gameplay.",
-         {"on", "off"},
-         {"Ligado (FastLoad)", "Desligado"},
-         {"On (FastLoad)", "Off"},
+        {"fastload_boost",
+         "Modo de Clock (FastLoad)", "Clock Mode (FastLoad)",
+         "Normal usa GPU total (recomendado). FastLoad sobe CPU mas REDUZ a GPU.",
+         "Normal keeps full GPU clocks (recommended). FastLoad boosts CPU but throttles GPU.",
+         {"off", "on"},
+         {"Normal (GPU Total)", "FastLoad (CPU+/GPU-)"},
+         {"Normal (Full GPU)", "FastLoad (CPU+/GPU-)"},
          0, true},
         {"address_space",
          "Espaco de RAM (Tabela)", "Memory Address Space",
@@ -985,7 +985,7 @@ void FillLaunchConfig(const std::vector<SettingOption>& eff, const std::string& 
     const std::string fps = GetValue(eff, "show_fps");
     cfg->show_fps_mode = (fps == "detailed") ? 2 : (fps == "on" ? 1 : 0);
 
-    cfg->cpu_boost = (GetValue(eff, "cpu_boost") == "on");
+    cfg->cpu_boost = (GetValue(eff, "fastload_boost") == "on");
 
     const std::string as_mode = GetValue(eff, "address_space");
     cfg->address_space_mode = (as_mode == "36bit") ? 0 : (as_mode == "39bit" ? 2 : 1);
@@ -1153,7 +1153,7 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
         {T(en, "Modo", "Mode"), GetLabel(eff, "console_mode", en) + " " + GetValue(eff, "resolution") + "x"},
         {"GPU / CPU", GetLabel(eff, "gpu_mode", en) + " | " + GetValue(eff, "cpu_accuracy")},
         {"LSFG / FPS", GetLabel(eff, "frame_gen", en) + " | " + GetValue(eff, "show_fps")},
-        {"CPU / RAM", GetLabel(eff, "cpu_boost", en) + " | " + GetValue(eff, "address_space")},
+        {"Clock / RAM", GetLabel(eff, "fastload_boost", en) + " | " + GetValue(eff, "address_space")},
         {"JIT / Shader", GetValue(eff, "jit_ahead") + " blk | " + GetValue(eff, "shader_cache") +
                              " | " + GetValue(eff, "language")},
         {"Update / DLC", has_game ? (GetLabel(eff, "update_pkg", en) + " | " +

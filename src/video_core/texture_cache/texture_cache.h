@@ -72,7 +72,7 @@ TextureCache<P>::TextureCache(Runtime& runtime_, Tegra::MaxwellDeviceMemoryManag
                      DEFAULT_CRITICAL_MEMORY));
         minimum_memory = static_cast<u64>((device_local_memory - mem_threshold) / 2);
 #ifdef __SWITCH2__
-        minimum_memory = 512_MiB;
+        minimum_memory = 1_GiB;
 #endif
     } else {
         expected_memory = DEFAULT_EXPECTED_MEMORY + 512_MiB;

@@ -17,6 +17,7 @@ struct Switch2JitRange {
 };
 
 namespace Switch2JitPool {
+std::size_t PerCoreCodeCacheSize();
 bool Alloc(std::size_t size, u8** out_rx, u8** out_rw);
 void Free(u8* rx, std::size_t size);
 void Publish(const u8* rx_start, std::size_t size);

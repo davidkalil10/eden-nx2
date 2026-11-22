@@ -755,7 +755,7 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
             .physicalDevice = physical,
             .device = *logical,
 #ifdef __SWITCH2__
-            .preferredLargeHeapBlockSize = 32u * 1024u * 1024u,
+            .preferredLargeHeapBlockSize = 64u * 1024u * 1024u,
 #else
             .preferredLargeHeapBlockSize = is_integrated
                                            ? (64u * 1024u * 1024u)
@@ -1675,7 +1675,7 @@ void Device::CollectPhysicalMemoryInfo() {
         }
     }
 #ifdef __SWITCH2__
-    device_access_memory = std::min<u64>(device_access_memory, 2_GiB);
+    device_access_memory = std::min<u64>(device_access_memory, 3_GiB);
 #endif
 }
 

@@ -22,7 +22,8 @@ namespace Dynarmic::Backend::Arm64 {
 
 namespace Switch2JitPool {
 namespace {
-constexpr std::size_t kPoolSize = 144u * 1024u * 1024u;
+constexpr std::size_t kPreferredPoolSize = 208u * 1024u * 1024u; // 4 x 48 MiB + 16 MiB headroom
+constexpr std::size_t kFallbackPoolSize = 144u * 1024u * 1024u;  // 4 x 32 MiB + 16 MiB headroom
 constexpr std::size_t kPageSize = 0x1000u;
 
 struct Slice {
@@ -34,6 +35,7 @@ struct PoolState {
     std::mutex mutex;
     Jit jit{};
     bool open = false;
+    std::size_t per_core_size = 32u * 1024u * 1024u;
     std::vector<Slice> used;
 };
 
@@ -46,17 +48,32 @@ bool EnsureOpenLocked(PoolState& s) {
     if (s.open) {
         return true;
     }
-    const Result rc = jitCreate(&s.jit, kPoolSize);
-    if (R_FAILED(rc)) {
-        LOG_CRITICAL(Common, "Switch2JitPool: jitCreate(0x{:x}) failed: 0x{:x}", kPoolSize, rc);
-        return false;
+    Result rc = jitCreate(&s.jit, kPreferredPoolSize);
+    if (R_SUCCEEDED(rc)) {
+        s.per_core_size = 48u * 1024u * 1024u;
+    } else {
+        LOG_WARNING(Common, "Switch2JitPool: jitCreate(208 MiB) failed (0x{:x}), falling back to 144 MiB", rc);
+        rc = jitCreate(&s.jit, kFallbackPoolSize);
+        if (R_FAILED(rc)) {
+            LOG_CRITICAL(Common, "Switch2JitPool: jitCreate(144 MiB) failed: 0x{:x}", rc);
+            return false;
+        }
+        s.per_core_size = 32u * 1024u * 1024u;
     }
     s.open = true;
-    LOG_INFO(Common, "Switch2JitPool: created shared {} MiB kaiHEN JIT pool (type={}, rx={}, rw={})",
-             kPoolSize / (1024u * 1024u), static_cast<int>(s.jit.type), s.jit.rx_addr, s.jit.rw_addr);
+    LOG_INFO(Common, "Switch2JitPool: created shared {} MiB kaiHEN JIT pool ({} MiB/core, type={}, rx={}, rw={})",
+             s.jit.size / (1024u * 1024u), s.per_core_size / (1024u * 1024u),
+             static_cast<int>(s.jit.type), s.jit.rx_addr, s.jit.rw_addr);
     return true;
 }
 } // namespace
+
+std::size_t PerCoreCodeCacheSize() {
+    PoolState& s = State();
+    std::lock_guard lock(s.mutex);
+    EnsureOpenLocked(s);
+    return s.per_core_size;
+}
 
 bool Alloc(std::size_t size, u8** out_rx, u8** out_rw) {
     if (!size || !out_rx || !out_rw) {
@@ -154,10 +171,40 @@ void PublishRanges(const Switch2JitRange* ranges, std::size_t count) {
     }
 
     if (use_ipc && !k_ranges.empty()) {
-        const Result rc = kaihenJitPublishRanges(&s.jit, k_ranges.data(), k_ranges.size());
-        if (R_FAILED(rc)) {
-            LOG_ERROR(Common, "Switch2JitPool: kaihenJitPublishRanges(count={}) failed: 0x{:x}",
-                      k_ranges.size(), rc);
+        // Align to 4 KiB pages, sort, and coalesce overlapping/adjacent ranges so ahead-block
+        // compilation + relinks publish in as few kaiHEN IPC ranges as possible.
+        for (auto& r : k_ranges) {
+            const u64 page_start = r.offset & ~(u64{kPageSize} - 1u);
+            const u64 page_end =
+                std::min<u64>((r.offset + r.size + kPageSize - 1u) & ~(u64{kPageSize} - 1u),
+                              static_cast<u64>(s.jit.size));
+            r.offset = page_start;
+            r.size = page_end > page_start ? (page_end - page_start) : 0u;
+        }
+        std::sort(k_ranges.begin(), k_ranges.end(),
+                  [](const KaihenJitRange& a, const KaihenJitRange& b) {
+                      return a.offset < b.offset;
+                  });
+        std::vector<KaihenJitRange> merged;
+        merged.reserve(k_ranges.size());
+        for (const auto& r : k_ranges) {
+            if (r.size == 0) {
+                continue;
+            }
+            if (!merged.empty() && r.offset <= merged.back().offset + merged.back().size) {
+                const u64 end =
+                    std::max(merged.back().offset + merged.back().size, r.offset + r.size);
+                merged.back().size = end - merged.back().offset;
+            } else {
+                merged.push_back(r);
+            }
+        }
+        if (!merged.empty()) {
+            const Result rc = kaihenJitPublishRanges(&s.jit, merged.data(), merged.size());
+            if (R_FAILED(rc)) {
+                LOG_ERROR(Common, "Switch2JitPool: kaihenJitPublishRanges(count={}) failed: 0x{:x}",
+                          merged.size(), rc);
+            }
         }
     }
 }

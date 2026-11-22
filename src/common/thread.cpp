@@ -453,6 +453,7 @@ void RememberCurrentThreadNice(pid_t tid, s32 nice_value) {
 extern "C" {
 u32 svcGetInfo(u64* out, u32 id0, u32 handle, u64 id1);
 u32 svcSetThreadCoreMask(u32 handle, s32 preferred_core, u64 affinity_mask);
+u32 svcSetThreadPriority(u32 handle, u32 prio);
 }
 #endif
 
@@ -500,7 +501,24 @@ void SetCurrentThreadPriority(ThreadPriority new_priority) {
                   GetLastErrorMsg());
     }
 #elif defined(__SWITCH2__)
-    (void)new_priority;
+    // Horizon OS thread priority: lower value = higher priority (0x2C = normal default).
+    const u32 prio = [&]() -> u32 {
+        switch (new_priority) {
+        case ThreadPriority::Low:
+            return 0x36;
+        case ThreadPriority::Normal:
+            return 0x2C;
+        case ThreadPriority::High:
+            return 0x2A;
+        case ThreadPriority::VeryHigh:
+            return 0x28;
+        case ThreadPriority::Critical:
+            return 0x24;
+        default:
+            return 0x2C;
+        }
+    }();
+    svcSetThreadPriority(0xFFFF8000 /* this thread */, prio);
 #else
     const s32 max_prio = sched_get_priority_max(SCHED_OTHER);
     const s32 min_prio = sched_get_priority_min(SCHED_OTHER);
@@ -546,10 +564,28 @@ void SetCurrentThreadName(const char* name) {
     // https://gitlab.freedesktop.org/mesa/mesa/-/blame/main/src/util/u_thread.c?ref_type=heads#L75
     (void)name;
 #elif defined(__SWITCH2__)
-    // Give busy emulator threads distinct preferred Cortex-A78C cores so they don't pile onto Core 0.
+    // Give busy emulator threads distinct preferred Cortex-A78C cores so they don't pile onto Core 0,
+    // and move helper/audio/background threads off CPUCore_0..3 onto Cores 4..5.
     static constexpr std::pair<std::string_view, s32> preferred_cores[]{
-        {"CPUCore_0", 0}, {"CPUCore_1", 1}, {"CPUCore_2", 2}, {"CPUCore_3", 3},
-        {"GPU", 4},       {"VulkanWorker", 5},
+        {"CPUCore_0", 0},
+        {"CPUCore_1", 1},
+        {"CPUCore_2", 2},
+        {"CPUCore_3", 3},
+        {"GPU", 4},
+        {"GPUFencingThread", 4},
+        {"HostTiming", 4},
+        {"VSyncThread", 4},
+        {"VulkanWorker", 5},
+        {"VulkanPresent", 5},
+        {"Switch2Input", 5},
+        {"DSP_AudioRenderer_Main", 5},
+        {"DSP_OpusDecoder_Main", 5},
+        {"AudioManager", 5},
+        {"AudioRenderSystemManager", 5},
+        {"VkPipelineBuilder", 5},
+        {"VkPipelineSerialization", 5},
+        {"ImageTranscode", 5},
+        {"TextureDecoder", 5},
     };
     for (const auto& [thread_name, core] : preferred_cores) {
         if (thread_name == name) {
@@ -583,6 +619,8 @@ void SetCurrentThreadToEfficiencyCores() {
         return;
     }
     SetCurrentThreadCoreGroup(CoreGroup::Efficiency);
+#elif defined(__SWITCH2__)
+    SetCurrentThreadPriority(ThreadPriority::Low);
 #endif
 }
 
@@ -590,6 +628,8 @@ void SetCurrentThreadToBackgroundWork() {
 #if defined(__ANDROID__)
     ADPF::AddCurrentThread(ADPF::Session::Background);
     SetCurrentThreadCoreGroup(CoreGroup::Unrestricted);
+#elif defined(__SWITCH2__)
+    SetCurrentThreadPriority(ThreadPriority::Low);
 #endif
 }
 

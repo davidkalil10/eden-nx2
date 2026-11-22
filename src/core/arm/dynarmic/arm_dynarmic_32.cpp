@@ -11,6 +11,9 @@
 #include "core/arm/dynarmic/dynarmic_exclusive_monitor.h"
 #include "core/core_timing.h"
 #include "core/hle/kernel/k_process.h"
+#if defined(__SWITCH2__)
+#include "dynarmic/backend/arm64/switch2_code_block.h"
+#endif
 
 namespace Core {
 
@@ -191,7 +194,8 @@ void ArmDynarmic32::MakeJit(Common::PageTable* page_table) {
 
     // Code cache size
 #if defined(__SWITCH2__)
-    config.code_cache_size = std::uint32_t(32_MiB);
+    config.code_cache_size =
+        static_cast<std::uint32_t>(Dynarmic::Backend::Arm64::Switch2JitPool::PerCoreCodeCacheSize());
 #elif defined(ARCHITECTURE_arm64) || defined(__sun__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__OpenBSD__)
     config.code_cache_size = std::uint32_t(128_MiB);
 #else

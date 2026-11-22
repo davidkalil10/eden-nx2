@@ -83,8 +83,8 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \
     -DCMAKE_PREFIX_PATH="${SDL_PREFIX};${OUNCEVK_PREFIX};${DEVKITPRO}/portlibs/switch" \
     -DSDL3_DIR="${SDL_PREFIX}/lib/cmake/SDL3" \
     -DNINTENDO_SWITCH2=ON \
-    -DCMAKE_C_FLAGS_INIT="-mcpu=cortex-a78c+crypto -O2 -D__SWITCH2__=1 -D__SWITCH__=1" \
-    -DCMAKE_CXX_FLAGS_INIT="-mcpu=cortex-a78c+crypto -O2 -D__SWITCH2__=1 -D__SWITCH__=1" \
+    -DCMAKE_C_FLAGS_INIT="-mcpu=cortex-a78c+crypto -O3 -fomit-frame-pointer -D__SWITCH2__=1 -D__SWITCH__=1" \
+    -DCMAKE_CXX_FLAGS_INIT="-mcpu=cortex-a78c+crypto -O3 -fomit-frame-pointer -D__SWITCH2__=1 -D__SWITCH__=1" \
     -DENABLE_QT=OFF \
     -DENABLE_CUBEB=OFF \
     -DENABLE_LIBUSB=OFF \

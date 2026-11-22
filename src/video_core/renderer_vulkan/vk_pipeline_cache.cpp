@@ -304,6 +304,10 @@ Shader::RuntimeInfo MakeRuntimeInfo(std::span<const Shader::IR::Program> program
 }
 
 size_t GetTotalPipelineWorkers() {
+#ifdef __SWITCH2__
+    // std::thread::hardware_concurrency() returns 0 under libounce/newlib; use 3 low-priority workers.
+    return 3ULL;
+#else
     const size_t max_core_threads =
         std::max<size_t>(static_cast<size_t>(std::thread::hardware_concurrency()), 2ULL) - 1ULL;
 #ifdef __ANDROID__
@@ -316,6 +320,7 @@ size_t GetTotalPipelineWorkers() {
     return std::min(max_core_threads, desired);
 #else
     return max_core_threads;
+#endif
 #endif
 }
 

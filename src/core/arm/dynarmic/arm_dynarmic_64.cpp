@@ -15,6 +15,9 @@
 #include "core/core_timing.h"
 #include "core/hle/kernel/k_process.h"
 #include "dynarmic/interface/A64/config.h"
+#if defined(__SWITCH2__)
+#include "dynarmic/backend/arm64/switch2_code_block.h"
+#endif
 
 namespace Core {
 
@@ -249,8 +252,9 @@ void ArmDynarmic64::MakeJit(Common::PageTable* page_table, std::size_t address_s
 
     // Code cache size
 #if defined(__SWITCH2__)
-    // All 4 emulated cores share Switch2JitPool (144 MiB); 32 MiB per core fits cleanly.
-    config.code_cache_size = std::uint32_t(32_MiB);
+    // All 4 emulated cores share Switch2JitPool (208 MiB preferred / 144 MiB fallback).
+    config.code_cache_size =
+        static_cast<std::uint32_t>(Dynarmic::Backend::Arm64::Switch2JitPool::PerCoreCodeCacheSize());
 #elif defined(ARCHITECTURE_arm64) || defined(__sun__) || defined(__NetBSD__) || defined(__DragonFly__) || defined(__OpenBSD__)
     config.code_cache_size = std::uint32_t(128_MiB);
 #else
@@ -327,6 +331,12 @@ void ArmDynarmic64::MakeJit(Common::PageTable* page_table, std::size_t address_s
         }
         if (Settings::values.cpuopt_unsafe_fastmem_check) {
             config.fastmem_address_space_bits = 64;
+#if defined(__SWITCH2__)
+            // Software page table equivalent: replace LSR+TST+B.NE with a single branchless UBFX.
+            if (config.fastmem_pointer == std::nullopt) {
+                config.silently_mirror_page_table = true;
+            }
+#endif
         }
         if (Settings::values.cpuopt_unsafe_ignore_global_monitor) {
             config.optimizations |= Dynarmic::OptimizationFlag::Unsafe_IgnoreGlobalMonitor;

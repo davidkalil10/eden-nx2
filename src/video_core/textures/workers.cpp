@@ -9,8 +9,13 @@
 namespace Tegra::Texture {
 
 Common::ThreadWorker& GetThreadWorkers() {
+#ifdef __SWITCH2__
+    static Common::ThreadWorker workers{2U, "ImageTranscode", {},
+                                        Common::ThreadPlacement::Background};
+#else
     static Common::ThreadWorker workers{(std::max)(std::thread::hardware_concurrency(), 2U) / 2,
                                         "ImageTranscode"};
+#endif
     return workers;
 }
 
