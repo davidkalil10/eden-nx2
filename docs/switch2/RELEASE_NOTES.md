@@ -10,9 +10,13 @@
 - **FAT32 Split Game / Update / DLC Support (> 4 GB):**
   - Stream split Switch 1 containers seamlessly via `ConcatenatedVfsFile` without re-merging or extra RAM!
   - Automatically detects **split folders** (`Game.nsp/` or plain `Game/` containing `00`, `01`, `02`, ... from SAK / `splitNSP` / DBI), **dot-numbered splits** (`.nsp.00`, `.01`, ...), **7-Zip splits** (`.nsp.001`, `.002`, ...), and **`.xc0`/`.ns0`** splits — shown as a single clean entry with a **`SPLIT`** badge and total size in the launcher, Update picker, and DLC manager.
-- **4-Player Local Multiplayer + Individual Joy-Con Auto-Detection (*1-2-Switch*, *Mario Party*, *Mario Kart*):**
+- **4-Player Local Multiplayer + Individual Joy-Con Auto-Detection (*Super Mario Party*, *1-2-Switch*, *Mario Kart*):**
   - Expanded Switch 2 HID input to **4 simultaneous players (P1–P4)** with **independent 6-axis gyro/accelerometer and HD Rumble** per player.
   - Added **`Auto (Real Switch 2)`** mode for P1 and **`Auto (If Connected)`** default for P2 / P3–P4 with live hot-plug detection (`Pro`, `Dual Joy-Con`, `Left Joy-Con`, `Right Joy-Con`, `Handheld`), plus live `P1..P4` status badges in the launcher and live **Controller P1 / P2** toggles in the Quick Menu (`L + R + (+)`).
+  - **Tested 2-Player Joy-Con Setup (*Super Mario Party*):** In the Switch 2 Controllers menu, pair both Joy-Cons as two separate controllers; then in Eden-NX2 per-game settings (`[Y]`) or Quick Menu (`L + R + (+)`), set **Controller P1 = `Left Joy-Con`** and **Controller P2 = `Right Joy-Con`** (or `Auto`)!
+- **On-Screen Load Error Diagnostics & Faster Split Streaming (`v0.1.8`):**
+  - Added a clear on-screen error modal in the launcher whenever a ROM fails to load (showing the exact Eden error code/description, VFS size, and container header magic) plus direct split chunk opening and read-only VFS size caching.
+  - **FAT32 Split Tip:** Split clean base `.nsp`/`.xci` dumps and keep Updates separate in `updates/` — avoid consolidating Base + Update into a single `(1G+1U)` NSP before splitting, since repacked Super-NSPs can omit the `.tik` ticket (`ErrorMissingTitlekey`).
 - **Live In-Game Quick Menu (`L + R + (+)`):**
   - Open an on-screen overlay menu directly over any running game with **`L + R + (+)`** to tweak **Speed Limit**, **VSync**, **GPU Upscaler (FSR/SGSR/ScaleForce/MMPX/Lanczos)**, **Anti-Aliasing (FXAA/SMAA)**, **Docked/Handheld Mode**, **GPU Accuracy**, **Clock (FastLoad)**, **FPS Overlay**, and **Audio Volume** in real time while watching live FPS/visual changes — plus **Save to Game Profile** or **Return to Launcher** with one press!
 - **Fixed Exit Hang with Unlocked Speed Limit (`Speed Limit = Off`):**

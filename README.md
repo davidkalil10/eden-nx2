@@ -65,18 +65,18 @@ O **Eden-NX2** é um port nativo de homebrew para **Nintendo Switch 2** (`OUN0` 
 
 - **OunceVK Static Vulkan 1.4 Renderer (`VK_NN_vi_surface`):**
   - Renders directly via `nwindowGetDefault()` and `vkCreateViSurfaceNN`, without desktop X11/Wayland/Qt dependencies.
-  - Supports internal resolution scaling (`0.5x`, `0.75x`, `1.0x`, `1.5x`, `2.0x`), Handheld (`720p`) / Docked (`1080p`) modes, disk shader cache, asynchronous shader compilation, and **Lossless Scaling Frame Generation (`LSFG` 2x / 3x / 4x)** when `Lossless.dll` is placed on the SD card.
+  - Supports internal resolution scaling (`0.5x`–`2.0x`), Handheld (`720p`) / Docked (`1080p`) modes, **GPU Upscaling** (**AMD FSR 1.0**, **SGSR**, **ScaleForce**, **MMPX**, **Lanczos**, **Bilinear**, **Nearest**), **FXAA / SMAA**, `EDS3`, Async Presentation, 3 parallel pipeline workers + 2 texture transcode workers, disk shader cache, and **Lossless Scaling Frame Generation (`LSFG` 2x / 3x / 4x)** when `Lossless.dll` is placed on the SD card.
 - **`kaiHEN` Dual-Pointer (`RW` / `RX`) ARM64 JIT (`Dynarmic`):**
-  - Uses a 96 MiB shared `kaiHEN` JIT pool with separate `RW`/`RX` views, batched IPC range publishing, configurable ahead-block pre-compilation (`4` / `8` / `16` blocks), 64K lookup cache, Cortex-A78C core pinning, CPU boost clock option, and `CpuAccuracy::Auto` / `Unsafe` toggles.
-- **Horizon-Safe Memory & Storage:**
+  - Uses a `208 MiB` shared `kaiHEN` JIT pool (`48 MiB`/core with `144 MiB` fallback), **inline ARM64 hardware atomics (`LDAXR`/`STLXR`)**, EL0-safe native `CNTPCT_EL0` `WallClock`, fused page-table lookups in `CPU Unsafe`, coalesced IPC range publishing, 6-core Cortex-A78C pinning (`0x3f`), and full GPU clocks by default (`FastLoad = Off`).
+- **Horizon-Safe Memory & FAT32 Split Storage (> 4 GB):**
   - 36-bit / 38-bit / 39-bit demand-paged software page tables (`MultiLevelPageTable`) paired with `memalign`-backed `HostMemory` (no `mmap`/`SIGSEGV` dependency).
-  - Switch 2 SD card (`sdmc:`) VFS/stdio fixes for buffered reads, handle cleanup, `fstat` sizing, and atomic save-file renames.
-- **1280×720 Graphical Launcher:**
-  - Bilingual interface (**Português / English**, toggle anytime with **`-`**).
-  - Global settings (**`X`**) and per-game overrides (**`Y`**), touch navigation, and a live controller tester (buttons, D-Pad, left/right sticks, `L3`/`R3`, `SL`/`SR`, gyro status).
-- **Full Switch 2 Input & In-Game Features:**
-  - Profiles for **Pro Controller**, **Handheld** (recommended for *Pokémon: Let's Go*), **Dual Joy-Con**, **Right Joy-Con** (with `SL`/`SR`), and **Left Joy-Con**.
-  - Touch screen forwarding, 6-axis gyro/accelerometer (`hidSixAxisSensor`), HD rumble, optional on-screen FPS/speed overlay, and **hold `+` + `-` (~2s)** in game to return directly to the **Eden-NX2 Launcher**.
+  - Native streaming support via `ConcatenatedVfsFile` for **FAT32 split games, Updates, and DLCs** (`Game.nsp/` or `Game/` folders containing `00`, `01`, `02`..., `.nsp.00`, 7-Zip `.001`, `.xc0`/`.ns0`) with zero extra RAM or merging required.
+- **1280×720 Graphical Launcher & Built-In Auto-Updater (`[L]`):**
+  - Bilingual interface (**Português / English**, toggle anytime with **`-`**), **GitHub Releases Auto-Updater (`[L]`)**, on-screen load diagnostics, global settings (**`X`**), per-game overrides + Update/DLC managers (**`Y`**), touch navigation, and a live 4-player controller tester (`P1..P4`).
+- **4-Player Local Multiplayer, Individual Joy-Cons & Live In-Game Quick Menu (`L + R + (+)`):**
+  - Supports **up to 4 simultaneous players (P1–P4)** with **independent 6-axis gyro/accelerometer and HD Rumble** per player, including **`Auto (Real Switch 2)`** hot-plug detection and **individual Left / Right Joy-Con** support (*Super Mario Party*, *1-2-Switch*, *Mario Kart 8*, *Pokémon: Let's Go*).
+  - Press **`L + R + (+)`** in-game to open the live **Quick Menu** overlay (adjust Speed Limit, VSync, Upscaler, AA, Docked/Handheld, GPU Accuracy, FastLoad, FPS overlay, Volume, and P1/P2 controllers in real time, save per-game, or return to launcher).
+  - Hold **`+` + `-` (~2s)** anytime in-game to return cleanly to the **Eden-NX2 Launcher**.
 
 ---
 
@@ -106,10 +106,14 @@ sdmc:/
 
 ### Tips for First Boot
 - **Keys (`prod.keys`):** Place `prod.keys` inside `sdmc:/switch/eden-nx2/keys/prod.keys` or `sdmc:/.local/share/eden/keys/prod.keys`.
+- **FAT32 Split Games (> 4 GB):** Split clean base `.nsp` / `.xci` / `.nsz` files into `00`, `01`, `02`... folders (via SAK / `splitNSP`) or `.nsp.00` / 7-Zip `.001` files. **Tip:** keep Updates separate in `sdmc:/switch/eden-nx2/updates/` instead of consolidating Base + Update into a single `(1G+1U)` NSP before splitting, as some repacked Super-NSPs omit the `.tik` ticket (`ErrorMissingTitlekey`).
 - **Updates & DLC:** Put Update `.nsp`/`.xci` files in `sdmc:/switch/eden-nx2/updates/` and DLC `.nsp`/`.xci` files (or subfolders) in `sdmc:/switch/eden-nx2/dlc/` for automatic discovery, or assign/disable them individually per game via **`[Y]` Per-Game Settings**.
-- **Lossless Scaling (`LSFG`):** Copy your `Lossless.dll` to `sdmc:/switch/eden-nx2/Lossless.dll` (or `sdmc:/Lossless.dll`). On launch, the top bar displays **`LSFG OK`** once imported and cached.
-- **3D Performance:** In **`[X]` Global** or **`[Y]` Per-Game** settings, try `Resolution = 0.5x` or `0.75x`, `GPU = Fast`, `CPU = Unsafe`, `CPU Boost = On`, and `Address Space = 38-bit` (or `36-bit` to free extra RAM).
+- **2-Player Individual Joy-Cons (*Super Mario Party*, *1-2-Switch*, *Mario Kart 8*):**
+  1. In the **Switch 2 System Settings / Controllers** menu, detach and pair the two Joy-Cons as **two separate horizontal controllers**.
+  2. In **Eden-NX2**, press **`[Y]`** on the game (or open **`L + R + (+)`** live in-game) and set **`Controller (Player 1)` = `Left Joy-Con`** and **`Controller (Player 2)` = `Right Joy-Con`** *(or leave both on **`Auto`**)*. Tested and working cleanly on *Super Mario Party* with independent gyro & HD Rumble!
 - ***Pokémon: Let's Go Pikachu / Eevee*:** Set `Controller (Player 1)` to **`Handheld`** or **`Right Joy-Con`** in per-game settings (**`Y`**).
+- **Lossless Scaling (`LSFG`):** Copy your `Lossless.dll` to `sdmc:/switch/eden-nx2/Lossless.dll` (or `sdmc:/Lossless.dll`). On launch, the top bar displays **`LSFG OK`** once imported and cached.
+- **3D Performance:** Keep **`Clock (FastLoad)` = `Normal (Full GPU)`**, **`GPU = Fast`**, **`CPU = Unsafe`**, **`VSync = Relaxed`** (or `Off`), and try **`AMD FSR 1.0`** / **`SGSR`** upscaling live via **`L + R + (+)`**.
 
 ---
 
@@ -121,14 +125,16 @@ sdmc:/
 | **D-Pad Up / Down / Left / Right** (or Touch tap) | Navigate ROM list / page jump |
 | **`A`** (or tap selected ROM twice) | Launch game / open folder |
 | **`B`** | Go up to parent directory / cancel settings |
-| **`X`** | Open **Global Settings** (13 options) |
-| **`Y`** | Open **Per-Game Settings** for highlighted ROM |
+| **`X`** | Open **Global Settings** |
+| **`Y`** | Open **Per-Game Settings** (Update / DLC / Controller / Overrides) |
+| **`L`** | Open **GitHub Auto-Updater** |
 | **`-` (Minus)** | Quick-toggle launcher UI language (**Português / English**) |
 | **`+` (Plus)** | Exit launcher to Homebrew Menu |
 
 ### In-Game
 | Button / Input | Action |
 | :--- | :--- |
+| **`L` + `R` + `+`** | Open / close the live **In-Game Quick Menu** (settings, P1/P2 controllers, save profile, return to launcher) |
 | **Hold `+` and `-` together (~2 seconds)** | Close active game and return to the **Eden-NX2 Launcher** |
 
 ---
@@ -152,6 +158,7 @@ The build script compiles `eden-cli.elf`, packages [`dist/eden-switch2.nro`](./s
 
 ## <a id="documentation"></a>Documentation
 
+- **[Roadmap de Futuras Features (Switch 2)](./docs/switch2/ROADMAP.md)** — Planned phases, storage/multiplayer milestones, and future Eden features.
 - **[Switch 2 Porting Progress & Engineering Log](./docs/switch2/EDEN_NX2_PROGRESS.md)** — Architecture Decision Records (ADRs), phased roadmap, and milestone changelog.
 - **[Build Script](./scripts/build-switch2.sh)** & **[GitHub Actions Workflow](./.github/workflows/build-switch2.yml)** — Full cross-compilation and packaging pipeline.
 - **[NRO Verification Script](./tools/verify_switch2_package.py)** — Automated `OUN0` + `kaiHEN` binary verification.
