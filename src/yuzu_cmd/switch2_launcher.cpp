@@ -580,6 +580,22 @@ std::vector<SettingOption> MakeDefaultOptions() {
          {"0.5x (Mais Rapido)", "0.75x (Equilibrado)", "1.0x (Nativo)", "1.5x", "2.0x"},
          {"0.5x (Fastest)", "0.75x (Balanced)", "1.0x (Native)", "1.5x", "2.0x"},
          2, true},
+        {"scaling_filter",
+         "Upscaler (Filtro)", "Upscaler (Filter)",
+         "Upscaling na GPU: FSR/SGSR para 3D, ScaleForce para anime/2.5D, MMPX para 2D.",
+         "GPU upscaling: FSR/SGSR for 3D, ScaleForce for stylized/2.5D, MMPX for 2D.",
+         {"bilinear", "fsr", "sgsr", "scaleforce", "mmpx", "lanczos", "nearest"},
+         {"Bilinear (Padrao)", "AMD FSR 1.0", "SGSR (3D Nitido)", "ScaleForce (2.5D)", "MMPX (Pixel-Art)", "Lanczos", "Nearest"},
+         {"Bilinear (Default)", "AMD FSR 1.0", "SGSR (Sharp 3D)", "ScaleForce (2.5D)", "MMPX (Pixel-Art)", "Lanczos", "Nearest"},
+         0, true},
+        {"anti_aliasing",
+         "Anti-Aliasing", "Anti-Aliasing",
+         "Suaviza serrilhados na GPU Switch 2 com impacto minimo no FPS.",
+         "Smooths jagged edges on Switch 2 GPU with minimal FPS impact.",
+         {"none", "fxaa", "smaa"},
+         {"Desligado", "FXAA (Leve)", "SMAA (Alta Qualidade)"},
+         {"Off", "FXAA (Fast)", "SMAA (High Quality)"},
+         0, true},
         {"gpu_mode",
          "Precisao da GPU", "GPU Accuracy",
          "Fast liga Shaders Assincronos e DMA rapido; Accurate evita glitches.",
@@ -993,6 +1009,18 @@ void FillLaunchConfig(const std::vector<SettingOption>& eff, const std::string& 
     cfg->docked_mode = (GetValue(eff, "console_mode") == "docked");
     cfg->resolution_scale = std::strtof(GetValue(eff, "resolution").c_str(), nullptr);
     if (cfg->resolution_scale <= 0.1f) cfg->resolution_scale = 1.0f;
+
+    const std::string sf = GetValue(eff, "scaling_filter");
+    if (sf == "fsr") cfg->scaling_filter = 1;
+    else if (sf == "sgsr") cfg->scaling_filter = 2;
+    else if (sf == "scaleforce") cfg->scaling_filter = 3;
+    else if (sf == "mmpx") cfg->scaling_filter = 4;
+    else if (sf == "lanczos") cfg->scaling_filter = 5;
+    else if (sf == "nearest") cfg->scaling_filter = 6;
+    else cfg->scaling_filter = 0;
+
+    const std::string aa = GetValue(eff, "anti_aliasing");
+    cfg->anti_aliasing = (aa == "fxaa") ? 1 : (aa == "smaa" ? 2 : 0);
     cfg->gpu_fast = (GetValue(eff, "gpu_mode") == "fast");
     cfg->cpu_unsafe = (GetValue(eff, "cpu_accuracy") == "unsafe");
 

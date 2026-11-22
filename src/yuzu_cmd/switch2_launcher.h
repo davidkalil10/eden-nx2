@@ -20,6 +20,8 @@ struct Switch2LaunchConfig {
     Switch2ControllerProfile controller_profile = Switch2ControllerProfile::ProController;
     bool docked_mode = false;
     float resolution_scale = 1.0f;
+    int scaling_filter = 0; // 0=Bilinear, 1=FSR, 2=SGSR, 3=ScaleForce, 4=MMPX, 5=Lanczos, 6=Nearest
+    int anti_aliasing = 0;  // 0=None, 1=FXAA, 2=SMAA
     bool gpu_fast = true;
     bool cpu_unsafe = true;
     int frame_gen_mult = 0; // 0 = Off, 2..4 = Lossless Scaling multiplier

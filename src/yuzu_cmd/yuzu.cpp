@@ -456,6 +456,27 @@ void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg, std::size_t& activ
     else if (cfg.resolution_scale >= 1.3f) res_setup = Settings::ResolutionSetup::Res3_2X;
     Settings::values.resolution_setup.SetValue(res_setup);
 
+    // GPU Upscaler (Scaling Filter) & Anti-Aliasing
+    static constexpr std::array<Settings::ScalingFilter, 7> kScalingFilters{{
+        Settings::ScalingFilter::Bilinear,
+        Settings::ScalingFilter::Fsr,
+        Settings::ScalingFilter::Sgsr,
+        Settings::ScalingFilter::ScaleForce,
+        Settings::ScalingFilter::Mmpx,
+        Settings::ScalingFilter::Lanczos,
+        Settings::ScalingFilter::NearestNeighbor,
+    }};
+    const int sf_idx = std::clamp(cfg.scaling_filter, 0, static_cast<int>(kScalingFilters.size()) - 1);
+    Settings::values.scaling_filter.SetValue(kScalingFilters[static_cast<std::size_t>(sf_idx)]);
+    Settings::values.fsr_sharpening_slider.SetValue(40);
+
+    const Settings::AntiAliasing aa_mode =
+        (cfg.anti_aliasing == 1)
+            ? Settings::AntiAliasing::Fxaa
+            : (cfg.anti_aliasing == 2 ? Settings::AntiAliasing::Smaa
+                                      : Settings::AntiAliasing::None);
+    Settings::values.anti_aliasing.SetValue(aa_mode);
+
     // Vulkan presentation, dynamic state & Switch 2 unified memory tuning
     Settings::values.async_presentation.SetValue(true);
     const Settings::VSyncMode vsync =
