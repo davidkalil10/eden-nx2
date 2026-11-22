@@ -437,6 +437,19 @@ void RegisterSwitch2Addons(FileSys::ManualContentProvider& provider,
 
     const std::string rom_dir = std::filesystem::path(cfg.rom_path).parent_path().generic_string();
 
+    // Register the launched base game container itself into ManualContentProvider so Control NCA
+    // (NACP metadata, supported_languages, seed_for_pseudo_device_id) is always available even
+    // when Updates are disabled. Skip compressed .nsz/.xcz to avoid double NCZ decompression.
+    {
+        const std::string lower_rom = Common::ToLower(cfg.rom_path);
+        const bool is_compressed = lower_rom.ends_with(".nsz") || lower_rom.ends_with(".xcz") ||
+                                   lower_rom.find(".nsz.") != std::string::npos ||
+                                   lower_rom.find(".xcz.") != std::string::npos;
+        if (!is_compressed) {
+            add_file(cfg.rom_path);
+        }
+    }
+
     if (cfg.update_pkg == "auto" || cfg.update_pkg.empty()) {
         ScanSwitch2AddonDir(provider, vfs, "sdmc:/switch/eden-nx2/updates", cfg.rom_path, false,
                             false, true);
