@@ -12,7 +12,7 @@
 - **Major Switch 2 Performance & Memory Tuning:**
   - **Full GPU Clocks by Default:** Changed `FastLoad` clock mode to **Off (Normal / Full GPU)** by default (`FastLoad` boosts CPU but throttles GPU — still available per-game under `[Y]` for CPU-bound titles).
   - **Vulkan & Unified RAM Upgrades:** Enabled **Asynchronous Presentation**, **Extended Dynamic State 3 (`EDS3`)**, `FifoRelaxed` VSync fallback, **3 parallel shader/pipeline workers** + **2 texture transcode workers**, expanded VRAM cache budget (`3 GiB`, `1 GiB` GC floor), `128 MiB` stream buffer, and `64 MiB` VMA blocks.
-  - **Dynarmic ARM64 JIT & Horizon OS Optimizations:** Built with `-O3 -fomit-frame-pointer`, native ARM64 `cntvct_el0` hardware `WallClock`, fused `LDR [Xpt, Xidx, LSL #3]` + branchless `UBFX` page-table lookups in `CPU Unsafe`, coalesced `kaiHEN` IPC range flushes, `208 MiB` JIT pool (`48 MiB`/core with automatic `144 MiB` fallback), and `svcSetThreadPriority` + adaptive 6-core pinning.
+  - **Dynarmic ARM64 JIT & Horizon OS Optimizations:** Built with `-O3 -fomit-frame-pointer`, fused `LDR [Xpt, Xidx, LSL #3]` + branchless `UBFX` page-table lookups in `CPU Unsafe`, coalesced `kaiHEN` IPC range flushes, `208 MiB` JIT pool (`48 MiB`/core with automatic `144 MiB` fallback), and `svcSetThreadPriority` + adaptive 6-core pinning.
 - **Supported Game Formats:** `.nsp`, `.nsz` (block & solid compressed), `.xci`, `.xcz`, `.nca`, and `.nro`.
 - **Uniform Settings UI & Per-Game Update / DLC Manager (`[Y]`):**
   - Unified crisp font sizing (`scale = 2`) across all Global `[X]` and Per-Game `[Y]` settings rows.
