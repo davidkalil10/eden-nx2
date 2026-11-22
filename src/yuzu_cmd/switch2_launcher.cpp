@@ -2583,6 +2583,62 @@ bool RunUpdaterModal(Canvas& cv, bool en, const char* self_nro_path, bool* out_r
     }
 }
 
+void ShowLoadErrorModalIfPresent(Canvas& cv, bool en) {
+    constexpr const char* kErrPath = "sdmc:/switch/eden-nx2/last_load_error.txt";
+    std::vector<std::string> lines;
+    {
+        std::ifstream in(kErrPath);
+        if (!in) return;
+        for (std::string line; std::getline(in, line) && lines.size() < 6;) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+                line.pop_back();
+            }
+            if (!line.empty()) lines.push_back(std::move(line));
+        }
+    }
+    std::error_code ec;
+    std::filesystem::remove(kErrPath, ec);
+    if (lines.empty()) return;
+
+    cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 215);
+    cv.DrawRoundedRect(100, 140, 1080, 440, 16, kPanelBg, kAmber);
+    cv.DrawTextMaxWidth(136, 168, 1008,
+                        T(en, "ERRO AO CARREGAR O JOGO", "FAILED TO LOAD GAME"), kAmber, 2, true);
+    cv.FillRect(132, 206, 1016, 2, kBorderDim);
+
+    int y = 228;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        const std::uint32_t col =
+            (i == 0) ? kTextPrimary : ((i == 1) ? PackRGBA(255, 140, 140) : kCyan);
+        const int sc = (i <= 1) ? 2 : 1;
+        // Wrap long lines cleanly across two rows if needed
+        const int max_chars = 1008 / (8 * sc);
+        const std::string& s = lines[i];
+        if (static_cast<int>(s.size()) > max_chars && max_chars > 10) {
+            cv.DrawTextMaxWidth(136, y, 1008, s.substr(0, static_cast<std::size_t>(max_chars)),
+                                col, sc);
+            y += (sc == 2 ? 26 : 18);
+            cv.DrawTextMaxWidth(136, y, 1008, s.substr(static_cast<std::size_t>(max_chars)),
+                                col, sc);
+            y += (sc == 2 ? 32 : 24);
+        } else {
+            cv.DrawTextMaxWidth(136, y, 1008, s, col, sc);
+            y += (sc == 2 ? 38 : 26);
+        }
+    }
+
+    cv.DrawPill(136, 512, T(en, "[A] / [B] Fechar", "[A] / [B] Close"), kAccentSoft, kAccent, 2);
+    cv.Present();
+
+    Switch2PadSnapshot pad{};
+    while (Switch2PollInput(&pad, false)) {
+        if (pad.raw_down & (SWITCH2_BTN_A | SWITCH2_BTN_B)) {
+            break;
+        }
+        Switch2SleepMs(16);
+    }
+}
+
 } // namespace
 
 bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg, const char* self_nro_path) {
@@ -2615,6 +2671,8 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg, const char* self_nro_path)
 
     Canvas cv;
     Switch2PadSnapshot pad{};
+
+    ShowLoadErrorModalIfPresent(cv, GetValue(global_opts, "ui_lang") == "en");
 
     while (Switch2PollInput(&pad, false)) {
         bool en = (GetValue(global_opts, "ui_lang") == "en");

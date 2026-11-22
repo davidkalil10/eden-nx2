@@ -76,11 +76,11 @@ namespace Core {
 FileSys::VirtualFile GetGameFileFromPath(const FileSys::VirtualFilesystem& vfs,
                                          const std::string& path) {
     auto open_split_dir = [&](const std::string& dir_path) -> FileSys::VirtualFile {
-        const auto dir = vfs->OpenDirectory(dir_path, FileSys::OpenMode::Read);
-        if (dir == nullptr) {
-            return nullptr;
+        std::string clean_dir = dir_path;
+        while (clean_dir.size() > 1 && (clean_dir.back() == '/' || clean_dir.back() == '\\')) {
+            clean_dir.pop_back();
         }
-        auto first = dir->GetFile("00");
+        auto first = vfs->OpenFile(clean_dir + "/00", FileSys::OpenMode::Read);
         if (first == nullptr) {
             return nullptr;
         }
@@ -91,14 +91,14 @@ FileSys::VirtualFile GetGameFileFromPath(const FileSys::VirtualFilesystem& vfs,
         // fall back to hex (0A..0F) if 10 is absent.
         bool hex_mode = false;
         for (u32 i = 1; i < 100; ++i) {
-            const std::string dec_name = std::format("{:02d}", i);
-            auto next = (!hex_mode) ? dir->GetFile(dec_name) : nullptr;
+            const std::string dec_path = std::format("{}/{:02d}", clean_dir, i);
+            auto next = (!hex_mode) ? vfs->OpenFile(dec_path, FileSys::OpenMode::Read) : nullptr;
             if (next == nullptr && i >= 10 && i < 16) {
-                const std::string hex_upper = std::format("{:02X}", i);
-                const std::string hex_lower = std::format("{:02x}", i);
-                next = dir->GetFile(hex_upper);
+                next = vfs->OpenFile(std::format("{}/{:02X}", clean_dir, i),
+                                     FileSys::OpenMode::Read);
                 if (next == nullptr) {
-                    next = dir->GetFile(hex_lower);
+                    next = vfs->OpenFile(std::format("{}/{:02x}", clean_dir, i),
+                                         FileSys::OpenMode::Read);
                 }
                 if (next != nullptr) {
                     hex_mode = true;
@@ -110,7 +110,10 @@ FileSys::VirtualFile GetGameFileFromPath(const FileSys::VirtualFilesystem& vfs,
             concat.push_back(std::move(next));
         }
 
-        return FileSys::ConcatenatedVfsFile::MakeConcatenatedFile(dir->GetName(),
+        const std::size_t slash = clean_dir.find_last_of("/\\");
+        std::string dir_name =
+            (slash == std::string::npos) ? clean_dir : clean_dir.substr(slash + 1);
+        return FileSys::ConcatenatedVfsFile::MakeConcatenatedFile(std::move(dir_name),
                                                                   std::move(concat));
     };
 

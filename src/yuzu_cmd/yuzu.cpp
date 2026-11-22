@@ -904,6 +904,10 @@ int main(int argc, char** argv) {
     {
         std::error_code ec;
         std::filesystem::create_directories("sdmc:/switch/eden-nx2", ec);
+        std::filesystem::remove("sdmc:/switch/eden-nx2/boot_trace_prev.txt", ec);
+        ec.clear();
+        std::filesystem::rename("sdmc:/switch/eden-nx2/boot_trace.txt",
+                                "sdmc:/switch/eden-nx2/boot_trace_prev.txt", ec);
         if (FILE* f = std::fopen("sdmc:/switch/eden-nx2/boot_trace.txt", "w")) {
             std::fprintf(f, "00: main enter (argc=%d)\n", argc);
             std::fflush(f);
@@ -1340,7 +1344,72 @@ int main(int argc, char** argv) {
         // If Horizon didn't request exit (e.g. Home/Close), the user held [+]+[-] or chose Return -> relaunch UI.
         should_return_to_launcher = exit_to_launcher || Switch2MainLoop();
     } else {
-        // Return cleanly to the launcher when a title fails to load (e.g. unsupported Switch 2 package).
+        // Save a detailed load-error diagnostic so the launcher displays the exact reason on screen.
+        std::string err_desc;
+        switch (load_result) {
+        case Core::SystemResultStatus::ErrorGetLoader:
+            err_desc = "ErrorGetLoader: Could not identify ROM format";
+            break;
+        case Core::SystemResultStatus::ErrorLoader:
+            err_desc = "ErrorLoader: Failed to load ROM";
+            break;
+        case Core::SystemResultStatus::ErrorNotInitialized:
+            err_desc = "ErrorNotInitialized: CPU core not initialized";
+            break;
+        case Core::SystemResultStatus::ErrorVideoCore:
+            err_desc = "ErrorVideoCore: Failed to initialize Vulkan";
+            break;
+        default: {
+            const u16 loader_id = static_cast<u16>(Core::SystemResultStatus::ErrorLoader);
+            const u16 raw = static_cast<u16>(load_result);
+            if (raw >= loader_id) {
+                const u16 err_id = raw - loader_id;
+                char code_buf[32];
+                std::snprintf(code_buf, sizeof(code_buf), "Code %04X-%04X: ", loader_id, err_id);
+                err_desc = std::string(code_buf) +
+                           Loader::GetResultStatusString(static_cast<Loader::ResultStatus>(err_id));
+            } else {
+                err_desc = "SystemResultStatus=" + std::to_string(static_cast<int>(load_result));
+            }
+            break;
+        }
+        }
+        const auto probe_file = Core::GetGameFileFromPath(system->GetFilesystem(), launch_cfg.rom_path);
+        std::string probe_line;
+        std::string magic_line;
+        if (probe_file) {
+            const double mb = static_cast<double>(probe_file->GetSize()) / (1024.0 * 1024.0);
+            char pbuf[160];
+            std::snprintf(pbuf, sizeof(pbuf), "VFS OK: %.1f MB | Name: %s", mb,
+                          probe_file->GetName().c_str());
+            probe_line = pbuf;
+            std::array<u8, 0x104> hdr{};
+            const std::size_t n = probe_file->Read(hdr.data(), hdr.size(), 0);
+            char mbuf[128];
+            std::snprintf(mbuf, sizeof(mbuf),
+                          "Hdr(%zuB): %02X %02X %02X %02X | @100: %02X %02X %02X %02X", n,
+                          hdr[0], hdr[1], hdr[2], hdr[3], hdr[0x100], hdr[0x101], hdr[0x102],
+                          hdr[0x103]);
+            magic_line = mbuf;
+        } else {
+            std::error_code pec;
+            const bool is_d = std::filesystem::is_directory(launch_cfg.rom_path, pec);
+            const bool has_00 =
+                std::filesystem::is_regular_file(std::filesystem::path(launch_cfg.rom_path) / "00", pec);
+            char pbuf[128];
+            std::snprintf(pbuf, sizeof(pbuf), "VFS NULL! is_dir=%d has_00=%d", is_d ? 1 : 0,
+                          has_00 ? 1 : 0);
+            probe_line = pbuf;
+            magic_line = "Check ROM path / split files on SD card.";
+        }
+        if (FILE* ef = std::fopen("sdmc:/switch/eden-nx2/last_load_error.txt", "w")) {
+            const std::string fname = std::filesystem::path(launch_cfg.rom_path).filename().string();
+            std::fprintf(ef, "%s\n%s\n%s\n%s\n", fname.c_str(), err_desc.c_str(),
+                         probe_line.c_str(), magic_line.c_str());
+            std::fflush(ef);
+            std::fclose(ef);
+        }
+        // Return cleanly to the launcher when a title fails to load.
         should_return_to_launcher = Switch2MainLoop();
     }
 
