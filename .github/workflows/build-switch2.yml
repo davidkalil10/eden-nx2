@@ -47,7 +47,7 @@ jobs:
           for attempt in 1 2 3 4 5; do
             if dkp-pacman -Sy --noconfirm --needed \
               switch-dev switch-portlibs switch-zlib switch-libzstd switch-lz4 \
-              switch-libopus switch-ffmpeg switch-dav1d switch-mbedtls switch-libpng switch-freetype; then
+              switch-libopus switch-ffmpeg switch-dav1d switch-mbedtls switch-curl switch-libpng switch-freetype; then
               break
             fi
             echo "dkp-pacman attempt $attempt failed; retrying in $((attempt * 10))s..."

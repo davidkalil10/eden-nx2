@@ -360,12 +360,20 @@ s64 WallClock::GetGPUTick() const {
 
 s64 WallClock::GetUptime() const {
     s64 cntvct_el0 = 0;
+#ifdef __SWITCH2__
+    asm volatile(
+        "isb\n\t"
+        "mrs %[cntvct_el0], cntvct_el0\n\t"
+        : [cntvct_el0] "=r"(cntvct_el0)
+    );
+#else
     asm volatile(
         "dsb ish\n\t"
         "mrs %[cntvct_el0], cntvct_el0\n\t"
         "dsb ish\n\t"
         : [cntvct_el0] "=r"(cntvct_el0)
     );
+#endif
     return cntvct_el0;
 }
 

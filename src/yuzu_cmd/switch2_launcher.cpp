@@ -5,6 +5,7 @@
 
 #include "yuzu_cmd/switch2_launcher.h"
 #include "yuzu_cmd/switch2_runtime.h"
+#include "yuzu_cmd/switch2_updater.h"
 
 #include <algorithm>
 #include <array>
@@ -596,7 +597,7 @@ std::vector<SettingOption> MakeDefaultOptions() {
          {"Unsafe (Faster)", "Auto (Default)"},
          0, true},
         {"frame_gen",
-         "Lossless Scaling (LSFG)", "Lossless Scaling (LSFG)",
+         "Frame Gen (LSFG)", "Frame Gen (LSFG)",
          "Gera frames extras na GPU Switch 2 (coloque Lossless.dll em eden-nx2/).",
          "Generates extra frames on Switch 2 GPU (place Lossless.dll in eden-nx2/).",
          {"off", "2x", "3x", "4x"},
@@ -604,7 +605,7 @@ std::vector<SettingOption> MakeDefaultOptions() {
          {"Off", "2x Frame Gen", "3x Frame Gen", "4x Frame Gen"},
          0, true},
         {"show_fps",
-         "Mostrar FPS na Tela", "Show On-Screen FPS",
+         "Mostrar FPS", "Show On-Screen FPS",
          "Exibe contador de FPS e velocidade no canto superior esquerdo do jogo.",
          "Displays FPS and emulation speed counter at top-left in game.",
          {"on", "detailed", "off"},
@@ -612,7 +613,7 @@ std::vector<SettingOption> MakeDefaultOptions() {
          {"FPS + Speed", "Detailed (FPS + Mode)", "Off"},
          0, true},
         {"fastload_boost",
-         "Modo de Clock (FastLoad)", "Clock Mode (FastLoad)",
+         "Clock (FastLoad)", "Clock (FastLoad)",
          "Normal usa GPU total (recomendado). FastLoad sobe CPU mas REDUZ a GPU.",
          "Normal keeps full GPU clocks (recommended). FastLoad boosts CPU but throttles GPU.",
          {"off", "on"},
@@ -620,7 +621,7 @@ std::vector<SettingOption> MakeDefaultOptions() {
          {"Normal (Full GPU)", "FastLoad (CPU+/GPU-)"},
          0, true},
         {"address_space",
-         "Espaco de RAM (Tabela)", "Memory Address Space",
+         "Espaco de RAM", "Address Space",
          "38-bit (512MB) equilibrado; 36-bit (128MB) libera mais RAM; 39-bit (1GB).",
          "38-bit (512MB) balanced; 36-bit (128MB) more free RAM; 39-bit (1GB).",
          {"38bit", "36bit", "39bit"},
@@ -628,7 +629,7 @@ std::vector<SettingOption> MakeDefaultOptions() {
          {"38-bit (Balanced)", "36-bit (Compact)", "39-bit (Full)"},
          0, true},
         {"jit_ahead",
-         "JIT Blocos Antecipados", "JIT Ahead Blocks",
+         "JIT Blocos Ahead", "JIT Ahead Blocks",
          "Pre-compila blocos sucessores em um unico IPC kaiHEN reduzindo stutter.",
          "Pre-compiles successor blocks in one kaiHEN IPC call to cut stutter.",
          {"8", "4", "16", "0"},
@@ -636,7 +637,7 @@ std::vector<SettingOption> MakeDefaultOptions() {
          {"8 Blocks (Default)", "4 Blocks", "16 Blocks", "Off"},
          0, true},
         {"shader_cache",
-         "Shader Cache em Disco", "Disk Shader Cache",
+         "Shader Cache (SD)", "Disk Shader Cache",
          "Salva shaders Vulkan no cartao SD para reduzir travamentos futuros.",
          "Saves compiled Vulkan shaders to SD card to eliminate repeat stutter.",
          {"on", "off"},
@@ -889,8 +890,8 @@ std::vector<SettingOption> MakePerGameOptions(const std::vector<SettingOption>& 
                 ? std::string{}
                 : src_labels[static_cast<std::size_t>(
                       std::clamp(opt.selected, 0, static_cast<int>(src_labels.size()) - 1))];
-        const std::string inh_pt = "Padrao Global (" + global_lbl + ")";
-        const std::string inh_en = "Global Default (" + global_lbl + ")";
+        const std::string inh_pt = "Global (" + global_lbl + ")";
+        const std::string inh_en = "Global (" + global_lbl + ")";
         copy.values.insert(copy.values.begin(), "inherit");
         copy.labels_pt.insert(copy.labels_pt.begin(), inh_pt);
         copy.labels_en.insert(copy.labels_en.begin(), inh_en);
@@ -1056,9 +1057,9 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
     cv.FillRect(0, 0, kScreenW, 68, PackRGBA(15, 23, 38));
     cv.FillRect(0, 66, kScreenW, 2, kAccent);
 
-    cv.DrawPill(24, 16, "EDEN-NX2", kAccent, PackRGBA(7, 22, 16), 2);
-    cv.DrawText(186, 18, "Nintendo Switch 2", kTextPrimary, 2, true);
-    cv.DrawText(186, 42, "Port by @davidkalil10 (ko-fi.com/davidkalil10)", kTextMuted, 1);
+    cv.DrawPill(24, 16, "EDEN-NX2 v" EDEN_NX2_VERSION, kAccent, PackRGBA(7, 22, 16), 2);
+    cv.DrawText(298, 18, "Switch 2", kTextPrimary, 2, true);
+    cv.DrawText(298, 42, "@davidkalil10 (ko-fi.com/davidkalil10)", kTextMuted, 1);
 
     const char* lsfg_txt =
         (lsfg_badge == LsfgBadge::Ready)
@@ -1080,12 +1081,14 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
     std::snprintf(ram_buf, sizeof(ram_buf), "RAM %llu/%lluM",
                   static_cast<unsigned long long>(mem_used >> 20),
                   static_cast<unsigned long long>(mem_total >> 20));
-    cv.DrawPill(765, 18, ram_buf, kCardBg, kCyan, 2);
+    cv.DrawPill(755, 18, ram_buf, kCardBg, kCyan, 2);
 
+    const std::uint64_t cmask = Switch2GetCoreMask();
+    const int ncores = __builtin_popcountll(cmask);
     char core_buf[32];
-    std::snprintf(core_buf, sizeof(core_buf), "CPU 0x%llx",
-                  static_cast<unsigned long long>(Switch2GetCoreMask()));
-    cv.DrawPill(1075, 18, core_buf, kCardBg, kTextPrimary, 2);
+    std::snprintf(core_buf, sizeof(core_buf), "%dc 0x%llx", ncores,
+                  static_cast<unsigned long long>(cmask));
+    cv.DrawPill(1065, 18, core_buf, kCardBg, kTextPrimary, 2);
 
     // Left panel: Library
     cv.DrawRoundedRect(24, 84, 724, 570, 14, kPanelBg, kBorderDim);
@@ -1220,6 +1223,8 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
     fx += cv.DrawPill(fx, 678, T(en, "[X] Global", "[X] Global"), kCardBg, kCyan, 1) + 10;
     fx += cv.DrawPill(fx, 678, T(en, "[Y] Do Jogo", "[Y] Per-Game"), kCardBg, kAmber, 1) + 10;
     fx += cv.DrawPill(fx, 678, T(en, "[-] PT/EN", "[-] PT/EN"), kCardBg, kTextPrimary, 1) + 10;
+    fx += cv.DrawPill(fx, 678, T(en, "[L] Atualizar", "[L] Update"), PackRGBA(24, 58, 92), kCyan,
+                      1) + 10;
     cv.DrawPill(1136, 678, T(en, "[+] Sair", "[+] Exit"), PackRGBA(120, 28, 36), kTextPrimary, 1);
 }
 
@@ -1890,9 +1895,8 @@ void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int s
 
         const std::string& lbl = en ? opts[idx].label_en : opts[idx].label_pt;
         const auto& ch_lbls = en ? opts[idx].labels_en : opts[idx].labels_pt;
-        const int lbl_scale = (lbl.size() <= 21) ? 2 : 1;
-        cv.DrawTextMaxWidth(112, ry + ((lbl_scale == 2) ? 9 : 13), 344, lbl,
-                            is_addon_row ? kCyan : kTextPrimary, lbl_scale);
+        // Always keep uniform scale=2 across every setting row for consistent readability.
+        cv.DrawTextMaxWidth(112, ry + 9, 396, lbl, is_addon_row ? kCyan : kTextPrimary, 2);
 
         const std::string raw_val =
             ch_lbls.empty()
@@ -1901,15 +1905,13 @@ void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int s
                       std::clamp(opts[idx].selected, 0, static_cast<int>(ch_lbls.size()) - 1))];
 
         if (is_addon_row) {
-            cv.DrawRoundedRect(468, ry + 4, 536, 26, 5, PackRGBA(14, 22, 34), kBorderDim);
-            cv.DrawTextMaxWidth(480, ry + 13, 512, raw_val, is_sel ? kAccent : kTextPrimary, 1);
-            cv.DrawPill(1016, ry + 6, T(en, "[A] Escolher >", "[A] Select >"),
+            cv.DrawRoundedRect(520, ry + 3, 492, 28, 5, PackRGBA(14, 22, 34), kBorderDim);
+            cv.DrawTextMaxWidth(532, ry + 9, 468, raw_val, is_sel ? kAccent : kTextPrimary, 2);
+            cv.DrawPill(1022, ry + 7, T(en, "[A] Abrir >", "[A] Open >"),
                         is_sel ? kAccentSoft : kCardBg, is_sel ? kAccent : kCyan, 1);
         } else {
             const std::string val_txt = "< " + raw_val + " >";
-            const int val_scale = (val_txt.size() <= 41) ? 2 : 1;
-            cv.DrawTextMaxWidth(468, ry + ((val_scale == 2) ? 9 : 13), 692, val_txt,
-                                is_sel ? kAccent : kCyan, val_scale);
+            cv.DrawTextMaxWidth(520, ry + 9, 640, val_txt, is_sel ? kAccent : kCyan, 2);
         }
     }
     DrawScrollbar(cv, 1188, 98, kMaxVis * 40 - 6, start, kMaxVis, total);
@@ -2004,9 +2006,211 @@ bool RunSettingsModal(Canvas& cv, std::vector<SettingOption>& opts, const std::s
     return false;
 }
 
+void DrawUpdaterBox(Canvas& cv, bool en, const std::string& status_title,
+                    const std::string& line1, const std::string& line2,
+                    const std::string& line3, int progress_pct,
+                    const std::string& primary_hint, const std::string& secondary_hint,
+                    std::uint32_t title_color) {
+    cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 210);
+    cv.DrawRoundedRect(140, 140, 1000, 440, 16, kPanelBg, kAccent);
+    cv.DrawTextMaxWidth(180, 168, 920,
+                        T(en, "AUTO-UPDATER (GITHUB RELEASES)", "AUTO-UPDATER (GITHUB RELEASES)"),
+                        kAccent, 2, true);
+    cv.FillRect(172, 206, 936, 2, kBorderDim);
+
+    cv.DrawTextMaxWidth(180, 230, 920, status_title, title_color, 2, true);
+    if (!line1.empty()) {
+        cv.DrawTextMaxWidth(180, 274, 920, line1, kTextPrimary, 2);
+    }
+    if (!line2.empty()) {
+        cv.DrawTextMaxWidth(180, 312, 920, line2, kCyan, 2);
+    }
+    if (!line3.empty()) {
+        cv.DrawTextMaxWidth(180, 354, 920, line3, kTextMuted, 1);
+    }
+
+    if (progress_pct >= 0) {
+        const int clamped = std::clamp(progress_pct, 0, 100);
+        cv.DrawRoundedRect(180, 404, 920, 32, 8, kCardBg, kBorderDim);
+        const int fill_w = (912 * clamped) / 100;
+        if (fill_w > 0) {
+            cv.DrawRoundedRect(184, 408, fill_w, 24, 6, kAccent, kAccent);
+        }
+    }
+
+    int fx = 180;
+    if (!primary_hint.empty()) {
+        fx += cv.DrawPill(fx, 512, primary_hint, kAccentSoft, kAccent, 2) + 16;
+    }
+    if (!secondary_hint.empty()) {
+        cv.DrawPill(fx, 512, secondary_hint, kCardBg, kTextPrimary, 2);
+    }
+    cv.Present();
+}
+
+// Returns true to keep launcher open; sets *out_restart = true if update installed and user chose restart.
+bool RunUpdaterModal(Canvas& cv, bool en, const char* self_nro_path, bool* out_restart) {
+    const std::string target_nro = Switch2ResolveSelfNroPath(self_nro_path);
+
+    for (;;) {
+        DrawUpdaterBox(
+            cv, en,
+            T(en, "Verificando atualizacoes...", "Checking for updates..."),
+            std::string(T(en, "Versao atual: v", "Current version: v")) + EDEN_NX2_VERSION,
+            "github.com/davidkalil10/eden-nx2",
+            target_nro, -1, "", "", kCyan);
+
+        const Switch2UpdateInfo info = Switch2CheckForUpdate();
+        if (!info.ok) {
+            DrawUpdaterBox(
+                cv, en,
+                T(en, "Falha ao verificar atualizacao", "Failed to check for updates"),
+                info.error_msg,
+                T(en, "Verifique a conexao Wi-Fi do Switch 2.", "Check your Switch 2 Wi-Fi connection."),
+                "github.com/davidkalil10/eden-nx2/releases", -1,
+                T(en, "[A] Tentar Novamente", "[A] Retry"),
+                T(en, "[B] Voltar", "[B] Back"), kAmber);
+
+            Switch2PadSnapshot pad{};
+            while (Switch2PollInput(&pad, false)) {
+                if (pad.raw_down & SWITCH2_BTN_A) break;
+                if (pad.raw_down & SWITCH2_BTN_B) return true;
+                Switch2SleepMs(16);
+            }
+            if (!Switch2MainLoop()) return false;
+            continue;
+        }
+
+        if (!info.update_available) {
+            DrawUpdaterBox(
+                cv, en,
+                T(en, "Eden-NX2 ja esta atualizado!", "Eden-NX2 is already up to date!"),
+                std::string(T(en, "Versao instalada: v", "Installed version: v")) + info.current_version,
+                std::string(T(en, "Ultima release: ", "Latest release: ")) + info.tag_name,
+                target_nro, -1, "", T(en, "[B] Voltar", "[B] Back"), kAccent);
+
+            Switch2PadSnapshot pad{};
+            while (Switch2PollInput(&pad, false)) {
+                if (pad.raw_down & (SWITCH2_BTN_A | SWITCH2_BTN_B)) return true;
+                Switch2SleepMs(16);
+            }
+            return false;
+        }
+
+        DrawUpdaterBox(
+            cv, en,
+            std::string(T(en, "Nova versao disponivel: ", "New version available: ")) + info.tag_name,
+            std::string(T(en, "Atual: v", "Current: v")) + info.current_version + "  ->  v" +
+                info.latest_version,
+            info.release_name.empty() ? std::string("eden-switch2.nro") : info.release_name,
+            std::string(T(en, "Destino: ", "Target: ")) + target_nro, -1,
+            T(en, "[A] Baixar e Instalar", "[A] Download & Install"),
+            T(en, "[B] Cancelar", "[B] Cancel"), kAccent);
+
+        bool start_download = false;
+        Switch2PadSnapshot pad{};
+        while (Switch2PollInput(&pad, false)) {
+            if (pad.raw_down & SWITCH2_BTN_A) {
+                start_download = true;
+                break;
+            }
+            if (pad.raw_down & SWITCH2_BTN_B) {
+                return true;
+            }
+            Switch2SleepMs(16);
+        }
+        if (!start_download) return false;
+
+        int last_pct = -1;
+        std::uint64_t last_drawn_bytes = 0;
+        std::string dl_err;
+        DrawUpdaterBox(
+            cv, en,
+            std::string(T(en, "Baixando ", "Downloading ")) + info.tag_name + "...",
+            T(en, "Conectando ao GitHub...", "Connecting to GitHub..."),
+            "", target_nro, 0, "", T(en, "[B] Cancelar", "[B] Cancel"), kCyan);
+
+        const bool installed = Switch2DownloadAndInstallUpdate(
+            info.download_url, target_nro,
+            [&](std::uint64_t dl_now, std::uint64_t dl_tot) -> bool {
+                Switch2PadSnapshot p{};
+                if (!Switch2PollInput(&p, false)) {
+                    return false;
+                }
+                if (p.raw_down & SWITCH2_BTN_B) {
+                    return false;
+                }
+                const int pct =
+                    (dl_tot > 0) ? static_cast<int>((dl_now * 100ULL) / dl_tot) : 0;
+                if (pct != last_pct || dl_now >= last_drawn_bytes + 512u * 1024u) {
+                    last_pct = pct;
+                    last_drawn_bytes = dl_now;
+                    char prog_buf[96];
+                    if (dl_tot > 0) {
+                        std::snprintf(prog_buf, sizeof(prog_buf), "%.1f MB / %.1f MB (%d%%)",
+                                      static_cast<double>(dl_now) / (1024.0 * 1024.0),
+                                      static_cast<double>(dl_tot) / (1024.0 * 1024.0), pct);
+                    } else {
+                        std::snprintf(prog_buf, sizeof(prog_buf), "%.1f MB",
+                                      static_cast<double>(dl_now) / (1024.0 * 1024.0));
+                    }
+                    DrawUpdaterBox(
+                        cv, en,
+                        std::string(T(en, "Baixando ", "Downloading ")) + info.tag_name + "...",
+                        prog_buf,
+                        T(en, "Validando NRO0/OUN0 ao finalizar...", "Validating NRO0/OUN0 when done..."),
+                        target_nro, pct, "", T(en, "[B] Cancelar", "[B] Cancel"), kCyan);
+                }
+                return true;
+            },
+            &dl_err);
+
+        if (!installed) {
+            DrawUpdaterBox(
+                cv, en,
+                T(en, "Atualizacao nao concluida", "Update not completed"),
+                dl_err,
+                T(en, "Seu arquivo atual foi preservado sem alteracoes.",
+                  "Your current NRO file was kept untouched."),
+                target_nro, -1,
+                T(en, "[A] Tentar Novamente", "[A] Retry"),
+                T(en, "[B] Voltar", "[B] Back"), kAmber);
+
+            while (Switch2PollInput(&pad, false)) {
+                if (pad.raw_down & SWITCH2_BTN_A) break;
+                if (pad.raw_down & SWITCH2_BTN_B) return true;
+                Switch2SleepMs(16);
+            }
+            if (!Switch2MainLoop()) return false;
+            continue;
+        }
+
+        DrawUpdaterBox(
+            cv, en,
+            T(en, "Atualizacao instalada com sucesso!", "Update installed successfully!"),
+            std::string(T(en, "Nova versao pronta: ", "New version ready: ")) + info.tag_name,
+            T(en, "Reinicie para carregar o novo Eden-NX2.", "Restart to load the new Eden-NX2."),
+            target_nro, 100,
+            T(en, "[A] Reiniciar Agora", "[A] Restart Now"),
+            T(en, "[B] Depois", "[B] Later"), kAccent);
+
+        while (Switch2PollInput(&pad, false)) {
+            if (pad.raw_down & SWITCH2_BTN_A) {
+                if (out_restart) *out_restart = true;
+                return false;
+            }
+            if (pad.raw_down & SWITCH2_BTN_B) {
+                return true;
+            }
+            Switch2SleepMs(16);
+        }
+        return false;
+    }
+}
+
 } // namespace
 
-bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
+bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg, const char* self_nro_path) {
     if (!out_cfg) return false;
     Switch2InitInput();
     if (!Switch2FbInit()) {
@@ -2057,6 +2261,17 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
             }
             SaveGlobalIni(global_opts);
             eff_dirty = true;
+            redraw = true;
+        }
+
+        if (down & SWITCH2_BTN_L) {
+            bool want_restart = false;
+            if (!RunUpdaterModal(cv, en, self_nro_path, &want_restart)) {
+                if (want_restart) {
+                    out_cfg->request_restart = true;
+                }
+                break;
+            }
             redraw = true;
         }
 

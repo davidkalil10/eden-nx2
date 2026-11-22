@@ -650,10 +650,15 @@ int main(int argc, char** argv) {
     Switch2InitInput();
 
     Switch2LaunchConfig launch_cfg{};
-    if (!Switch2RunLauncher(&launch_cfg) || launch_cfg.rom_path.empty()) {
-        Switch2BootTrace("02: Launcher exited without launching a ROM");
+    if (!Switch2RunLauncher(&launch_cfg, argc > 0 ? argv[0] : nullptr) || launch_cfg.rom_path.empty()) {
+        Switch2BootTrace(launch_cfg.request_restart
+                             ? "02: Launcher requested restart after update"
+                             : "02: Launcher exited without launching a ROM");
         Common::Log::Stop();
         Dynarmic::Backend::Arm64::Switch2JitPool::Shutdown();
+        if (launch_cfg.request_restart) {
+            Switch2ScheduleReturnToLauncher(argc > 0 ? argv[0] : nullptr);
+        }
         return 0;
     }
 

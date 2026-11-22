@@ -332,9 +332,11 @@ void ArmDynarmic64::MakeJit(Common::PageTable* page_table, std::size_t address_s
         if (Settings::values.cpuopt_unsafe_fastmem_check) {
             config.fastmem_address_space_bits = 64;
 #if defined(__SWITCH2__)
-            // Software page table equivalent: replace LSR+TST+B.NE with a single branchless UBFX.
+            // Software page table fast path: replace LSR+TST+B.NE with a single branchless UBFX,
+            // and omit per-access page-boundary misalignment checks (saves 3 insns + 1 branch/load).
             if (config.fastmem_pointer == std::nullopt) {
                 config.silently_mirror_page_table = true;
+                config.detect_misaligned_access_via_page_table = 0;
             }
 #endif
         }

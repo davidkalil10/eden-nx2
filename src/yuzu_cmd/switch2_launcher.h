@@ -32,10 +32,11 @@ struct Switch2LaunchConfig {
     bool ui_english = false;
     std::string update_pkg = "auto"; // "auto", "none", or full path to Update .nsp/.xci
     std::string dlc_pkg = "auto";    // "auto", "none", or full path to DLC .nsp/.xci or folder
+    bool request_restart = false;    // Set when auto-updater installs a new NRO and asks to relaunch
 };
 
 // Opens the 1280x720 graphical ROM selector & settings dashboard.
-// Returns true when a game is chosen (fills out_cfg); returns false to exit to hbmenu.
-bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg);
+// Returns true when a game is chosen (fills out_cfg); returns false to exit/restart.
+bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg, const char* self_nro_path = nullptr);
 
 #endif // __SWITCH2__

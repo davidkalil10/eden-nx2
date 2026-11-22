@@ -591,8 +591,23 @@ void SetCurrentThreadName(const char* name) {
         if (thread_name == name) {
             u64 allowed = 0;
             if (svcGetInfo(&allowed, 0 /* CoreMask */, 0xFFFF8001 /* this process */, 0) == 0 &&
-                (allowed & (u64{1} << core)) != 0) {
-                svcSetThreadCoreMask(0xFFFF8000 /* this thread */, core, allowed);
+                allowed != 0) {
+                s32 target_core = core;
+                if ((allowed & (u64{1} << core)) == 0) {
+                    // Fallback gracefully when fewer cores are exposed (e.g. 3-core mask 0x7):
+                    // map logical slot cyclically across the actually available cores.
+                    s32 avail[64]{};
+                    int num_avail = 0;
+                    for (s32 bit = 0; bit < 64; ++bit) {
+                        if ((allowed & (u64{1} << bit)) != 0) {
+                            avail[num_avail++] = bit;
+                        }
+                    }
+                    if (num_avail > 0) {
+                        target_core = avail[core % num_avail];
+                    }
+                }
+                svcSetThreadCoreMask(0xFFFF8000 /* this thread */, target_core, allowed);
             }
             break;
         }
