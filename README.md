@@ -48,7 +48,7 @@
 ## <a id="overview"></a>Overview / Visão Geral
 
 **English:**  
-**Eden-NX2** runs Nintendo Switch 1 games (`.nsp`, `.xci`, `.nca`, `.nro`) natively as a Switch 2 homebrew application (`eden-switch2.nro`), built directly on **`ounce-devkit`**, **`libounce`**, **`OunceVK`** (static Vulkan 1.4), and **`kaiHEN`** dual-mapped JIT memory.
+**Eden-NX2** runs Nintendo Switch 1 games (`.nsp`, `.nsz`, `.xci`, `.xcz`, `.nca`, `.nro`) natively as a Switch 2 homebrew application (`eden-switch2.nro`), built directly on **`ounce-devkit`**, **`libounce`**, **`OunceVK`** (static Vulkan 1.4), and **`kaiHEN`** dual-mapped JIT memory.
 
 **Português (BR):**  
 O **Eden-NX2** é um port nativo de homebrew para **Nintendo Switch 2** (`OUN0` NRO / Cortex-A78C) do emulador **Eden**, utilizando **Vulkan 1.4 (`OunceVK`)**, **JIT ARM64 via `kaiHEN`**, launcher gráfico integrado em 1280×720, suporte bilíngue (PT/EN) e geração de frames via **Lossless Scaling (`LSFG`)**.
@@ -57,7 +57,7 @@ O **Eden-NX2** é um port nativo de homebrew para **Nintendo Switch 2** (`OUN0` 
 > You must supply your own legitimately dumped Switch 1 decryption keys (`prod.keys`) and game dumps. No copyrighted keys, firmware, or ROMs are included in this repository.
 
 > [!WARNING]
-> **Known issues:** NSZ or Switch 1 NUP not working yet.
+> **Known issues:** Switch 1 / Switch 2 NUP packages are experimental and not fully working yet.
 
 ---
 
@@ -82,16 +82,16 @@ O **Eden-NX2** é um port nativo de homebrew para **Nintendo Switch 2** (`OUN0` 
 
 ## <a id="sd-card-layout"></a>SD Card Setup (`sdmc:`)
 
-Copy `eden-switch2.nro` from the [GitHub Actions artifacts](https://github.com/davidkalil10/eden-nx2/actions/workflows/build-switch2.yml) to your Switch 2 microSD card using the layout below:
+Copy `eden-switch2.nro` from [GitHub Releases](https://github.com/davidkalil10/eden-nx2/releases) (or [GitHub Actions artifacts](https://github.com/davidkalil10/eden-nx2/actions/workflows/build-switch2.yml)) to your Switch 2 microSD card using the layout below:
 
 ```text
 sdmc:/
 ├── switch/
 │   └── eden-nx2/
 │       ├── eden-switch2.nro          # Main Switch 2 homebrew binary (OUN0)
-│       ├── roms/                     # Place .nsp / .xci / .nca / .nro files here
-│       ├── updates/                  # Place game Update .nsp / .xci files here (optional subfolders)
-│       ├── dlc/                      # Place DLC .nsp / .xci files here (or per-game subfolders)
+│       ├── roms/                     # Place .nsp / .nsz / .xci / .xcz / .nca / .nro files here
+│       ├── updates/                  # Place game Update .nsp / .nsz / .xci files here (optional subfolders)
+│       ├── dlc/                      # Place DLC .nsp / .nsz / .xci files here (or per-game subfolders)
 │       ├── keys/
 │       │   └── prod.keys             # Switch 1 decryption keys (or in .local/share/eden/keys/)
 │       ├── Lossless.dll              # (Optional) Enables LSFG 2x/3x/4x Frame Generation

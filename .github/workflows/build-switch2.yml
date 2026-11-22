@@ -109,4 +109,4 @@ jobs:
           name: Eden-NX2 ${{ github.ref_name }} (Nintendo Switch 2)
           files: dist/eden-switch2.nro
           generate_release_notes: true
-          prerelease: true
+          prerelease: false
