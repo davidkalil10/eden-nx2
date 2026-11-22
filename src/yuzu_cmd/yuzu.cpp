@@ -399,11 +399,22 @@ void RegisterSwitch2Addons(FileSys::ManualContentProvider& provider, FileSys::Vf
                             true);
         ScanSwitch2AddonDir(provider, vfs, rom_dir, cfg.rom_path, false, true, false);
     } else if (cfg.dlc_pkg != "none") {
-        std::error_code ec;
-        if (std::filesystem::is_directory(cfg.dlc_pkg, ec)) {
-            ScanSwitch2AddonDir(provider, vfs, cfg.dlc_pkg, cfg.rom_path, false, false, true);
-        } else {
-            add_file(cfg.dlc_pkg);
+        std::size_t start = 0;
+        while (start < cfg.dlc_pkg.size()) {
+            const std::size_t bar = cfg.dlc_pkg.find('|', start);
+            const std::string item = (bar == std::string::npos)
+                                         ? cfg.dlc_pkg.substr(start)
+                                         : cfg.dlc_pkg.substr(start, bar - start);
+            if (!item.empty()) {
+                std::error_code ec;
+                if (std::filesystem::is_directory(item, ec)) {
+                    ScanSwitch2AddonDir(provider, vfs, item, cfg.rom_path, false, false, true);
+                } else {
+                    add_file(item);
+                }
+            }
+            if (bar == std::string::npos) break;
+            start = bar + 1;
         }
     }
 }

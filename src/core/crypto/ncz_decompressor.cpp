@@ -297,12 +297,12 @@ private:
 };
 
 // Solid NCZ: one zstd stream over the whole body. Decoded incrementally into a bounded
-// 1 MiB chunk cache (256 MiB pinned head + 384 MiB LRU) while discarding intermediate
+// 1 MiB chunk cache (256 MiB pinned head + 512 MiB LRU) while discarding intermediate
 // forward-seek chunks beyond a 16 MiB tail window so multi-GB jumps don't thrash the LRU.
 class SolidNczFile final : public FileSys::VfsFile {
 public:
     static constexpr std::size_t PinnedBodyChunks = 256;
-    static constexpr std::size_t MaxLruChunks = 384;
+    static constexpr std::size_t MaxLruChunks = 512;
     static constexpr u64 SeekKeepTail = 16ULL * Chunk;
 
     SolidNczFile(std::string name_, FileSys::VirtualFile source_,
@@ -353,11 +353,11 @@ public:
             const u64 piece_end = std::min<u64>(end, chunk_end);
             const std::size_t take = static_cast<std::size_t>(piece_end - pos);
 
-            const std::vector<u8>* chunk = FindChunkLocked(cid);
-            if (chunk != nullptr && piece_end <= frontier) {
-                std::memcpy(out + out_off, chunk->data() + in_chunk, take);
+            const CachedChunk* chunk = FindChunkLocked(cid);
+            if (chunk != nullptr && chunk->valid_bytes >= in_chunk + take) {
+                std::memcpy(out + out_off, chunk->data.data() + in_chunk, take);
             } else {
-                if (chunk == nullptr && pos < frontier) {
+                if (pos < frontier) {
                     ResetStreamLocked();
                 }
                 const u64 target = std::min<u64>(nca_size, std::max(piece_end, chunk_end));
@@ -365,10 +365,10 @@ public:
                     return out_off;
                 }
                 chunk = FindChunkLocked(cid);
-                if (chunk == nullptr || chunk->size() < in_chunk + take) {
+                if (chunk == nullptr || chunk->valid_bytes < in_chunk + take) {
                     return out_off;
                 }
-                std::memcpy(out + out_off, chunk->data() + in_chunk, take);
+                std::memcpy(out + out_off, chunk->data.data() + in_chunk, take);
             }
 
             pos += take;
@@ -381,6 +381,11 @@ public:
     bool Rename(std::string_view) override { return false; }
 
 private:
+    struct CachedChunk {
+        std::vector<u8> data;
+        std::size_t valid_bytes = 0;
+    };
+
     std::size_t ChunkLengthLocked(u64 cid) const {
         const u64 start = cid * Chunk;
         const u64 body_total = nca_size - HeaderSize;
@@ -388,9 +393,9 @@ private:
         return static_cast<std::size_t>(std::min<u64>(Chunk, body_total - start));
     }
 
-    const std::vector<u8>* FindChunkLocked(u64 cid) const {
+    const CachedChunk* FindChunkLocked(u64 cid) const {
         if (cid < PinnedBodyChunks) {
-            return cid < pinned_chunks.size() && !pinned_chunks[cid].empty()
+            return cid < pinned_chunks.size() && pinned_chunks[cid].valid_bytes > 0
                        ? &pinned_chunks[cid]
                        : nullptr;
         }
@@ -400,34 +405,39 @@ private:
         return &it->second->second;
     }
 
-    std::vector<u8>* ObtainWritableChunkLocked(u64 cid, std::size_t chunk_len,
-                                            bool allow_insert_lru) const {
+    CachedChunk* ObtainWritableChunkLocked(u64 cid, std::size_t chunk_len,
+                                           bool allow_insert_lru) const {
         if (cid < PinnedBodyChunks) {
             if (pinned_chunks.size() <= cid) pinned_chunks.resize(cid + 1);
-            if (pinned_chunks[cid].size() != chunk_len) {
-                pinned_chunks[cid].assign(chunk_len, 0);
+            auto& entry = pinned_chunks[cid];
+            if (entry.data.size() != chunk_len) {
+                entry.data.assign(chunk_len, 0);
+                entry.valid_bytes = 0;
             }
-            return &pinned_chunks[cid];
+            return &entry;
         }
         const auto it = lru_map.find(cid);
         if (it != lru_map.end()) {
             lru_list.splice(lru_list.begin(), lru_list, it->second);
-            if (it->second->second.size() != chunk_len) {
-                it->second->second.assign(chunk_len, 0);
+            auto& entry = it->second->second;
+            if (entry.data.size() != chunk_len) {
+                entry.data.assign(chunk_len, 0);
+                entry.valid_bytes = 0;
             }
-            return &it->second->second;
+            return &entry;
         }
         if (!allow_insert_lru) {
             return nullptr;
         }
-        std::vector<u8> buf;
+        CachedChunk entry;
         if (lru_map.size() >= MaxLruChunks && !lru_list.empty()) {
-            buf = std::move(lru_list.back().second);
+            entry.data = std::move(lru_list.back().second.data);
             lru_map.erase(lru_list.back().first);
             lru_list.pop_back();
         }
-        buf.assign(chunk_len, 0);
-        lru_list.emplace_front(cid, std::move(buf));
+        entry.data.assign(chunk_len, 0);
+        entry.valid_bytes = 0;
+        lru_list.emplace_front(cid, std::move(entry));
         lru_map.emplace(cid, lru_list.begin());
         return &lru_list.front().second;
     }
@@ -445,11 +455,14 @@ private:
             const std::size_t take = std::min<std::size_t>(len - done, chunk_len - in_chunk);
             const u64 chunk_end_off = HeaderSize + cid * Chunk + chunk_len;
             const bool allow_insert_lru = chunk_end_off > keep_from;
-            if (auto* buf = ObtainWritableChunkLocked(cid, chunk_len, allow_insert_lru)) {
-                if (src != nullptr) {
-                    std::memcpy(buf->data() + in_chunk, src + done, take);
-                } else {
-                    std::memset(buf->data() + in_chunk, 0, take);
+            if (auto* entry = ObtainWritableChunkLocked(cid, chunk_len, allow_insert_lru)) {
+                if (entry->valid_bytes < chunk_len) {
+                    if (src != nullptr) {
+                        std::memcpy(entry->data.data() + in_chunk, src + done, take);
+                    } else {
+                        std::memset(entry->data.data() + in_chunk, 0, take);
+                    }
+                    entry->valid_bytes = std::max(entry->valid_bytes, in_chunk + take);
                 }
             }
             done += take;
@@ -555,9 +568,9 @@ private:
     const std::vector<u8> raw_header;
     u64 nca_size{};
     mutable std::mutex mutex;
-    mutable std::vector<std::vector<u8>> pinned_chunks;
-    mutable std::list<std::pair<u64, std::vector<u8>>> lru_list;
-    mutable std::unordered_map<u64, std::list<std::pair<u64, std::vector<u8>>>::iterator> lru_map;
+    mutable std::vector<CachedChunk> pinned_chunks;
+    mutable std::list<std::pair<u64, CachedChunk>> lru_list;
+    mutable std::unordered_map<u64, std::list<std::pair<u64, CachedChunk>>::iterator> lru_map;
     mutable ZSTD_DStream* stream = nullptr;
     mutable u64 read_pos = 0;
     mutable u64 frontier = 0;

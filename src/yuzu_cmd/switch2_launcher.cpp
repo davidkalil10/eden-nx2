@@ -662,6 +662,72 @@ std::vector<SettingOption> MakeDefaultOptions() {
     };
 }
 
+std::string BaseName(std::string_view path) {
+    while (!path.empty() && (path.back() == '/' || path.back() == '\\')) {
+        path.remove_suffix(1);
+    }
+    const std::size_t slash = path.find_last_of("/\\");
+    return std::string((slash == std::string_view::npos) ? path : path.substr(slash + 1));
+}
+
+std::vector<std::string> SplitPipe(const std::string& s) {
+    std::vector<std::string> out;
+    std::size_t start = 0;
+    while (start < s.size()) {
+        const std::size_t bar = s.find('|', start);
+        const std::string part = (bar == std::string::npos) ? s.substr(start)
+                                                            : s.substr(start, bar - start);
+        if (!part.empty()) out.push_back(part);
+        if (bar == std::string::npos) break;
+        start = bar + 1;
+    }
+    return out;
+}
+
+std::string JoinPipe(const std::vector<std::string>& items) {
+    std::string out;
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        if (i > 0) out.push_back('|');
+        out += items[i];
+    }
+    return out;
+}
+
+std::string FormatAddonSummary(bool is_dlc, const std::string& val, bool en) {
+    if (val.empty() || val == "auto") {
+        return is_dlc ? T(en, "Auto (pasta dlc/)", "Auto (dlc/ folder)")
+                      : T(en, "Auto (pasta updates/)", "Auto (updates/ folder)");
+    }
+    if (val == "none") {
+        return is_dlc ? T(en, "Desativado (Sem DLC)", "Disabled (No DLC)")
+                      : T(en, "Desativado (Base v1.0)", "Disabled (Base v1.0)");
+    }
+    if (!is_dlc) {
+        return BaseName(val);
+    }
+    const auto items = SplitPipe(val);
+    if (items.empty()) {
+        return T(en, "Auto (pasta dlc/)", "Auto (dlc/ folder)");
+    }
+    if (items.size() == 1) {
+        return BaseName(items[0]);
+    }
+    return std::to_string(items.size()) + (en ? " DLCs selected" : " DLCs selecionadas");
+}
+
+void SetAddonOptionValue(SettingOption& opt, const std::string& val) {
+    const bool is_dlc = (opt.key == "dlc_pkg");
+    const auto it = std::find(opt.values.begin(), opt.values.end(), val);
+    if (it != opt.values.end()) {
+        opt.selected = static_cast<int>(it - opt.values.begin());
+        return;
+    }
+    opt.values.push_back(val);
+    opt.labels_pt.push_back(FormatAddonSummary(is_dlc, val, false));
+    opt.labels_en.push_back(FormatAddonSummary(is_dlc, val, true));
+    opt.selected = static_cast<int>(opt.values.size()) - 1;
+}
+
 void LoadIniInto(std::vector<SettingOption>& opts, const std::string& path, bool is_per_game) {
     std::ifstream in(path);
     if (!in) return;
@@ -675,6 +741,10 @@ void LoadIniInto(std::vector<SettingOption>& opts, const std::string& path, bool
         const std::string v = line.substr(eq + 1);
         for (auto& opt : opts) {
             if (opt.key != k) continue;
+            if (opt.key == "update_pkg" || opt.key == "dlc_pkg") {
+                SetAddonOptionValue(opt, v);
+                continue;
+            }
             const auto it = std::find(opt.values.begin(), opt.values.end(), v);
             if (it != opt.values.end()) {
                 opt.selected = static_cast<int>(it - opt.values.begin());
@@ -694,122 +764,113 @@ void SaveGlobalIni(const std::vector<SettingOption>& opts) {
     }
 }
 
+struct AddonItem {
+    std::string label;
+    std::string full_path;
+    std::string source_tag;
+    std::uint64_t size_bytes = 0;
+    bool is_dir = false;
+};
+
 struct AddonLists {
-    std::vector<std::pair<std::string, std::string>> updates;           // {label, full_path}
-    std::vector<std::tuple<std::string, std::string, bool>> dlcs;       // {label, full_path, is_dir}
+    std::vector<AddonItem> updates;
+    std::vector<AddonItem> dlcs;
 };
 
 AddonLists ScanAddonListsOnce() {
     AddonLists cache;
     SafeForEachDirEntry(kDefaultUpdatesDir,
-                        [&](const std::filesystem::directory_entry& e, std::error_code& ec) {
+                        [&](const std::filesystem::directory_entry& e, std::error_code&) {
+                            std::error_code ec;
                             const std::string fname = e.path().filename().string();
                             if (fname.empty() || fname[0] == '.') return;
                             const std::string full = e.path().generic_string();
                             if (e.is_directory(ec)) {
                                 SafeForEachDirEntry(
                                     full + "/",
-                                    [&](const std::filesystem::directory_entry& sub, std::error_code& sec) {
+                                    [&](const std::filesystem::directory_entry& sub, std::error_code&) {
+                                        std::error_code sec;
                                         const std::string sname = sub.path().filename().string();
                                         if (sname.empty() || sname[0] == '.' || sub.is_directory(sec)) return;
                                         if (IsAddonExt(ToLowerExt(sub.path()))) {
-                                            cache.updates.emplace_back(
-                                                "updates/" + fname + "/" + sname,
-                                                sub.path().generic_string());
+                                            const auto sz = sub.file_size(sec);
+                                            cache.updates.push_back(AddonItem{
+                                                fname + "/" + sname, sub.path().generic_string(),
+                                                "UPD", sec ? 0 : sz, false});
                                         }
                                     });
                                 return;
                             }
                             if (IsAddonExt(ToLowerExt(e.path()))) {
-                                cache.updates.emplace_back("updates/" + fname, full);
+                                const auto sz = e.file_size(ec);
+                                cache.updates.push_back(
+                                    AddonItem{fname, full, "UPD", ec ? 0 : sz, false});
                             }
                         });
     std::sort(cache.updates.begin(), cache.updates.end(),
-              [](const auto& a, const auto& b) { return a.first < b.first; });
+              [](const AddonItem& a, const AddonItem& b) { return a.label < b.label; });
 
     SafeForEachDirEntry(kDefaultDlcDir,
-                        [&](const std::filesystem::directory_entry& e, std::error_code& ec) {
+                        [&](const std::filesystem::directory_entry& e, std::error_code&) {
+                            std::error_code ec;
                             const std::string fname = e.path().filename().string();
                             if (fname.empty() || fname[0] == '.') return;
                             const std::string full = e.path().generic_string();
                             if (e.is_directory(ec)) {
-                                cache.dlcs.emplace_back(fname, full, true);
+                                cache.dlcs.push_back(AddonItem{fname, full, "DIR", 0, true});
                                 SafeForEachDirEntry(
                                     full + "/",
-                                    [&](const std::filesystem::directory_entry& sub, std::error_code& sec) {
+                                    [&](const std::filesystem::directory_entry& sub, std::error_code&) {
+                                        std::error_code sec;
                                         const std::string sname = sub.path().filename().string();
                                         if (sname.empty() || sname[0] == '.' || sub.is_directory(sec)) return;
                                         if (IsAddonExt(ToLowerExt(sub.path()))) {
-                                            cache.dlcs.emplace_back(
+                                            const auto sz = sub.file_size(sec);
+                                            cache.dlcs.push_back(AddonItem{
                                                 fname + "/" + sname, sub.path().generic_string(),
-                                                false);
+                                                "DLC", sec ? 0 : sz, false});
                                         }
                                     });
                                 return;
                             }
                             if (IsAddonExt(ToLowerExt(e.path()))) {
-                                cache.dlcs.emplace_back(fname, full, false);
+                                const auto sz = e.file_size(ec);
+                                cache.dlcs.push_back(
+                                    AddonItem{fname, full, "DLC", ec ? 0 : sz, false});
                             }
                         });
-    std::sort(cache.dlcs.begin(), cache.dlcs.end(), [](const auto& a, const auto& b) {
-        if (std::get<2>(a) != std::get<2>(b)) return std::get<2>(a);
-        return std::get<0>(a) < std::get<0>(b);
+    std::sort(cache.dlcs.begin(), cache.dlcs.end(), [](const AddonItem& a, const AddonItem& b) {
+        if (a.is_dir != b.is_dir) return a.is_dir;
+        return a.label < b.label;
     });
     return cache;
 }
 
-void PushUniqueAddon(SettingOption& opt, const std::string& full, const std::string& label_pt,
-                     const std::string& label_en) {
-    if (full.empty()) return;
-    if (std::find(opt.values.begin(), opt.values.end(), full) != opt.values.end()) return;
-    opt.values.push_back(full);
-    opt.labels_pt.push_back(label_pt);
-    opt.labels_en.push_back(label_en);
-}
-
-std::vector<SettingOption> BuildPerGameAddonOptions(const std::string& rom_path,
-                                                    const AddonLists& cache,
-                                                    const std::vector<GameEntry>& dir_entries) {
+std::vector<SettingOption> BuildPerGameAddonOptions(const std::string&, const AddonLists&,
+                                                    const std::vector<GameEntry>&) {
     SettingOption upd;
     upd.key = "update_pkg";
     upd.label_pt = "Update do Jogo";
     upd.label_en = "Game Update";
-    upd.help_pt = "Arquivo Update (.nsp/.nsz/.xci). 'Auto' carrega de sdmc:/switch/eden-nx2/updates/.";
-    upd.help_en = "Update package (.nsp/.nsz/.xci). 'Auto' loads from sdmc:/switch/eden-nx2/updates/.";
+    upd.help_pt = "Pressione [A] para abrir a lista completa ou escolher um arquivo Update no cartao SD.";
+    upd.help_en = "Press [A] to open the Update picker or browse any file on the SD card.";
     upd.values = {"auto", "none"};
-    upd.labels_pt = {"Auto (Pasta updates/)", "Desativado (Base v1.0)"};
+    upd.labels_pt = {"Auto (pasta updates/)", "Desativado (Base v1.0)"};
     upd.labels_en = {"Auto (updates/ folder)", "Disabled (Base v1.0)"};
     upd.selected = 0;
     upd.per_game = true;
-    for (const auto& [label, full] : cache.updates) {
-        if (full != rom_path) PushUniqueAddon(upd, full, label, label);
-    }
 
     SettingOption dlc;
     dlc.key = "dlc_pkg";
     dlc.label_pt = "Pacotes DLC";
     dlc.label_en = "DLC Packages";
-    dlc.help_pt = "Pasta ou arquivo DLC (.nsp/.nsz/.xci). 'Auto' carrega de sdmc:/switch/eden-nx2/dlc/.";
-    dlc.help_en = "DLC folder or file (.nsp/.nsz/.xci). 'Auto' loads from sdmc:/switch/eden-nx2/dlc/.";
+    dlc.help_pt = "Pressione [A] para marcar uma ou mais DLCs / pastas no gerenciador de DLC.";
+    dlc.help_en = "Press [A] to open the multi-select DLC manager or browse folders/files on SD.";
     dlc.values = {"auto", "none"};
-    dlc.labels_pt = {"Todas as DLCs (Auto)", "Desativado (Sem DLC)"};
-    dlc.labels_en = {"All DLCs (Auto)", "Disabled (No DLC)"};
+    dlc.labels_pt = {"Auto (pasta dlc/)", "Desativado (Sem DLC)"};
+    dlc.labels_en = {"Auto (dlc/ folder)", "Disabled (No DLC)"};
     dlc.selected = 0;
     dlc.per_game = true;
-    for (const auto& [label, full, is_dir] : cache.dlcs) {
-        if (full == rom_path) continue;
-        if (is_dir) {
-            PushUniqueAddon(dlc, full, "Pasta: dlc/" + label, "Folder: dlc/" + label);
-        } else {
-            PushUniqueAddon(dlc, full, "dlc/" + label, "dlc/" + label);
-        }
-    }
-
-    for (const auto& e : dir_entries) {
-        if (e.is_dir || e.full_path == rom_path || !IsAddonExt(e.ext)) continue;
-        PushUniqueAddon(upd, e.full_path, e.name, e.name);
-        PushUniqueAddon(dlc, e.full_path, e.name, e.name);
-    }
 
     return {std::move(upd), std::move(dlc)};
 }
@@ -1162,58 +1223,719 @@ void DrawMainScreen(Canvas& cv, const std::string& folder, const std::vector<Gam
     cv.DrawPill(1136, 678, T(en, "[+] Sair", "[+] Exit"), PackRGBA(120, 28, 36), kTextPrimary, 1);
 }
 
+struct PerGameContext {
+    std::string rom_path;
+    std::string rom_title;
+    const AddonLists* addon_cache = nullptr;
+    const std::vector<GameEntry>* dir_entries = nullptr;
+};
+
+void DrawScrollbar(Canvas& cv, int x, int y, int h, int start, int visible, int total) {
+    if (total <= visible || visible <= 0 || h <= 0) return;
+    cv.DrawRoundedRect(x, y, 6, h, 3, PackRGBA(28, 40, 60));
+    const int thumb_h = std::max(28, (h * visible) / total);
+    const int max_start = std::max(1, total - visible);
+    const int thumb_y = y + ((h - thumb_h) * start) / max_start;
+    cv.DrawRoundedRect(x, thumb_y, 6, thumb_h, 3, kAccent);
+}
+
+bool RunSdBrowserModal(Canvas& cv, const std::string& start_dir, bool allow_pick_dir, bool en,
+                       std::string* out_path, bool* out_app_exit) {
+    struct BrowserItem {
+        std::string label;
+        std::string full_path;
+        std::uint64_t size_bytes = 0;
+        bool is_dir = false;
+        bool is_parent = false;
+    };
+
+    std::string cur_dir = start_dir;
+    std::error_code dir_ec;
+    if (cur_dir.empty() || !std::filesystem::is_directory(cur_dir, dir_ec)) {
+        cur_dir = "sdmc:/switch/eden-nx2/";
+        if (!std::filesystem::is_directory(cur_dir, dir_ec)) {
+            cur_dir = "sdmc:/";
+        }
+    }
+    if (!cur_dir.empty() && cur_dir.back() != '/') cur_dir.push_back('/');
+
+    auto scan_browser = [](const std::string& dir, bool en_flag) {
+        std::vector<BrowserItem> items;
+        if (dir != "sdmc:/" && dir != "sdmc:") {
+            items.push_back(BrowserItem{
+                T(en_flag, ".. (Pasta anterior)", ".. (Parent folder)"),
+                ParentFolder(dir), 0, true, true});
+        }
+        std::vector<BrowserItem> sub;
+        SafeForEachDirEntry(dir, [&](const std::filesystem::directory_entry& e, std::error_code&) {
+            std::error_code ec;
+            const std::string fname = e.path().filename().string();
+            if (fname.empty() || fname[0] == '.') return;
+            const bool is_dir = e.is_directory(ec);
+            if (ec) return;
+            if (!is_dir && !IsAddonExt(ToLowerExt(e.path()))) return;
+            std::uint64_t sz = 0;
+            if (!is_dir) {
+                sz = e.file_size(ec);
+                if (ec) sz = 0;
+            }
+            sub.push_back(BrowserItem{fname, e.path().generic_string(), sz, is_dir, false});
+        });
+        std::sort(sub.begin(), sub.end(), [](const BrowserItem& a, const BrowserItem& b) {
+            if (a.is_dir != b.is_dir) return a.is_dir;
+            return a.label < b.label;
+        });
+        items.insert(items.end(), std::make_move_iterator(sub.begin()),
+                     std::make_move_iterator(sub.end()));
+        return items;
+    };
+
+    auto items = scan_browser(cur_dir, en);
+    int selected = 0;
+    constexpr int kMaxVis = 11;
+    bool redraw = true;
+    bool prev_touch = true;
+    Switch2PadSnapshot pad{};
+
+    while (Switch2PollInput(&pad, false)) {
+        const std::uint64_t down = pad.raw_down;
+        const int total = static_cast<int>(items.size());
+
+        if (down & SWITCH2_BTN_B) {
+            return false;
+        }
+        if (allow_pick_dir && (down & SWITCH2_BTN_X)) {
+            if (out_path) *out_path = cur_dir;
+            return true;
+        }
+        if (total > 0 && (down & (SWITCH2_BTN_UP | SWITCH2_BTN_DOWN | SWITCH2_BTN_LEFT | SWITCH2_BTN_RIGHT))) {
+            if (down & SWITCH2_BTN_UP) selected = (selected + total - 1) % total;
+            if (down & SWITCH2_BTN_DOWN) selected = (selected + 1) % total;
+            if (down & SWITCH2_BTN_LEFT) selected = std::max(0, selected - kMaxVis);
+            if (down & SWITCH2_BTN_RIGHT) selected = std::min(total - 1, selected + kMaxVis);
+            redraw = true;
+        }
+
+        const int start = std::clamp(selected - kMaxVis / 2, 0, std::max(0, total - kMaxVis));
+        bool activate = (down & SWITCH2_BTN_A) != 0 && total > 0;
+        if (pad.has_touch && !prev_touch) {
+            const int tx = static_cast<int>(pad.touch_x * kScreenW);
+            const int ty = static_cast<int>(pad.touch_y * kScreenH);
+            if (tx >= 96 && tx <= 1180 && ty >= 112 && ty < 112 + kMaxVis * 40) {
+                const int tapped = start + (ty - 112) / 40;
+                if (tapped >= 0 && tapped < total) {
+                    if (tapped == selected) {
+                        activate = true;
+                    } else {
+                        selected = tapped;
+                        redraw = true;
+                    }
+                }
+            }
+        }
+        prev_touch = pad.has_touch;
+
+        if (activate) {
+            const auto& it = items[static_cast<std::size_t>(selected)];
+            if (it.is_dir) {
+                cur_dir = it.full_path;
+                if (!cur_dir.empty() && cur_dir.back() != '/') cur_dir.push_back('/');
+                items = scan_browser(cur_dir, en);
+                selected = 0;
+                redraw = true;
+            } else {
+                if (out_path) *out_path = it.full_path;
+                return true;
+            }
+        }
+
+        if (redraw) {
+            cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 215);
+            cv.DrawRoundedRect(70, 36, 1140, 648, 16, kPanelBg, kCyan);
+            cv.DrawTextMaxWidth(
+                100, 54, 720,
+                allow_pick_dir ? T(en, "PROCURAR DLC NO CARTAO SD", "BROWSE DLC ON SD CARD")
+                               : T(en, "PROCURAR UPDATE NO CARTAO SD", "BROWSE UPDATE ON SD CARD"),
+                kCyan, 2, true);
+            cv.DrawTextMaxWidth(100, 82, 1070, cur_dir, kTextMuted, 1);
+            cv.FillRect(96, 100, 1088, 2, kBorderDim);
+
+            const int cur_total = static_cast<int>(items.size());
+            const int cur_start =
+                std::clamp(selected - kMaxVis / 2, 0, std::max(0, cur_total - kMaxVis));
+            const int cur_end = std::min(cur_total, cur_start + kMaxVis);
+
+            if (cur_total == 0) {
+                cv.DrawText(112, 150,
+                            T(en, "Nenhum arquivo .nsp / .nsz / .xci nesta pasta.",
+                              "No .nsp / .nsz / .xci files in this folder."),
+                            kTextMuted, 1);
+            } else {
+                for (int i = cur_start; i < cur_end; ++i) {
+                    const int vis = i - cur_start;
+                    const int ry = 112 + vis * 40;
+                    const bool is_sel = (i == selected);
+                    const auto& it = items[static_cast<std::size_t>(i)];
+                    cv.DrawRoundedRect(96, ry, 1080, 34, 6, is_sel ? kCardSelected : kCardBg,
+                                       is_sel ? kCyan : kBorderDim);
+                    const std::uint32_t tag_bg =
+                        it.is_parent ? PackRGBA(55, 65, 81)
+                                     : (it.is_dir ? PackRGBA(37, 78, 128) : PackRGBA(14, 116, 90));
+                    const char* tag_txt = it.is_parent ? "UP" : (it.is_dir ? "DIR" : "PKG");
+                    cv.DrawPill(106, ry + 7, tag_txt, tag_bg, kTextPrimary, 1);
+                    cv.DrawTextMaxWidth(164, ry + 13, 890, it.label,
+                                        is_sel ? kTextPrimary : PackRGBA(220, 228, 240), 1);
+                    if (!it.is_dir && it.size_bytes > 0) {
+                        cv.DrawTextMaxWidth(1070, ry + 13, 96, FormatSize(it.size_bytes),
+                                            kTextMuted, 1);
+                    }
+                }
+                DrawScrollbar(cv, 1188, 112, kMaxVis * 40 - 6, cur_start, kMaxVis, cur_total);
+            }
+
+            cv.FillRect(96, 570, 1088, 1, kBorderDim);
+            int fx = 100;
+            fx += cv.DrawPill(fx, 594, T(en, "[A] Abrir / Selecionar", "[A] Open / Select"),
+                              kAccentSoft, kAccent, 1) + 12;
+            if (allow_pick_dir) {
+                fx += cv.DrawPill(fx, 594, T(en, "[X] Usar esta pasta", "[X] Use this folder"),
+                                  PackRGBA(20, 62, 86), kCyan, 1) + 12;
+            }
+            cv.DrawPill(fx, 594, T(en, "[B] Cancelar", "[B] Cancel"), kCardBg, kTextPrimary, 1);
+            cv.Present();
+            redraw = false;
+        }
+        Switch2SleepMs(16);
+    }
+    if (out_app_exit) *out_app_exit = true;
+    return false;
+}
+
+bool RunUpdatePickerModal(Canvas& cv, SettingOption& upd_opt, const PerGameContext& ctx, bool en) {
+    struct Row {
+        enum Kind { Auto, None, Browse, File } kind;
+        std::string label;
+        std::string value;
+        std::string badge;
+        std::uint64_t size_bytes = 0;
+    };
+
+    const std::string cur_val =
+        upd_opt.values.empty()
+            ? std::string("auto")
+            : upd_opt.values[static_cast<std::size_t>(
+                  std::clamp(upd_opt.selected, 0, static_cast<int>(upd_opt.values.size()) - 1))];
+
+    std::vector<Row> rows;
+    rows.push_back(Row{Row::Auto,
+                       T(en, "Auto - Carregar automaticamente de updates/ e pasta do jogo",
+                         "Auto - Load automatically from updates/ and game folder"),
+                       "auto", "AUTO", 0});
+    rows.push_back(Row{Row::None,
+                       T(en, "Desativado - Rodar jogo base v1.0 (sem update)",
+                         "Disabled - Run base v1.0 game (no update)"),
+                       "none", "OFF", 0});
+    rows.push_back(Row{Row::Browse,
+                       T(en, "+ Procurar arquivo de Update no cartao SD...",
+                         "+ Browse Update file on SD card..."),
+                       "", "SD", 0});
+
+    auto add_file_row = [&](const std::string& label, const std::string& full,
+                            const std::string& badge, std::uint64_t sz) {
+        if (full.empty() || full == ctx.rom_path) return;
+        for (const auto& r : rows) {
+            if (r.kind == Row::File && r.value == full) return;
+        }
+        rows.push_back(Row{Row::File, label, full, badge, sz});
+    };
+
+    if (cur_val != "auto" && cur_val != "none" && !cur_val.empty()) {
+        std::error_code ec;
+        const auto sz = std::filesystem::file_size(cur_val, ec);
+        add_file_row(BaseName(cur_val), cur_val, "SEL", ec ? 0 : sz);
+    }
+    if (ctx.addon_cache) {
+        for (const auto& it : ctx.addon_cache->updates) {
+            add_file_row(it.label, it.full_path, it.source_tag, it.size_bytes);
+        }
+    }
+    if (ctx.dir_entries) {
+        for (const auto& e : *ctx.dir_entries) {
+            if (!e.is_dir && e.full_path != ctx.rom_path && IsAddonExt(e.ext)) {
+                add_file_row(e.name, e.full_path, "ROMS", e.size_bytes);
+            }
+        }
+    }
+
+    int selected = 0;
+    for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
+        if (rows[static_cast<std::size_t>(i)].value == cur_val &&
+            rows[static_cast<std::size_t>(i)].kind != Row::Browse) {
+            selected = i;
+            break;
+        }
+    }
+
+    constexpr int kMaxVis = 10;
+    bool redraw = true;
+    bool prev_touch = true;
+    Switch2PadSnapshot pad{};
+
+    while (Switch2PollInput(&pad, false)) {
+        const std::uint64_t down = pad.raw_down;
+        const int total = static_cast<int>(rows.size());
+        if (down & SWITCH2_BTN_B) {
+            return true;
+        }
+        if (down & (SWITCH2_BTN_UP | SWITCH2_BTN_DOWN | SWITCH2_BTN_LEFT | SWITCH2_BTN_RIGHT)) {
+            if (down & SWITCH2_BTN_UP) selected = (selected + total - 1) % total;
+            if (down & SWITCH2_BTN_DOWN) selected = (selected + 1) % total;
+            if (down & SWITCH2_BTN_LEFT) selected = std::max(0, selected - kMaxVis);
+            if (down & SWITCH2_BTN_RIGHT) selected = std::min(total - 1, selected + kMaxVis);
+            redraw = true;
+        }
+
+        const int start = std::clamp(selected - kMaxVis / 2, 0, std::max(0, total - kMaxVis));
+        bool activate = (down & SWITCH2_BTN_A) != 0;
+        if (pad.has_touch && !prev_touch) {
+            const int tx = static_cast<int>(pad.touch_x * kScreenW);
+            const int ty = static_cast<int>(pad.touch_y * kScreenH);
+            if (tx >= 96 && tx <= 1180 && ty >= 122 && ty < 122 + kMaxVis * 42) {
+                const int tapped = start + (ty - 122) / 42;
+                if (tapped >= 0 && tapped < total) {
+                    if (tapped == selected) {
+                        activate = true;
+                    } else {
+                        selected = tapped;
+                        redraw = true;
+                    }
+                }
+            }
+        }
+        prev_touch = pad.has_touch;
+
+        if (activate) {
+            const auto& r = rows[static_cast<std::size_t>(selected)];
+            if (r.kind == Row::Browse) {
+                std::string picked;
+                bool app_exit = false;
+                if (RunSdBrowserModal(cv, kDefaultUpdatesDir, false, en, &picked, &app_exit)) {
+                    SetAddonOptionValue(upd_opt, picked);
+                    return true;
+                }
+                if (app_exit) return false;
+                redraw = true;
+            } else {
+                SetAddonOptionValue(upd_opt, r.value);
+                return true;
+            }
+        }
+
+        if (redraw) {
+            cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 215);
+            cv.DrawRoundedRect(70, 36, 1140, 648, 16, kPanelBg, kAccent);
+            cv.DrawTextMaxWidth(100, 52, 820,
+                                T(en, "SELECIONAR UPDATE DO JOGO", "SELECT GAME UPDATE"), kAccent,
+                                2, true);
+            cv.DrawTextMaxWidth(100, 82, 820, ctx.rom_title, kTextMuted, 1);
+            cv.DrawPill(940, 52,
+                        std::to_string(selected + 1) + "/" + std::to_string(total),
+                        kCardBg, kCyan, 2);
+            cv.FillRect(96, 108, 1088, 2, kBorderDim);
+
+            const int cur_start =
+                std::clamp(selected - kMaxVis / 2, 0, std::max(0, total - kMaxVis));
+            const int cur_end = std::min(total, cur_start + kMaxVis);
+            for (int i = cur_start; i < cur_end; ++i) {
+                const int vis = i - cur_start;
+                const int ry = 122 + vis * 42;
+                const bool is_sel = (i == selected);
+                const auto& r = rows[static_cast<std::size_t>(i)];
+                const bool is_active = (r.kind != Row::Browse && r.value == cur_val);
+
+                cv.DrawRoundedRect(96, ry, 1080, 36, 7,
+                                   is_sel ? kCardSelected
+                                          : (is_active ? PackRGBA(19, 44, 48) : kCardBg),
+                                   is_sel ? kAccent : (is_active ? kCyan : kBorderDim));
+
+                const char* mark = (r.kind == Row::Browse) ? "[+]" : (is_active ? "(*)" : "( )");
+                cv.DrawText(108, ry + 14, mark,
+                            (r.kind == Row::Browse) ? kCyan : (is_active ? kAccent : kTextMuted), 1);
+
+                const std::uint32_t bbg =
+                    (r.kind == Row::Auto)
+                        ? kAccentSoft
+                        : ((r.kind == Row::None)
+                               ? PackRGBA(90, 34, 42)
+                               : ((r.kind == Row::Browse) ? PackRGBA(20, 62, 86)
+                                                          : PackRGBA(36, 52, 76)));
+                cv.DrawPill(144, ry + 8, r.badge, bbg,
+                            (r.kind == Row::Auto) ? kAccent : kTextPrimary, 1);
+
+                cv.DrawTextMaxWidth(206, ry + 14, 845, r.label,
+                                    is_active ? kAccent : kTextPrimary, 1);
+                if (r.size_bytes > 0) {
+                    cv.DrawTextMaxWidth(1066, ry + 14, 98, FormatSize(r.size_bytes), kTextMuted, 1);
+                }
+            }
+            DrawScrollbar(cv, 1188, 122, kMaxVis * 42 - 6, cur_start, kMaxVis, total);
+
+            cv.FillRect(96, 566, 1088, 1, kBorderDim);
+            const std::string cur_full =
+                (cur_val == "auto" || cur_val == "none") ? FormatAddonSummary(false, cur_val, en)
+                                                         : cur_val;
+            cv.DrawTextMaxWidth(
+                100, 578, 1080,
+                std::string(T(en, "Atual: ", "Current: ")) + cur_full, kTextMuted, 1);
+
+            int fx = 100;
+            fx += cv.DrawPill(fx, 610, T(en, "[A] Selecionar", "[A] Select"), kAccentSoft, kAccent,
+                              1) + 12;
+            cv.DrawPill(fx, 610, T(en, "[B] Voltar", "[B] Back"), kCardBg, kTextPrimary, 1);
+            cv.Present();
+            redraw = false;
+        }
+        Switch2SleepMs(16);
+    }
+    return false;
+}
+
+bool RunDlcPickerModal(Canvas& cv, SettingOption& dlc_opt, const PerGameContext& ctx, bool en) {
+    struct Row {
+        enum Kind { Auto, None, Browse, Entry } kind;
+        std::string label;
+        std::string path;
+        std::string badge;
+        std::uint64_t size_bytes = 0;
+        bool is_dir = false;
+    };
+
+    const std::string initial_val =
+        dlc_opt.values.empty()
+            ? std::string("auto")
+            : dlc_opt.values[static_cast<std::size_t>(
+                  std::clamp(dlc_opt.selected, 0, static_cast<int>(dlc_opt.values.size()) - 1))];
+
+    enum class DlcMode { Auto, None, Custom } mode = DlcMode::Auto;
+    std::vector<std::string> checked_paths;
+    if (initial_val == "none") {
+        mode = DlcMode::None;
+    } else if (initial_val != "auto" && !initial_val.empty()) {
+        mode = DlcMode::Custom;
+        checked_paths = SplitPipe(initial_val);
+    }
+
+    auto is_checked = [&](const std::string& p) {
+        return mode == DlcMode::Custom &&
+               std::find(checked_paths.begin(), checked_paths.end(), p) != checked_paths.end();
+    };
+
+    std::vector<Row> rows;
+    rows.push_back(Row{Row::Auto,
+                       T(en, "Auto - Carregar todas as DLCs de dlc/ e pasta do jogo",
+                         "Auto - Load all DLCs from dlc/ and game folder"),
+                       "", "AUTO", 0, false});
+    rows.push_back(Row{Row::None,
+                       T(en, "Desativado - Rodar sem nenhuma DLC",
+                         "Disabled - Run without any DLC"),
+                       "", "OFF", 0, false});
+    rows.push_back(Row{Row::Browse,
+                       T(en, "+ Adicionar arquivo ou pasta de DLC do cartao SD...",
+                         "+ Add DLC file or folder from SD card..."),
+                       "", "SD", 0, false});
+
+    auto add_entry_row = [&](const std::string& label, const std::string& full,
+                             const std::string& badge, std::uint64_t sz, bool is_dir) {
+        if (full.empty() || full == ctx.rom_path) return;
+        for (const auto& r : rows) {
+            if (r.kind == Row::Entry && r.path == full) return;
+        }
+        rows.push_back(Row{Row::Entry, label, full, badge, sz, is_dir});
+    };
+
+    for (const auto& p : checked_paths) {
+        std::error_code ec;
+        const bool is_d = std::filesystem::is_directory(p, ec);
+        std::uint64_t sz = 0;
+        if (!is_d) {
+            const auto fsz = std::filesystem::file_size(p, ec);
+            sz = ec ? 0 : fsz;
+        }
+        add_entry_row(BaseName(p), p, is_d ? "DIR" : "SEL", sz, is_d);
+    }
+    if (ctx.addon_cache) {
+        for (const auto& it : ctx.addon_cache->dlcs) {
+            add_entry_row(it.label, it.full_path, it.source_tag, it.size_bytes, it.is_dir);
+        }
+    }
+    if (ctx.dir_entries) {
+        for (const auto& e : *ctx.dir_entries) {
+            if (!e.is_dir && e.full_path != ctx.rom_path && IsAddonExt(e.ext)) {
+                add_entry_row(e.name, e.full_path, "ROMS", e.size_bytes, false);
+            }
+        }
+    }
+
+    auto commit_to_opt = [&]() {
+        if (mode == DlcMode::None) {
+            SetAddonOptionValue(dlc_opt, "none");
+        } else if (mode == DlcMode::Auto || checked_paths.empty()) {
+            SetAddonOptionValue(dlc_opt, "auto");
+        } else {
+            SetAddonOptionValue(dlc_opt, JoinPipe(checked_paths));
+        }
+    };
+
+    int selected = (mode == DlcMode::None) ? 1 : 0;
+    if (mode == DlcMode::Custom && rows.size() > 3) selected = 3;
+    constexpr int kMaxVis = 10;
+    bool redraw = true;
+    bool prev_touch = true;
+    Switch2PadSnapshot pad{};
+
+    while (Switch2PollInput(&pad, false)) {
+        const std::uint64_t down = pad.raw_down;
+        const int total = static_cast<int>(rows.size());
+        if (down & SWITCH2_BTN_B) {
+            commit_to_opt();
+            return true;
+        }
+        if (down & SWITCH2_BTN_X) {
+            mode = DlcMode::Auto;
+            checked_paths.clear();
+            redraw = true;
+        }
+        if (down & (SWITCH2_BTN_UP | SWITCH2_BTN_DOWN | SWITCH2_BTN_LEFT | SWITCH2_BTN_RIGHT)) {
+            if (down & SWITCH2_BTN_UP) selected = (selected + total - 1) % total;
+            if (down & SWITCH2_BTN_DOWN) selected = (selected + 1) % total;
+            if (down & SWITCH2_BTN_LEFT) selected = std::max(0, selected - kMaxVis);
+            if (down & SWITCH2_BTN_RIGHT) selected = std::min(total - 1, selected + kMaxVis);
+            redraw = true;
+        }
+
+        const int start = std::clamp(selected - kMaxVis / 2, 0, std::max(0, total - kMaxVis));
+        bool activate = (down & SWITCH2_BTN_A) != 0;
+        if (pad.has_touch && !prev_touch) {
+            const int tx = static_cast<int>(pad.touch_x * kScreenW);
+            const int ty = static_cast<int>(pad.touch_y * kScreenH);
+            if (tx >= 96 && tx <= 1180 && ty >= 122 && ty < 122 + kMaxVis * 42) {
+                const int tapped = start + (ty - 122) / 42;
+                if (tapped >= 0 && tapped < total) {
+                    if (tapped == selected) {
+                        activate = true;
+                    } else {
+                        selected = tapped;
+                        redraw = true;
+                    }
+                }
+            }
+        }
+        prev_touch = pad.has_touch;
+
+        if (activate) {
+            const auto& r = rows[static_cast<std::size_t>(selected)];
+            if (r.kind == Row::Auto) {
+                mode = DlcMode::Auto;
+                checked_paths.clear();
+                redraw = true;
+            } else if (r.kind == Row::None) {
+                mode = DlcMode::None;
+                checked_paths.clear();
+                redraw = true;
+            } else if (r.kind == Row::Browse) {
+                std::string picked;
+                bool app_exit = false;
+                if (RunSdBrowserModal(cv, kDefaultDlcDir, true, en, &picked, &app_exit)) {
+                    mode = DlcMode::Custom;
+                    if (std::find(checked_paths.begin(), checked_paths.end(), picked) ==
+                        checked_paths.end()) {
+                        checked_paths.push_back(picked);
+                    }
+                    std::error_code ec;
+                    const bool is_d = std::filesystem::is_directory(picked, ec);
+                    std::uint64_t sz = 0;
+                    if (!is_d) {
+                        const auto fsz = std::filesystem::file_size(picked, ec);
+                        sz = ec ? 0 : fsz;
+                    }
+                    add_entry_row(BaseName(picked), picked, is_d ? "DIR" : "SD", sz, is_d);
+                }
+                if (app_exit) return false;
+                redraw = true;
+            } else if (r.kind == Row::Entry) {
+                mode = DlcMode::Custom;
+                auto it = std::find(checked_paths.begin(), checked_paths.end(), r.path);
+                if (it != checked_paths.end()) {
+                    checked_paths.erase(it);
+                    if (checked_paths.empty()) mode = DlcMode::Auto;
+                } else {
+                    checked_paths.push_back(r.path);
+                }
+                redraw = true;
+            }
+        }
+
+        if (redraw) {
+            cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 215);
+            cv.DrawRoundedRect(70, 36, 1140, 648, 16, kPanelBg, kCyan);
+            cv.DrawTextMaxWidth(100, 52, 780,
+                                T(en, "GERENCIAR PACOTES DLC", "MANAGE DLC PACKAGES"), kCyan, 2,
+                                true);
+            cv.DrawTextMaxWidth(100, 82, 780, ctx.rom_title, kTextMuted, 1);
+
+            const std::string status_pill =
+                (mode == DlcMode::None)
+                    ? T(en, "SEM DLC", "NO DLC")
+                    : ((mode == DlcMode::Auto || checked_paths.empty())
+                           ? "AUTO"
+                           : (std::to_string(checked_paths.size()) + " DLC"));
+            cv.DrawPill(940, 52, status_pill,
+                        (mode == DlcMode::Custom && !checked_paths.empty()) ? kAccentSoft : kCardBg,
+                        (mode == DlcMode::Custom && !checked_paths.empty()) ? kAccent : kCyan, 2);
+            cv.FillRect(96, 108, 1088, 2, kBorderDim);
+
+            const int cur_total = static_cast<int>(rows.size());
+            const int cur_start =
+                std::clamp(selected - kMaxVis / 2, 0, std::max(0, cur_total - kMaxVis));
+            const int cur_end = std::min(cur_total, cur_start + kMaxVis);
+            for (int i = cur_start; i < cur_end; ++i) {
+                const int vis = i - cur_start;
+                const int ry = 122 + vis * 42;
+                const bool is_sel = (i == selected);
+                const auto& r = rows[static_cast<std::size_t>(i)];
+                const bool checked =
+                    (r.kind == Row::Auto && mode == DlcMode::Auto) ||
+                    (r.kind == Row::None && mode == DlcMode::None) ||
+                    (r.kind == Row::Entry && is_checked(r.path));
+
+                cv.DrawRoundedRect(96, ry, 1080, 36, 7,
+                                   is_sel ? kCardSelected
+                                          : (checked ? PackRGBA(19, 44, 48) : kCardBg),
+                                   is_sel ? kCyan : (checked ? kAccent : kBorderDim));
+
+                const char* mark = (r.kind == Row::Browse)
+                                       ? "[+]"
+                                       : ((r.kind == Row::Entry) ? (checked ? "[X]" : "[ ]")
+                                                                 : (checked ? "(*)" : "( )"));
+                cv.DrawText(108, ry + 14, mark,
+                            (r.kind == Row::Browse) ? kCyan : (checked ? kAccent : kTextMuted), 1);
+
+                const std::uint32_t bbg =
+                    (r.kind == Row::Auto)
+                        ? kAccentSoft
+                        : ((r.kind == Row::None)
+                               ? PackRGBA(90, 34, 42)
+                               : ((r.kind == Row::Browse)
+                                      ? PackRGBA(20, 62, 86)
+                                      : (r.is_dir ? PackRGBA(37, 78, 128) : PackRGBA(36, 52, 76))));
+                cv.DrawPill(144, ry + 8, r.badge, bbg,
+                            (r.kind == Row::Auto) ? kAccent : kTextPrimary, 1);
+
+                cv.DrawTextMaxWidth(206, ry + 14, 845, r.label,
+                                    checked ? kAccent : kTextPrimary, 1);
+                if (!r.is_dir && r.size_bytes > 0) {
+                    cv.DrawTextMaxWidth(1066, ry + 14, 98, FormatSize(r.size_bytes), kTextMuted, 1);
+                }
+            }
+            DrawScrollbar(cv, 1188, 122, kMaxVis * 42 - 6, cur_start, kMaxVis, cur_total);
+
+            cv.FillRect(96, 566, 1088, 1, kBorderDim);
+            cv.DrawTextMaxWidth(
+                100, 578, 1080,
+                T(en, "Dica: marque quantas DLCs quiser com [A] (suporta multiplos arquivos e pastas).",
+                  "Tip: toggle as many DLCs as needed with [A] (supports multiple files and folders)."),
+                kTextMuted, 1);
+
+            int fx = 100;
+            fx += cv.DrawPill(fx, 610, T(en, "[A] Marcar / Escolher", "[A] Toggle / Pick"),
+                              kAccentSoft, kAccent, 1) + 12;
+            fx += cv.DrawPill(fx, 610, T(en, "[X] Limpar (Auto)", "[X] Reset (Auto)"), kCardBg,
+                              kAmber, 1) + 12;
+            cv.DrawPill(fx, 610, T(en, "[B] Salvar e Voltar", "[B] Save & Back"), kCardBg,
+                        kTextPrimary, 1);
+            cv.Present();
+            redraw = false;
+        }
+        Switch2SleepMs(16);
+    }
+    return false;
+}
+
 void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int selected,
                        const std::string& title, bool en) {
     cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 205);
-    cv.DrawRoundedRect(120, 48, 1040, 624, 16, kPanelBg, kAccent);
-    constexpr int kMaxVis = 12;
+    cv.DrawRoundedRect(70, 36, 1140, 648, 16, kPanelBg, kAccent);
+    constexpr int kMaxVis = 11;
     const int total = static_cast<int>(opts.size());
-    const std::string header = (total > kMaxVis)
-                                   ? (title + " (" + std::to_string(selected + 1) + "/" +
-                                      std::to_string(total) + ")")
-                                   : title;
-    cv.DrawTextMaxWidth(152, 68, 960, header, kAccent, 2, true);
-    cv.FillRect(152, 96, 976, 2, kBorderDim);
+    cv.DrawTextMaxWidth(100, 54, 960, title, kAccent, 2, true);
+    if (total > 0) {
+        cv.DrawPill(1090, 50, std::to_string(selected + 1) + "/" + std::to_string(total), kCardBg,
+                    kCyan, 2);
+    }
+    cv.FillRect(96, 86, 1088, 2, kBorderDim);
 
     const int start = std::clamp(selected - kMaxVis / 2, 0, std::max(0, total - kMaxVis));
     const int end = std::min(total, start + kMaxVis);
     for (int i = start; i < end; ++i) {
         const int vis = i - start;
-        const int ry = 108 + vis * 36;
+        const int ry = 98 + vis * 40;
         const bool is_sel = (i == selected);
-        cv.DrawRoundedRect(152, ry, 976, 30, 6, is_sel ? kCardSelected : kCardBg,
-                           is_sel ? kAccent : kBorderDim);
         const std::size_t idx = static_cast<std::size_t>(i);
+        const bool is_addon_row = (opts[idx].key == "update_pkg" || opts[idx].key == "dlc_pkg");
+
+        cv.DrawRoundedRect(96, ry, 1080, 34, 7,
+                           is_sel ? kCardSelected
+                                  : (is_addon_row ? PackRGBA(22, 36, 56) : kCardBg),
+                           is_sel ? kAccent : (is_addon_row ? PackRGBA(48, 82, 118) : kBorderDim));
+
         const std::string& lbl = en ? opts[idx].label_en : opts[idx].label_pt;
         const auto& ch_lbls = en ? opts[idx].labels_en : opts[idx].labels_pt;
-        cv.DrawTextMaxWidth(168, ry + 7, 420, lbl, kTextPrimary, 2);
-        const std::string val_txt =
+        const int lbl_scale = (lbl.size() <= 21) ? 2 : 1;
+        cv.DrawTextMaxWidth(112, ry + ((lbl_scale == 2) ? 9 : 13), 344, lbl,
+                            is_addon_row ? kCyan : kTextPrimary, lbl_scale);
+
+        const std::string raw_val =
             ch_lbls.empty()
                 ? std::string{}
-                : ("< " +
-                   ch_lbls[static_cast<std::size_t>(
-                       std::clamp(opts[idx].selected, 0, static_cast<int>(ch_lbls.size()) - 1))] +
-                   " >");
-        cv.DrawTextMaxWidth(600, ry + 7, 512, val_txt, is_sel ? kAccent : kCyan, 2);
+                : ch_lbls[static_cast<std::size_t>(
+                      std::clamp(opts[idx].selected, 0, static_cast<int>(ch_lbls.size()) - 1))];
+
+        if (is_addon_row) {
+            cv.DrawRoundedRect(468, ry + 4, 536, 26, 5, PackRGBA(14, 22, 34), kBorderDim);
+            cv.DrawTextMaxWidth(480, ry + 13, 512, raw_val, is_sel ? kAccent : kTextPrimary, 1);
+            cv.DrawPill(1016, ry + 6, T(en, "[A] Escolher >", "[A] Select >"),
+                        is_sel ? kAccentSoft : kCardBg, is_sel ? kAccent : kCyan, 1);
+        } else {
+            const std::string val_txt = "< " + raw_val + " >";
+            const int val_scale = (val_txt.size() <= 41) ? 2 : 1;
+            cv.DrawTextMaxWidth(468, ry + ((val_scale == 2) ? 9 : 13), 692, val_txt,
+                                is_sel ? kAccent : kCyan, val_scale);
+        }
     }
+    DrawScrollbar(cv, 1188, 98, kMaxVis * 40 - 6, start, kMaxVis, total);
 
     if (selected >= 0 && selected < static_cast<int>(opts.size())) {
-        cv.DrawRoundedRect(152, 562, 976, 46, 8, PackRGBA(14, 22, 34), kBorderDim);
+        cv.DrawRoundedRect(96, 550, 1088, 52, 8, PackRGBA(14, 22, 34), kBorderDim);
         const std::string& help = en ? opts[static_cast<std::size_t>(selected)].help_en
                                      : opts[static_cast<std::size_t>(selected)].help_pt;
-        cv.DrawTextMaxWidth(170, 578, 940, help, kTextPrimary, 1);
+        cv.DrawTextMaxWidth(114, 566, 1052, help, kTextPrimary, 1);
     }
-    cv.DrawText(152, 628,
-                T(en, "[Cima/Baixo] Navegar   [Esq/Dir ou A] Alterar   [B] Salvar e Voltar",
-                  "[Up/Down] Navigate   [Left/Right or A] Change   [B] Save & Back"),
-                kTextMuted, 1);
+
+    int fx = 96;
+    fx += cv.DrawPill(fx, 618, T(en, "[Cima/Baixo] Navegar", "[Up/Down] Navigate"), kCardBg,
+                      kTextPrimary, 1) + 10;
+    fx += cv.DrawPill(fx, 618, T(en, "[Esq/Dir ou A] Alterar", "[Left/Right or A] Change"),
+                      kAccentSoft, kAccent, 1) + 10;
+    cv.DrawPill(fx, 618, T(en, "[B] Salvar e Voltar", "[B] Save & Back"), kCardBg, kCyan, 1);
 }
 
 bool RunSettingsModal(Canvas& cv, std::vector<SettingOption>& opts, const std::string& title,
-                      bool* ui_en_state = nullptr) {
+                      bool* ui_en_state = nullptr, const PerGameContext* pg_ctx = nullptr) {
     if (opts.empty()) return true;
     int selected = 0;
+    constexpr int kMaxVis = 11;
     bool redraw = true;
+    bool prev_touch = true;
     Switch2PadSnapshot pad{};
     while (Switch2PollInput(&pad, false)) {
         const std::uint64_t down = pad.raw_down;
@@ -1229,19 +1951,51 @@ bool RunSettingsModal(Canvas& cv, std::vector<SettingOption>& opts, const std::s
             selected = (selected + 1) % n;
             redraw = true;
         }
-        auto& opt = opts[static_cast<std::size_t>(selected)];
-        const int c = static_cast<int>(opt.values.size());
-        if (c > 0 && (down & (SWITCH2_BTN_LEFT | SWITCH2_BTN_RIGHT | SWITCH2_BTN_A))) {
-            const int step = (down & SWITCH2_BTN_LEFT) ? (c - 1) : 1;
-            opt.selected = (opt.selected + step) % c;
-            if (ui_en_state && opt.key == "ui_lang") {
-                *ui_en_state = (opt.values[static_cast<std::size_t>(opt.selected)] == "en");
+
+        const int start = std::clamp(selected - kMaxVis / 2, 0, std::max(0, n - kMaxVis));
+        bool touch_activate = false;
+        if (pad.has_touch && !prev_touch) {
+            const int tx = static_cast<int>(pad.touch_x * kScreenW);
+            const int ty = static_cast<int>(pad.touch_y * kScreenH);
+            if (tx >= 96 && tx <= 1180 && ty >= 98 && ty < 98 + kMaxVis * 40) {
+                const int tapped = start + (ty - 98) / 40;
+                if (tapped >= 0 && tapped < n) {
+                    if (tapped == selected) {
+                        touch_activate = true;
+                    } else {
+                        selected = tapped;
+                        redraw = true;
+                    }
+                }
             }
+        }
+        prev_touch = pad.has_touch;
+
+        auto& opt = opts[static_cast<std::size_t>(selected)];
+        const bool is_addon = (opt.key == "update_pkg" || opt.key == "dlc_pkg");
+        const bool en = ui_en_state ? *ui_en_state : false;
+
+        if (is_addon && pg_ctx != nullptr &&
+            (touch_activate || (down & (SWITCH2_BTN_A | SWITCH2_BTN_RIGHT | SWITCH2_BTN_LEFT)))) {
+            const bool ok = (opt.key == "update_pkg")
+                                ? RunUpdatePickerModal(cv, opt, *pg_ctx, en)
+                                : RunDlcPickerModal(cv, opt, *pg_ctx, en);
+            if (!ok) return false;
             redraw = true;
+        } else {
+            const int c = static_cast<int>(opt.values.size());
+            if (c > 0 && (touch_activate || (down & (SWITCH2_BTN_LEFT | SWITCH2_BTN_RIGHT | SWITCH2_BTN_A)))) {
+                const int step = (down & SWITCH2_BTN_LEFT) ? (c - 1) : 1;
+                opt.selected = (opt.selected + step) % c;
+                if (ui_en_state && opt.key == "ui_lang") {
+                    *ui_en_state = (opt.values[static_cast<std::size_t>(opt.selected)] == "en");
+                }
+                redraw = true;
+            }
         }
         if (redraw) {
-            const bool en = ui_en_state ? *ui_en_state : false;
-            DrawSettingsModal(cv, opts, selected, title, en);
+            const bool cur_en = ui_en_state ? *ui_en_state : false;
+            DrawSettingsModal(cv, opts, selected, title, cur_en);
             cv.Present();
             redraw = false;
         }
@@ -1318,12 +2072,13 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg) {
 
         if ((down & SWITCH2_BTN_Y) && count > 0 && selected >= 0 && selected < count &&
             !entries[static_cast<std::size_t>(selected)].is_dir) {
-            const std::string& rpath = entries[static_cast<std::size_t>(selected)].full_path;
+            const auto& entry = entries[static_cast<std::size_t>(selected)];
+            const std::string& rpath = entry.full_path;
             auto game_opts = MakePerGameOptions(global_opts, rpath, en, addon_cache, entries);
             const std::string modal_title =
-                std::string(T(en, "CONFIG DO JOGO: ", "GAME SETTINGS: ")) +
-                entries[static_cast<std::size_t>(selected)].display_title;
-            if (!RunSettingsModal(cv, game_opts, modal_title, &en)) {
+                std::string(T(en, "CONFIG DO JOGO: ", "GAME SETTINGS: ")) + entry.display_title;
+            PerGameContext pg_ctx{rpath, entry.display_title, &addon_cache, &entries};
+            if (!RunSettingsModal(cv, game_opts, modal_title, &en, &pg_ctx)) {
                 break;
             }
             SavePerGameIni(game_opts, rpath);
