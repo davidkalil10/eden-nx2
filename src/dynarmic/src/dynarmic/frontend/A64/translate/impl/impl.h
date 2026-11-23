@@ -1080,6 +1080,12 @@ struct TranslatorVisitor final {
     // ARMv8.5 Memory Tagging (unimplemented stubs in base impl.h above)
     bool STG_family(Imm<2> opc, Imm<9> imm9, Imm<2> mode, Reg Rn, Reg Rt);
     bool STGP(Imm<2> mode, Imm<7> imm7, Reg Rt2, Reg Rn, Reg Rt);
+
+    // ARMv8.1 LSE Atomics & ARMv8.3 RCpc LDAPR
+    bool AtomicMemOp(Imm<2> size, bool A, bool R, Reg Rs, Imm<4> op, Reg Rn, Reg Rt);
+    bool LDAPR_sz(Imm<2> size, Reg Rn, Reg Rt);
+    bool CompareAndSwap(Imm<2> size, bool L, Reg Rs, bool o0, Reg Rn, Reg Rt);
+    bool CompareAndSwapPair(bool sz, bool L, Reg Rs, bool o0, Reg Rn, Reg Rt);
 };
 
 inline std::optional<size_t> FPGetDataSize(Imm<2> type) {
