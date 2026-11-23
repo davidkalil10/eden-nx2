@@ -360,6 +360,10 @@ bool IsAddonExt(std::string_view ext) {
     return ext == ".nsp" || ext == ".nsz" || ext == ".xci" || ext == ".xcz";
 }
 
+bool IsSplitContainerExt(std::string_view ext) {
+    return IsAddonExt(ext) || ext == ".nup";
+}
+
 bool IsSupportedRomExt(std::string_view ext) {
     return IsAddonExt(ext) || ext == ".nup" || ext == ".nro" || ext == ".nca";
 }
@@ -370,6 +374,7 @@ std::string PeekContainerExtFromFile(const std::filesystem::path& file_path) {
     unsigned char hdr[0x104]{};
     const std::size_t n = std::fread(hdr, 1, sizeof(hdr), f);
     std::fclose(f);
+    if (n >= 4 && std::memcmp(hdr, "NUP\x01", 4) == 0) return ".nup";
     if (n >= 4 && std::memcmp(hdr, "PFS0", 4) == 0) return ".nsp";
     if (n >= 0x104 && std::memcmp(hdr + 0x100, "HEAD", 4) == 0) return ".xci";
     return ".nsp";
@@ -414,7 +419,7 @@ bool DetectSplitFolder(const std::filesystem::path& dir_path, std::string* out_e
     }
     if (out_ext) {
         const std::string dir_ext = ToLowerExt(dir_path);
-        *out_ext = IsAddonExt(dir_ext) ? dir_ext : PeekContainerExtFromFile(p00);
+        *out_ext = IsSplitContainerExt(dir_ext) ? dir_ext : PeekContainerExtFromFile(p00);
     }
     if (out_bytes) *out_bytes = total;
     if (out_parts) *out_parts = parts;
@@ -436,7 +441,7 @@ bool DetectSplitLeadFile(const std::filesystem::path& file_path, std::string* ou
         const std::string base_name = fname.substr(0, fname.size() - suffix.size());
         const std::filesystem::path base_p(base_name);
         const std::string base_ext = ToLowerExt(base_p);
-        if (!IsAddonExt(base_ext)) return false;
+        if (!IsSplitContainerExt(base_ext)) return false;
 
         const std::string base_full = full.substr(0, full.size() - suffix.size());
         std::uint64_t total = 0;
