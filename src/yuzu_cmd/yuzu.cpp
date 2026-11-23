@@ -18,11 +18,15 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <tuple>
+#include "core/frontend/applets/software_keyboard.h"
 #include "core/frontend/emu_window.h"
 #include "core/frontend/graphics_context.h"
+#include "core/hle/service/acc/profile_manager.h"
+#include "core/hle/service/am/frontend/applets.h"
 #include "common/overlay_panels.h"
 #include "common/thread.h"
 #include "core/perf_stats.h"
@@ -231,6 +235,107 @@ public:
     bool IsShown() const override {
         return true;
     }
+};
+
+struct Switch2KeyboardBridge {
+    std::mutex mutex;
+    bool pending = false;
+    bool close_requested = false;
+    bool is_inline = false;
+    Core::Frontend::KeyboardInitializeParameters params{};
+    Core::Frontend::InlineAppearParameters inline_params{};
+    std::u16string inline_text{};
+    Core::Frontend::SoftwareKeyboardApplet::SubmitNormalCallback submit_normal;
+    Core::Frontend::SoftwareKeyboardApplet::SubmitInlineCallback submit_inline;
+};
+
+class Switch2SoftwareKeyboardApplet final : public Core::Frontend::SoftwareKeyboardApplet {
+public:
+    explicit Switch2SoftwareKeyboardApplet(std::shared_ptr<Switch2KeyboardBridge> bridge_)
+        : bridge(std::move(bridge_)) {}
+
+    ~Switch2SoftwareKeyboardApplet() override = default;
+
+    void Close() const override {
+        std::scoped_lock lk{bridge->mutex};
+        bridge->pending = false;
+        bridge->close_requested = true;
+    }
+
+    void InitializeKeyboard(bool is_inline,
+                            Core::Frontend::KeyboardInitializeParameters initialize_parameters,
+                            SubmitNormalCallback submit_normal_callback_,
+                            SubmitInlineCallback submit_inline_callback_) override {
+        std::scoped_lock lk{bridge->mutex};
+        params = std::move(initialize_parameters);
+        bridge->inline_text = params.initial_text;
+        if (is_inline) {
+            submit_inline_cb = std::move(submit_inline_callback_);
+        } else {
+            submit_normal_cb = std::move(submit_normal_callback_);
+        }
+    }
+
+    void ShowNormalKeyboard() const override {
+        std::scoped_lock lk{bridge->mutex};
+        bridge->is_inline = false;
+        bridge->params = params;
+        bridge->submit_normal = submit_normal_cb;
+        bridge->submit_inline = nullptr;
+        bridge->close_requested = false;
+        bridge->pending = true;
+        LOG_INFO(Frontend, "Switch2 swkbd requested (normal, max_len={})", params.max_text_length);
+    }
+
+    void ShowTextCheckDialog(Service::AM::Frontend::SwkbdTextCheckResult text_check_result,
+                             std::u16string text_check_message) const override {
+        LOG_WARNING(Frontend, "Switch2 swkbd text check dialog ignored (result={}, msg={})",
+                    static_cast<u32>(text_check_result), Common::UTF16ToUTF8(text_check_message));
+    }
+
+    void ShowInlineKeyboard(Core::Frontend::InlineAppearParameters appear_parameters) const override {
+        std::scoped_lock lk{bridge->mutex};
+        bridge->is_inline = true;
+        bridge->params = params;
+        bridge->inline_params = appear_parameters;
+        bridge->submit_normal = nullptr;
+        bridge->submit_inline = submit_inline_cb;
+        bridge->close_requested = false;
+        bridge->pending = true;
+        LOG_INFO(Frontend, "Switch2 swkbd requested (inline, max_len={})",
+                 appear_parameters.max_text_length);
+    }
+
+    void HideInlineKeyboard() const override {
+        std::scoped_lock lk{bridge->mutex};
+        bridge->pending = false;
+        bridge->close_requested = true;
+    }
+
+    void InlineTextChanged(Core::Frontend::InlineTextParameters text_parameters) const override {
+        SubmitInlineCallback cb;
+        {
+            std::scoped_lock lk{bridge->mutex};
+            bridge->inline_text = text_parameters.input_text;
+            cb = submit_inline_cb;
+        }
+        if (cb) {
+            cb(Service::AM::Frontend::SwkbdReplyType::ChangedString, text_parameters.input_text,
+               text_parameters.cursor_position);
+        }
+    }
+
+    void ExitKeyboard() const override {
+        std::scoped_lock lk{bridge->mutex};
+        bridge->pending = false;
+        bridge->close_requested = true;
+    }
+
+private:
+    std::shared_ptr<Switch2KeyboardBridge> bridge;
+    Core::Frontend::KeyboardInitializeParameters params{};
+    mutable SubmitNormalCallback submit_normal_cb;
+    mutable SubmitInlineCallback submit_inline_cb;
 };
 
 void UpdateSwitch2FpsOverlay(const std::string& text) {
@@ -966,11 +1071,33 @@ int main(int argc, char** argv) {
 
     auto manual_provider = std::make_unique<FileSys::ManualContentProvider>();
     auto system = std::make_unique<Core::System>();
+    auto kbd_bridge = std::make_shared<Switch2KeyboardBridge>();
+    {
+        Service::AM::Frontend::FrontendAppletSet applets{};
+        applets.software_keyboard = std::make_unique<Switch2SoftwareKeyboardApplet>(kbd_bridge);
+        system->SetFrontendAppletSet(std::move(applets));
+    }
     auto input_subsystem = std::make_unique<InputCommon::InputSubsystem>();
     auto emu_window = std::make_unique<EmuWindowSwitch2>();
     Switch2BootTrace("03: System/Window created");
 
     system->Initialize();
+    if (!launch_cfg.profile_name.empty()) {
+        auto& pm = system->GetProfileManager();
+        if (const auto uid = pm.GetUser(0); uid.has_value()) {
+            Service::Account::ProfileBase base{};
+            if (pm.GetProfileBase(*uid, base)) {
+                Service::Account::ProfileUsername new_name{};
+                const std::size_t n = std::min(launch_cfg.profile_name.size(),
+                                               Service::Account::profile_username_size - 1);
+                std::memcpy(new_name.data(), launch_cfg.profile_name.data(), n);
+                if (base.username != new_name) {
+                    base.username = new_name;
+                    pm.SetProfileBase(*uid, base);
+                }
+            }
+        }
+    }
     system->ApplySettings();
     input_subsystem->Initialize();
     system->HIDCore().ReloadInputDevices();
@@ -1058,6 +1185,60 @@ int main(int argc, char** argv) {
         std::string quick_msg;
         bool exit_to_launcher = false;
 
+        bool kbd_overlay_active = false;
+        bool kbd_is_inline = false;
+        bool kbd_shift = true;
+        bool kbd_symbols = false;
+        bool kbd_prev_touch = false;
+        int kbd_row = 0;
+        int kbd_col = 0;
+        int kbd_max_len = 32;
+        int kbd_min_len = 0;
+        std::string kbd_header;
+        std::string kbd_text;
+        Core::Frontend::SoftwareKeyboardApplet::SubmitNormalCallback kbd_norm_cb;
+        Core::Frontend::SoftwareKeyboardApplet::SubmitInlineCallback kbd_inline_cb;
+
+        auto submit_kbd_result = [&](bool ok, const std::string& utf8_text) {
+            const std::u16string u16 = Common::UTF8ToUTF16(utf8_text);
+            if (kbd_is_inline) {
+                if (kbd_inline_cb) {
+                    if (ok) {
+                        const s32 pos = static_cast<s32>(u16.size());
+                        kbd_inline_cb(Service::AM::Frontend::SwkbdReplyType::ChangedString, u16, pos);
+                        kbd_inline_cb(Service::AM::Frontend::SwkbdReplyType::DecidedEnter, u16, pos);
+                    } else {
+                        kbd_inline_cb(Service::AM::Frontend::SwkbdReplyType::DecidedCancel, u"", 0);
+                    }
+                }
+            } else {
+                if (kbd_norm_cb) {
+                    if (ok) {
+                        kbd_norm_cb(Service::AM::Frontend::SwkbdResult::Ok, u16, true);
+                    } else {
+                        kbd_norm_cb(Service::AM::Frontend::SwkbdResult::Cancel, u"", true);
+                    }
+                }
+            }
+            kbd_norm_cb = nullptr;
+            kbd_inline_cb = nullptr;
+            kbd_overlay_active = false;
+            Switch2HideKeyboardOverlay();
+        };
+
+        auto neutralize_all_inputs = [&]() {
+            Switch2PadSnapshot neutral{};
+            for (int p = 0; p < 4; ++p) {
+                const auto& b = player_bindings[static_cast<std::size_t>(p)];
+                if (b.enabled) {
+                    ForwardSwitch2Input(*input_subsystem, neutral,
+                                        prev_pads[static_cast<std::size_t>(p)], b.pad_index,
+                                        b.effective_profile, p == 0, prev_touch);
+                }
+            }
+            stop_all_vibration();
+        };
+
         while (Switch2PollInput(&pads[0], true)) {
             for (int p = 1; p < 4; ++p) {
                 Switch2PollPlayerInput(p, &pads[static_cast<std::size_t>(p)]);
@@ -1093,24 +1274,240 @@ int main(int argc, char** argv) {
             }
 
             const auto& pad = pads[0];
+
+            // Handle pending Software Keyboard (swkbd) requests from guest HLE threads.
+            {
+                bool has_pending = false;
+                bool req_close = false;
+                bool req_is_inline = false;
+                Core::Frontend::KeyboardInitializeParameters req_params{};
+                Core::Frontend::InlineAppearParameters req_inline_params{};
+                std::u16string req_inline_text;
+                Core::Frontend::SoftwareKeyboardApplet::SubmitNormalCallback req_norm_cb;
+                Core::Frontend::SoftwareKeyboardApplet::SubmitInlineCallback req_inline_cb;
+                {
+                    std::scoped_lock lk{kbd_bridge->mutex};
+                    if (kbd_bridge->close_requested) {
+                        req_close = true;
+                        kbd_bridge->close_requested = false;
+                    }
+                    if (!kbd_overlay_active && kbd_bridge->pending) {
+                        has_pending = true;
+                        kbd_bridge->pending = false;
+                        req_is_inline = kbd_bridge->is_inline;
+                        req_params = kbd_bridge->params;
+                        req_inline_params = kbd_bridge->inline_params;
+                        req_inline_text = kbd_bridge->inline_text;
+                        req_norm_cb = std::move(kbd_bridge->submit_normal);
+                        req_inline_cb = std::move(kbd_bridge->submit_inline);
+                    }
+                }
+                if (req_close && kbd_overlay_active) {
+                    kbd_norm_cb = nullptr;
+                    kbd_inline_cb = nullptr;
+                    kbd_overlay_active = false;
+                    Switch2HideKeyboardOverlay();
+                }
+                if (has_pending) {
+                    if (quick_menu_open) {
+                        quick_menu_open = false;
+                        Switch2HideQuickMenuOverlay();
+                    }
+                    neutralize_all_inputs();
+
+                    kbd_is_inline = req_is_inline;
+                    kbd_norm_cb = std::move(req_norm_cb);
+                    kbd_inline_cb = std::move(req_inline_cb);
+
+                    const std::string header_s = Common::UTF16ToUTF8(req_params.header_text);
+                    const std::string sub_s = Common::UTF16ToUTF8(req_params.sub_text);
+                    const std::string guide_s = Common::UTF16ToUTF8(req_params.guide_text);
+                    const std::string ok_s = Common::UTF16ToUTF8(req_params.ok_text);
+                    const std::string init_s = Common::UTF16ToUTF8(
+                        (req_is_inline && !req_inline_text.empty()) ? req_inline_text
+                                                                    : req_params.initial_text);
+
+                    const u32 raw_max = (req_is_inline && req_inline_params.max_text_length > 0)
+                                            ? req_inline_params.max_text_length
+                                            : req_params.max_text_length;
+                    const u32 raw_min = (req_is_inline && req_inline_params.min_text_length > 0)
+                                            ? req_inline_params.min_text_length
+                                            : req_params.min_text_length;
+                    kbd_max_len = (raw_max > 0) ? std::clamp<int>(static_cast<int>(raw_max), 1, 500)
+                                                : 32;
+                    kbd_min_len = std::clamp<int>(static_cast<int>(raw_min), 0, kbd_max_len);
+
+                    const auto sw_type =
+                        req_is_inline ? req_inline_params.type : req_params.type;
+                    int kbd_type = 0;
+                    if (sw_type == Service::AM::Frontend::SwkbdType::NumberPad) {
+                        kbd_type = 1;
+                    } else if (sw_type == Service::AM::Frontend::SwkbdType::Qwerty) {
+                        kbd_type = 2;
+                    }
+
+                    kbd_header = !header_s.empty() ? header_s
+                                                   : (!sub_s.empty() ? sub_s : guide_s);
+                    kbd_text = init_s;
+                    if (static_cast<int>(kbd_text.size()) > kbd_max_len) {
+                        kbd_text.resize(static_cast<std::size_t>(kbd_max_len));
+                    }
+
+                    bool open_overlay = launch_cfg.kbd_force_overlay;
+                    if (!open_overlay) {
+                        Switch2KbdRequest kreq{};
+                        kreq.header_text = header_s.c_str();
+                        kreq.sub_text = sub_s.c_str();
+                        kreq.guide_text = guide_s.c_str();
+                        kreq.ok_text = ok_s.c_str();
+                        kreq.initial_text = kbd_text.c_str();
+                        kreq.max_len = kbd_max_len;
+                        kreq.kbd_type = kbd_type;
+                        kreq.password_mode =
+                            (req_params.password_mode ==
+                             Service::AM::Frontend::SwkbdPasswordMode::Enabled);
+                        char out_utf8[1024]{};
+                        const int st = Switch2ShowNativeKeyboard(&kreq, out_utf8, sizeof(out_utf8));
+                        if (st == SWITCH2_KBD_OK) {
+                            submit_kbd_result(true, std::string(out_utf8));
+                        } else if (st == SWITCH2_KBD_CANCEL) {
+                            submit_kbd_result(false, "");
+                        } else {
+                            open_overlay = true;
+                        }
+                    }
+
+                    if (open_overlay) {
+                        kbd_overlay_active = true;
+                        kbd_shift = kbd_text.empty();
+                        kbd_symbols = (kbd_type == 1);
+                        kbd_row = 0;
+                        kbd_col = 0;
+                        kbd_prev_touch = pad.has_touch;
+                        Switch2RenderKeyboardOverlay(kbd_header, kbd_text, kbd_max_len, kbd_row,
+                                                     kbd_col, kbd_shift, kbd_symbols,
+                                                     launch_cfg.ui_english);
+                    }
+                }
+            }
+
             const bool lr_plus_combo =
                 (pad.raw_held & SWITCH2_BTN_L) && (pad.raw_held & SWITCH2_BTN_R) &&
                 (pad.raw_held & SWITCH2_BTN_PLUS) &&
                 ((pad.raw_down & (SWITCH2_BTN_L | SWITCH2_BTN_R | SWITCH2_BTN_PLUS)) != 0);
-            if (lr_plus_combo) {
+            if (kbd_overlay_active) {
+                const std::uint64_t down = pad.raw_down;
+                bool redraw_kbd = false;
+                if (down & SWITCH2_BTN_UP) {
+                    kbd_row = (kbd_row + 3) % 4;
+                    redraw_kbd = true;
+                } else if (down & SWITCH2_BTN_DOWN) {
+                    kbd_row = (kbd_row + 1) % 4;
+                    redraw_kbd = true;
+                } else if (down & SWITCH2_BTN_LEFT) {
+                    kbd_col = (kbd_col + 9) % 10;
+                    redraw_kbd = true;
+                } else if (down & SWITCH2_BTN_RIGHT) {
+                    kbd_col = (kbd_col + 1) % 10;
+                    redraw_kbd = true;
+                } else if (down & SWITCH2_BTN_A) {
+                    if (static_cast<int>(kbd_text.size()) < kbd_max_len) {
+                        kbd_text.push_back(
+                            Switch2KeyboardCharAt(kbd_row, kbd_col, kbd_shift, kbd_symbols));
+                        if (kbd_shift && !kbd_symbols) kbd_shift = false;
+                        redraw_kbd = true;
+                    }
+                } else if (down & SWITCH2_BTN_B) {
+                    if (!kbd_text.empty()) {
+                        kbd_text.pop_back();
+                        redraw_kbd = true;
+                    }
+                } else if (down & SWITCH2_BTN_Y) {
+                    if (static_cast<int>(kbd_text.size()) < kbd_max_len) {
+                        kbd_text.push_back(' ');
+                        redraw_kbd = true;
+                    }
+                } else if (down & SWITCH2_BTN_L) {
+                    if (kbd_symbols) {
+                        kbd_symbols = false;
+                    } else {
+                        kbd_shift = !kbd_shift;
+                    }
+                    redraw_kbd = true;
+                } else if (down & SWITCH2_BTN_R) {
+                    kbd_symbols = !kbd_symbols;
+                    redraw_kbd = true;
+                } else if (down & SWITCH2_BTN_PLUS) {
+                    if (static_cast<int>(kbd_text.size()) >= kbd_min_len) {
+                        submit_kbd_result(true, kbd_text);
+                    }
+                } else if (down & SWITCH2_BTN_MINUS) {
+                    submit_kbd_result(false, "");
+                }
+
+                if (kbd_overlay_active && pad.has_touch && !kbd_prev_touch) {
+                    std::uint32_t win_w = 1280;
+                    std::uint32_t win_h = 720;
+                    Switch2GetWindowDimensions(&win_w, &win_h);
+                    const int tx = static_cast<int>(pad.touch_x * static_cast<float>(win_w));
+                    const int ty = static_cast<int>(pad.touch_y * static_cast<float>(win_h));
+                    const int ox = (static_cast<int>(win_w) - 820) / 2;
+                    const int oy = (static_cast<int>(win_h) - 476) / 2;
+                    const int lx = tx - ox;
+                    const int ly = ty - oy;
+
+                    if (lx >= 24 && lx < 24 + 10 * 77 && ly >= 122 && ly < 122 + 4 * 64) {
+                        const int tc = (lx - 24) / 77;
+                        const int tr = (ly - 122) / 64;
+                        const int rx = (lx - 24) % 77;
+                        const int ry = (ly - 122) % 64;
+                        if (tc >= 0 && tc < 10 && tr >= 0 && tr < 4 && rx < 71 && ry < 56) {
+                            kbd_row = tr;
+                            kbd_col = tc;
+                            if (static_cast<int>(kbd_text.size()) < kbd_max_len) {
+                                kbd_text.push_back(Switch2KeyboardCharAt(kbd_row, kbd_col,
+                                                                         kbd_shift, kbd_symbols));
+                                if (kbd_shift && !kbd_symbols) kbd_shift = false;
+                            }
+                            redraw_kbd = true;
+                        }
+                    } else if (ly >= 386 && ly < 428) {
+                        if (lx >= 24 && lx < 204) {
+                            if (kbd_symbols) {
+                                kbd_symbols = false;
+                            } else {
+                                kbd_shift = !kbd_shift;
+                            }
+                            redraw_kbd = true;
+                        } else if (lx >= 214 && lx < 404) {
+                            if (static_cast<int>(kbd_text.size()) < kbd_max_len) {
+                                kbd_text.push_back(' ');
+                                redraw_kbd = true;
+                            }
+                        } else if (lx >= 414 && lx < 604) {
+                            if (!kbd_text.empty()) {
+                                kbd_text.pop_back();
+                                redraw_kbd = true;
+                            }
+                        } else if (lx >= 614 && lx < 796) {
+                            if (static_cast<int>(kbd_text.size()) >= kbd_min_len) {
+                                submit_kbd_result(true, kbd_text);
+                            }
+                        }
+                    }
+                }
+                kbd_prev_touch = pad.has_touch;
+
+                if (redraw_kbd && kbd_overlay_active) {
+                    Switch2RenderKeyboardOverlay(kbd_header, kbd_text, kbd_max_len, kbd_row,
+                                                 kbd_col, kbd_shift, kbd_symbols,
+                                                 launch_cfg.ui_english);
+                }
+            } else if (lr_plus_combo) {
                 quick_menu_open = !quick_menu_open;
                 quick_msg.clear();
                 if (quick_menu_open) {
-                    Switch2PadSnapshot neutral{};
-                    for (int p = 0; p < 4; ++p) {
-                        const auto& b = player_bindings[static_cast<std::size_t>(p)];
-                        if (b.enabled) {
-                            ForwardSwitch2Input(*input_subsystem, neutral,
-                                                prev_pads[static_cast<std::size_t>(p)], b.pad_index,
-                                                b.effective_profile, p == 0, prev_touch);
-                        }
-                    }
-                    stop_all_vibration();
+                    neutralize_all_inputs();
                     Switch2RenderQuickMenuOverlay(launch_cfg, volume_pct, quick_sel, quick_msg);
                 } else {
                     Switch2HideQuickMenuOverlay();
@@ -1435,6 +1832,7 @@ int main(int argc, char** argv) {
     Common::SetCurrentThreadPriority(Common::ThreadPriority::High);
     Settings::values.use_speed_limit.SetValue(true);
     Settings::values.speed_limit.SetValue(100);
+    Switch2HideKeyboardOverlay();
     Switch2HideQuickMenuOverlay();
     UpdateSwitch2FpsOverlay("");
     Switch2SetCpuBoost(false);

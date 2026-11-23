@@ -45,6 +45,8 @@ struct Switch2LaunchConfig {
     int jit_blocks_ahead = 8;
     bool shader_cache = true;
     std::string language = "pt-BR";
+    std::string profile_name = "Eden";
+    bool kbd_force_overlay = false;
     bool ui_english = false;
     std::string update_pkg = "auto"; // "auto", "none", or full path to Update .nsp/.xci
     std::string dlc_pkg = "auto";    // "auto", "none", or full path to DLC .nsp/.xci or folder
@@ -62,5 +64,11 @@ bool Switch2SavePerGameQuickConfig(const Switch2LaunchConfig& cfg);
 void Switch2RenderQuickMenuOverlay(const Switch2LaunchConfig& cfg, int volume_pct, int selected,
                                    const std::string& status_msg);
 void Switch2HideQuickMenuOverlay();
+
+// Built-in QWERTY Virtual Keyboard overlay (automatic fallback or forced mode for swkbd).
+char Switch2KeyboardCharAt(int row, int col, bool shift, bool symbols);
+void Switch2RenderKeyboardOverlay(const std::string& header, const std::string& text, int max_len,
+                                  int row, int col, bool shift, bool symbols, bool ui_english);
+void Switch2HideKeyboardOverlay();
 
 #endif // __SWITCH2__

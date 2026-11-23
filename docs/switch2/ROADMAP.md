@@ -61,9 +61,9 @@
 ### 3.2 Emulação de Amiibo (`.bin` no SD)
 - [ ] Opção **`[ Escanear Amiibo... ]`** no Menu Rápido (`L + R + +`) lendo arquivos `.bin` de `sdmc:/switch/eden-nx2/amiibo/` e enviando direto ao serviço NFC (`Cabinet`) do jogo ativo.
 
-### 3.3 Teclado Nativo do Switch 2 (`swkbd`) & Perfil de Usuário
-- [ ] Conectar o `swkbd_applet` do Eden ao **teclado nativo do Horizon OS (`libnx swkbdShow`)**, permitindo digitar nomes de personagens/saves com o teclado do próprio Switch 2.
-- [ ] Editor de **Nome de Perfil** (e seleção de perfil) no launcher do Eden-NX2.
+### 3.3 Teclado Nativo do Switch 2 (`swkbd`) & Perfil de Usuário ✅ Concluída em `v0.1.11`
+- [x] Conectado o `SoftwareKeyboardApplet` (`swkbd`) do Eden ao **teclado nativo do Horizon OS (`libnx swkbdShow`)**, com **fallback automático para Teclado Virtual QWERTY integrado** (controle + toque na tela) e opção **`Teclado no Jogo`** (`Auto` / `Teclado Integrado`) em `[X]`/`[Y]`.
+- [x] Editor de **Nome do Perfil** (gravado no `ProfileManager` da conta Switch 1) nas Configurações Globais (`[X]`) do launcher.
 
 ### 3.4 Gerenciador de Saves (Backup / Importar / Exportar)
 - [ ] Opção no `[Y]` para **exportar** o save do jogo selecionado para `sdmc:/switch/eden-nx2/saves_backup/<Jogo>/` e **importar** saves vindos de um Switch 1 (JKSV / Checkpoint) ou do Eden no PC.

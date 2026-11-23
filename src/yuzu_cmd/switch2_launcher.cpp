@@ -877,6 +877,22 @@ std::vector<SettingOption> MakeDefaultOptions() {
          {"Portugues (Brasil)", "Ingles (EUA)", "Espanhol (LatAm)", "Espanhol (ES)", "Frances", "Alemao", "Italiano", "Japones"},
          {"Portuguese (Brazil)", "English (US)", "Spanish (LatAm)", "Spanish (Spain)", "French", "German", "Italian", "Japanese"},
          0, true},
+        {"profile_name",
+         "Nome do Perfil", "Profile Name",
+         "Nome do usuario Switch 1 (pressione [A] para digitar com o teclado).",
+         "Switch 1 user profile name (press [A] to type using the keyboard).",
+         {"Eden"},
+         {"Eden"},
+         {"Eden"},
+         0, false},
+        {"kbd_mode",
+         "Teclado no Jogo", "In-Game Keyboard",
+         "Auto usa o teclado nativo do Switch 2 (com fallback automatico p/ teclado interno).",
+         "Auto uses the native Switch 2 keyboard (with automatic built-in overlay fallback).",
+         {"auto", "overlay"},
+         {"Nativo Switch 2 (Auto)", "Teclado Virtual (Overlay)"},
+         {"Native Switch 2 (Auto)", "Built-in Overlay Keyboard"},
+         0, true},
         {"ui_lang",
          "Idioma do Menu", "Launcher Language",
          "Idioma da interface do Eden-NX2 (ou aperte [-] na tela inicial).",
@@ -969,6 +985,13 @@ void LoadIniInto(std::vector<SettingOption>& opts, const std::string& path, bool
             if (opt.key != k) continue;
             if (opt.key == "update_pkg" || opt.key == "dlc_pkg") {
                 SetAddonOptionValue(opt, v);
+                continue;
+            }
+            if (opt.key == "profile_name" && !v.empty()) {
+                opt.values = {v};
+                opt.labels_pt = {v};
+                opt.labels_en = {v};
+                opt.selected = 0;
                 continue;
             }
             const auto it = std::find(opt.values.begin(), opt.values.end(), v);
@@ -1321,6 +1344,9 @@ void FillLaunchConfig(const std::vector<SettingOption>& eff, const std::string& 
     cfg->jit_blocks_ahead = std::atoi(GetValue(eff, "jit_ahead").c_str());
     cfg->shader_cache = (GetValue(eff, "shader_cache") == "on");
     cfg->language = GetValue(eff, "language");
+    cfg->profile_name = GetValue(eff, "profile_name");
+    if (cfg->profile_name.empty()) cfg->profile_name = "Eden";
+    cfg->kbd_force_overlay = (GetValue(eff, "kbd_mode") == "overlay");
     cfg->ui_english = (GetValue(eff, "ui_lang") == "en");
     cfg->update_pkg = GetValue(eff, "update_pkg");
     if (cfg->update_pkg.empty()) cfg->update_pkg = "auto";
@@ -2262,16 +2288,18 @@ void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int s
         const bool is_sel = (i == selected);
         const std::size_t idx = static_cast<std::size_t>(i);
         const bool is_addon_row = (opts[idx].key == "update_pkg" || opts[idx].key == "dlc_pkg");
+        const bool is_text_row = (opts[idx].key == "profile_name");
+        const bool is_modal_row = is_addon_row || is_text_row;
 
         cv.DrawRoundedRect(96, ry, 1080, 34, 7,
                            is_sel ? kCardSelected
-                                  : (is_addon_row ? PackRGBA(22, 36, 56) : kCardBg),
-                           is_sel ? kAccent : (is_addon_row ? PackRGBA(48, 82, 118) : kBorderDim));
+                                  : (is_modal_row ? PackRGBA(22, 36, 56) : kCardBg),
+                           is_sel ? kAccent : (is_modal_row ? PackRGBA(48, 82, 118) : kBorderDim));
 
         const std::string& lbl = en ? opts[idx].label_en : opts[idx].label_pt;
         const auto& ch_lbls = en ? opts[idx].labels_en : opts[idx].labels_pt;
         // Always keep uniform scale=2 across every setting row for consistent readability.
-        cv.DrawTextMaxWidth(112, ry + 9, 396, lbl, is_addon_row ? kCyan : kTextPrimary, 2);
+        cv.DrawTextMaxWidth(112, ry + 9, 396, lbl, is_modal_row ? kCyan : kTextPrimary, 2);
 
         const std::string raw_val =
             ch_lbls.empty()
@@ -2279,10 +2307,12 @@ void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int s
                 : ch_lbls[static_cast<std::size_t>(
                       std::clamp(opts[idx].selected, 0, static_cast<int>(ch_lbls.size()) - 1))];
 
-        if (is_addon_row) {
+        if (is_modal_row) {
             cv.DrawRoundedRect(520, ry + 3, 492, 28, 5, PackRGBA(14, 22, 34), kBorderDim);
             cv.DrawTextMaxWidth(532, ry + 9, 468, raw_val, is_sel ? kAccent : kTextPrimary, 2);
-            cv.DrawPill(1022, ry + 7, T(en, "[A] Abrir >", "[A] Open >"),
+            cv.DrawPill(1022, ry + 7,
+                        is_text_row ? T(en, "[A] Editar", "[A] Edit")
+                                    : T(en, "[A] Abrir >", "[A] Open >"),
                         is_sel ? kAccentSoft : kCardBg, is_sel ? kAccent : kCyan, 1);
         } else {
             const std::string val_txt = "< " + raw_val + " >";
@@ -2304,6 +2334,127 @@ void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int s
     fx += cv.DrawPill(fx, 618, T(en, "[Esq/Dir ou A] Alterar", "[Left/Right or A] Change"),
                       kAccentSoft, kAccent, 1) + 10;
     cv.DrawPill(fx, 618, T(en, "[B] Salvar e Voltar", "[B] Save & Back"), kCardBg, kCyan, 1);
+}
+
+bool RunCanvasKeyboardModal(Canvas& cv, const std::string& header, std::string& text, int max_len,
+                            bool en, bool* out_app_exit) {
+    int row = 1;
+    int col = 0;
+    bool shift = true;
+    bool symbols = false;
+    bool redraw = true;
+    bool prev_touch = true;
+    Switch2PadSnapshot pad{};
+
+    while (Switch2PollInput(&pad, false)) {
+        const std::uint64_t down = pad.raw_down;
+        if (down & SWITCH2_BTN_MINUS) {
+            return false;
+        }
+        if (down & SWITCH2_BTN_PLUS) {
+            return true;
+        }
+        if (down & SWITCH2_BTN_UP) { row = (row + 3) % 4; redraw = true; }
+        if (down & SWITCH2_BTN_DOWN) { row = (row + 1) % 4; redraw = true; }
+        if (down & SWITCH2_BTN_LEFT) { col = (col + 9) % 10; redraw = true; }
+        if (down & SWITCH2_BTN_RIGHT) { col = (col + 1) % 10; redraw = true; }
+        if (down & SWITCH2_BTN_L) { shift = !shift; symbols = false; redraw = true; }
+        if (down & SWITCH2_BTN_R) { symbols = !symbols; redraw = true; }
+        if (down & SWITCH2_BTN_B) {
+            if (!text.empty()) {
+                text.pop_back();
+                redraw = true;
+            }
+        }
+        if (down & SWITCH2_BTN_Y) {
+            if (static_cast<int>(text.size()) < max_len) {
+                text.push_back(' ');
+                redraw = true;
+            }
+        }
+        if (down & SWITCH2_BTN_A) {
+            if (static_cast<int>(text.size()) < max_len) {
+                text.push_back(Switch2KeyboardCharAt(row, col, shift, symbols));
+                if (shift && !symbols) shift = false;
+                redraw = true;
+            }
+        }
+
+        if (pad.has_touch && !prev_touch) {
+            const int tx = static_cast<int>(pad.touch_x * kScreenW);
+            const int ty = static_cast<int>(pad.touch_y * kScreenH);
+            // Key grid: x = 250 + c * 78 (w=72), y = 258 + r * 66 (h=58)
+            if (tx >= 250 && tx < 250 + 10 * 78 && ty >= 258 && ty < 258 + 4 * 66) {
+                const int tc = (tx - 250) / 78;
+                const int tr = (ty - 258) / 66;
+                if (tc >= 0 && tc < 10 && tr >= 0 && tr < 4) {
+                    row = tr;
+                    col = tc;
+                    if (static_cast<int>(text.size()) < max_len) {
+                        text.push_back(Switch2KeyboardCharAt(row, col, shift, symbols));
+                        if (shift && !symbols) shift = false;
+                    }
+                    redraw = true;
+                }
+            } else if (ty >= 534 && ty <= 582) {
+                if (tx >= 250 && tx < 420) { shift = !shift; symbols = false; redraw = true; }
+                else if (tx >= 430 && tx < 620) {
+                    if (static_cast<int>(text.size()) < max_len) { text.push_back(' '); redraw = true; }
+                } else if (tx >= 630 && tx < 820) {
+                    if (!text.empty()) { text.pop_back(); redraw = true; }
+                } else if (tx >= 830 && tx < 1030) {
+                    return true;
+                }
+            }
+        }
+        prev_touch = pad.has_touch;
+
+        if (redraw) {
+            cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 215);
+            cv.DrawRoundedRect(216, 108, 848, 504, 16, kPanelBg, kAccent);
+            cv.DrawTextMaxWidth(250, 132, 620, header, kAccent, 2, true);
+            const std::string cnt = std::to_string(text.size()) + "/" + std::to_string(max_len);
+            cv.DrawText(940, 132, cnt, kCyan, 2);
+            cv.FillRect(246, 168, 788, 2, kBorderDim);
+
+            cv.DrawRoundedRect(250, 184, 780, 54, 10, PackRGBA(12, 18, 30), kCyan);
+            cv.DrawTextMaxWidth(268, 203, 744, text + "_", kTextPrimary, 2);
+
+            for (int r = 0; r < 4; ++r) {
+                for (int c = 0; c < 10; ++c) {
+                    const int kx = 250 + c * 78;
+                    const int ky = 258 + r * 66;
+                    const bool is_sel = (r == row && c == col);
+                    cv.DrawRoundedRect(kx, ky, 72, 58, 9,
+                                       is_sel ? kAccentSoft : kCardBg,
+                                       is_sel ? kAccent : kBorderDim);
+                    const char ch = Switch2KeyboardCharAt(r, c, shift, symbols);
+                    char s[2]{ch, '\0'};
+                    cv.DrawText(kx + 28, ky + 21, s, is_sel ? kTextPrimary : kCyan, 2);
+                }
+            }
+
+            cv.DrawRoundedRect(250, 534, 170, 46, 8, shift ? kAccentSoft : kCardBg,
+                               shift ? kAccent : kBorderDim);
+            cv.DrawText(264, 549, "[L] SHIFT", kTextPrimary, 2);
+            cv.DrawRoundedRect(430, 534, 190, 46, 8, kCardBg, kBorderDim);
+            cv.DrawText(446, 549, T(en, "[Y] Espaco", "[Y] Space"), kTextPrimary, 2);
+            cv.DrawRoundedRect(630, 534, 190, 46, 8, PackRGBA(76, 36, 42), kAmber);
+            cv.DrawText(644, 549, T(en, "[B] Apagar", "[B] Delete"), kTextPrimary, 2);
+            cv.DrawRoundedRect(830, 534, 200, 46, 8, kAccentSoft, kAccent);
+            cv.DrawText(854, 549, T(en, "[+] Salvar", "[+] Save"), kAccent, 2);
+
+            cv.DrawText(250, 590,
+                        T(en, "[A] Letra  [R] Simbolos  [-] Cancelar  (Toque suportado)",
+                          "[A] Type  [R] Symbols  [-] Cancel  (Touch supported)"),
+                        kTextMuted, 1);
+            cv.Present();
+            redraw = false;
+        }
+        Switch2SleepMs(16);
+    }
+    if (out_app_exit) *out_app_exit = true;
+    return false;
 }
 
 bool RunSettingsModal(Canvas& cv, std::vector<SettingOption>& opts, const std::string& title,
@@ -2358,6 +2509,48 @@ bool RunSettingsModal(Canvas& cv, std::vector<SettingOption>& opts, const std::s
                                 ? RunUpdatePickerModal(cv, opt, *pg_ctx, en)
                                 : RunDlcPickerModal(cv, opt, *pg_ctx, en);
             if (!ok) return false;
+            redraw = true;
+        } else if (opt.key == "profile_name" &&
+                   (touch_activate || (down & (SWITCH2_BTN_A | SWITCH2_BTN_RIGHT | SWITCH2_BTN_LEFT)))) {
+            const std::string cur_name = opt.values.empty() ? std::string("Eden") : opt.values[0];
+            const bool force_overlay = (GetValue(opts, "kbd_mode") == "overlay");
+            bool got_name = false;
+            std::string new_name = cur_name;
+            if (!force_overlay) {
+                Switch2KbdRequest req{};
+                req.header_text = T(en, "Nome do Perfil Switch 1", "Switch 1 Profile Name");
+                req.guide_text = T(en, "Digite seu nome de jogador", "Enter your player name");
+                req.ok_text = "OK";
+                req.initial_text = cur_name.c_str();
+                req.max_len = 24;
+                req.kbd_type = 0;
+                char kbuf[64]{};
+                const int st = Switch2ShowNativeKeyboard(&req, kbuf, sizeof(kbuf));
+                if (st == SWITCH2_KBD_OK && kbuf[0] != '\0') {
+                    new_name = kbuf;
+                    got_name = true;
+                } else if (st == SWITCH2_KBD_UNAVAILABLE) {
+                    bool app_exit = false;
+                    if (RunCanvasKeyboardModal(cv, T(en, "NOME DO PERFIL", "PROFILE NAME"),
+                                               new_name, 24, en, &app_exit)) {
+                        got_name = !new_name.empty();
+                    }
+                    if (app_exit) return false;
+                }
+            } else {
+                bool app_exit = false;
+                if (RunCanvasKeyboardModal(cv, T(en, "NOME DO PERFIL", "PROFILE NAME"),
+                                           new_name, 24, en, &app_exit)) {
+                    got_name = !new_name.empty();
+                }
+                if (app_exit) return false;
+            }
+            if (got_name && !new_name.empty()) {
+                opt.values = {new_name};
+                opt.labels_pt = {new_name};
+                opt.labels_en = {new_name};
+                opt.selected = 0;
+            }
             redraw = true;
         } else {
             const int c = static_cast<int>(opt.values.size());
@@ -3133,6 +3326,173 @@ void Switch2HideQuickMenuOverlay() {
     panel.width = 0;
     panel.height = 0;
     ++panel.version;
+}
+
+char Switch2KeyboardCharAt(int row, int col, bool shift, bool symbols) {
+    static constexpr const char* kLower[4] = {
+        "1234567890",
+        "qwertyuiop",
+        "asdfghjkl-",
+        "zxcvbnm._!",
+    };
+    static constexpr const char* kUpper[4] = {
+        "1234567890",
+        "QWERTYUIOP",
+        "ASDFGHJKL-",
+        "ZXCVBNM._!",
+    };
+    static constexpr const char* kSyms[4] = {
+        "!@#$%^&*()",
+        "[]{}<>+=~?",
+        ",:;'/\\|_+-",
+        "0123456789",
+    };
+    const int r = std::clamp(row, 0, 3);
+    const int c = std::clamp(col, 0, 9);
+    const char* const* tbl = symbols ? kSyms : (shift ? kUpper : kLower);
+    return tbl[r][c];
+}
+
+void Switch2RenderKeyboardOverlay(const std::string& header, const std::string& text, int max_len,
+                                  int row, int col, bool shift, bool symbols, bool ui_english) {
+    constexpr int kW = 820;
+    constexpr int kH = 476;
+    std::vector<std::uint32_t> buf(static_cast<std::size_t>(kW) * kH, PackRGBA(0, 0, 0, 0));
+
+    auto fill_rect = [&](int x, int y, int w, int h, std::uint32_t col_rgba) {
+        const int x0 = std::max(0, x);
+        const int y0 = std::max(0, y);
+        const int x1 = std::min(kW, x + w);
+        const int y1 = std::min(kH, y + h);
+        for (int py = y0; py < y1; ++py) {
+            std::fill(buf.begin() + py * kW + x0, buf.begin() + py * kW + x1, col_rgba);
+        }
+    };
+
+    auto draw_rounded = [&](int x, int y, int w, int h, int radius, std::uint32_t fill,
+                            std::uint32_t border) {
+        if (w <= 0 || h <= 0) return;
+        const int r = std::min({radius, w / 2, h / 2});
+        const int x0 = std::max(0, x);
+        const int y0 = std::max(0, y);
+        const int x1 = std::min(kW, x + w);
+        const int y1 = std::min(kH, y + h);
+        const int r_sq = r * r;
+        const int inner_r_sq = std::max(0, (r - 2) * (r - 2));
+        for (int py = y0; py < y1; ++py) {
+            const int dy_top = y + r - 1 - py;
+            const int dy_bot = py - (y + h - r);
+            const int cy = (dy_top > 0) ? dy_top : (dy_bot > 0 ? dy_bot : 0);
+            std::uint32_t* prow = buf.data() + py * kW;
+            const bool on_h_edge = (py == y || py == y + 1 || py == y + h - 1 || py == y + h - 2);
+            for (int px = x0; px < x1; ++px) {
+                const int dx_left = x + r - 1 - px;
+                const int dx_right = px - (x + w - r);
+                const int cx = (dx_left > 0) ? dx_left : (dx_right > 0 ? dx_right : 0);
+                const int dist_sq = cx * cx + cy * cy;
+                if (cx > 0 && cy > 0 && dist_sq > r_sq) continue;
+                const bool on_v_edge = (px == x || px == x + 1 || px == x + w - 1 || px == x + w - 2);
+                const bool is_border =
+                    border != 0 && (on_h_edge || on_v_edge ||
+                                    (cx > 0 && cy > 0 && dist_sq >= inner_r_sq));
+                prow[px] = is_border ? border : fill;
+            }
+        }
+    };
+
+    auto draw_text = [&](int x, int y, int max_w, std::string_view s, std::uint32_t color,
+                         int scale = 2) {
+        const int step = 8 * scale;
+        const int max_chars = std::max(0, max_w / step);
+        std::string clipped(s);
+        if (static_cast<int>(clipped.size()) > max_chars && max_chars >= 3) {
+            clipped.resize(static_cast<std::size_t>(max_chars - 2));
+            clipped += "..";
+        }
+        for (std::size_t i = 0; i < clipped.size(); ++i) {
+            unsigned char ch = static_cast<unsigned char>(clipped[i]);
+            if (ch < 32 || ch > 126) ch = '?';
+            const auto& glyph = kFont8x8[ch - 32];
+            const int gx = x + static_cast<int>(i) * step;
+            for (int gy = 0; gy < 8; ++gy) {
+                const std::uint8_t bits = glyph[static_cast<std::size_t>(gy)];
+                if (bits == 0) continue;
+                for (int b = 0; b < 8; ++b) {
+                    if (!(bits & (0x80u >> b))) continue;
+                    const int px0 = gx + b * scale;
+                    const int py0 = y + gy * scale;
+                    for (int sy = 0; sy < scale; ++sy) {
+                        const int py = py0 + sy;
+                        if (py < 0 || py >= kH) continue;
+                        std::uint32_t* prow = buf.data() + py * kW;
+                        for (int sx = 0; sx < scale; ++sx) {
+                            const int px = px0 + sx;
+                            if (px >= 0 && px < kW) prow[px] = color;
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    const bool en = ui_english;
+    draw_rounded(0, 0, kW, kH, 16, PackRGBA(14, 21, 34, 242), kAccent);
+
+    const std::string title =
+        header.empty() ? std::string(T(en, "TECLADO VIRTUAL", "VIRTUAL KEYBOARD")) : header;
+    draw_text(24, 16, 620, title, kAccent, 2);
+    const std::string cnt = std::to_string(text.size()) + "/" + std::to_string(max_len);
+    draw_text(670, 16, 130, cnt, kCyan, 2);
+    fill_rect(22, 46, kW - 44, 2, kBorderDim);
+
+    // Input box
+    draw_rounded(24, 58, kW - 48, 48, 9, PackRGBA(10, 16, 28, 250), kCyan);
+    draw_text(38, 74, kW - 76, text + "_", kTextPrimary, 2);
+
+    // 4x10 key grid
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 10; ++c) {
+            const int kx = 24 + c * 77;
+            const int ky = 122 + r * 64;
+            const bool is_sel = (r == row && c == col);
+            draw_rounded(kx, ky, 71, 56, 8,
+                         is_sel ? PackRGBA(18, 76, 62, 252) : PackRGBA(24, 34, 52, 240),
+                         is_sel ? kAccent : kBorderDim);
+            const char ch = Switch2KeyboardCharAt(r, c, shift, symbols);
+            char s[2]{ch, '\0'};
+            draw_text(kx + 27, ky + 20, 20, s, is_sel ? kTextPrimary : kCyan, 2);
+        }
+    }
+
+    // Bottom action row
+    draw_rounded(24, 386, 180, 42, 8, shift ? kAccentSoft : kCardBg, shift ? kAccent : kBorderDim);
+    draw_text(38, 399, 156, symbols ? "[R] ABC" : "[L] SHIFT", kTextPrimary, 2);
+    draw_rounded(214, 386, 190, 42, 8, kCardBg, kBorderDim);
+    draw_text(228, 399, 166, T(en, "[Y] Espaco", "[Y] Space"), kTextPrimary, 2);
+    draw_rounded(414, 386, 190, 42, 8, PackRGBA(76, 36, 42, 245), kAmber);
+    draw_text(428, 399, 166, T(en, "[B] Apagar", "[B] Delete"), kTextPrimary, 2);
+    draw_rounded(614, 386, 182, 42, 8, kAccentSoft, kAccent);
+    draw_text(634, 399, 146, T(en, "[+] OK", "[+] Confirm"), kAccent, 2);
+
+    draw_text(24, 440, kW - 48,
+              T(en, "[A] Letra  [R] Simbolos  [-] Cancelar",
+                "[A] Type  [R] Symbols  [-] Cancel"),
+              kTextMuted, 2);
+
+    auto& panel = Common::GetOverlayPanel(Common::OverlayPanelId::Cheats);
+    std::scoped_lock lock{panel.mutex};
+    panel.pixels.resize(buf.size() * 4);
+    std::memcpy(panel.pixels.data(), buf.data(), panel.pixels.size());
+    panel.width = kW;
+    panel.height = kH;
+    panel.anchor = Common::OverlayAnchor::Center;
+    panel.drop = 0.0f;
+    panel.enabled = true;
+    ++panel.version;
+}
+
+void Switch2HideKeyboardOverlay() {
+    Switch2HideQuickMenuOverlay();
 }
 
 #endif // __SWITCH2__

@@ -401,6 +401,75 @@ std::uint64_t Switch2GetSystemTickFreq(void) {
     return 19'200'000ULL;
 }
 
+int Switch2ShowNativeKeyboard(const Switch2KbdRequest* req, char* out_utf8, int out_utf8_size) {
+    if (out_utf8 == nullptr || out_utf8_size <= 1) {
+        return SWITCH2_KBD_UNAVAILABLE;
+    }
+    out_utf8[0] = '\0';
+
+    SwkbdConfig kbd{};
+    Result rc = swkbdCreate(&kbd, 0);
+    if (R_FAILED(rc)) {
+        return SWITCH2_KBD_UNAVAILABLE;
+    }
+
+    if (req != nullptr && req->password_mode) {
+        swkbdConfigMakePresetPassword(&kbd);
+    } else {
+        swkbdConfigMakePresetDefault(&kbd);
+    }
+
+    if (req != nullptr) {
+        if (req->kbd_type == 1) {
+            swkbdConfigSetType(&kbd, SwkbdType_NumPad);
+        } else if (req->kbd_type == 2) {
+            swkbdConfigSetType(&kbd, SwkbdType_QWERTY);
+        }
+        int max_len = req->max_len;
+        if (max_len <= 0 || max_len > out_utf8_size - 1) {
+            max_len = out_utf8_size - 1;
+        }
+        if (max_len > 500) {
+            max_len = 500;
+        }
+        swkbdConfigSetStringLenMax(&kbd, max_len);
+        if (req->header_text && req->header_text[0] != '\0') {
+            swkbdConfigSetHeaderText(&kbd, req->header_text);
+        }
+        if (req->sub_text && req->sub_text[0] != '\0') {
+            swkbdConfigSetSubText(&kbd, req->sub_text);
+        }
+        if (req->guide_text && req->guide_text[0] != '\0') {
+            swkbdConfigSetGuideText(&kbd, req->guide_text);
+        }
+        if (req->ok_text && req->ok_text[0] != '\0') {
+            swkbdConfigSetOkButtonText(&kbd, req->ok_text);
+        }
+        if (req->initial_text && req->initial_text[0] != '\0') {
+            swkbdConfigSetInitialText(&kbd, req->initial_text);
+        }
+        if (req->password_mode) {
+            swkbdConfigSetPasswordFlag(&kbd, true);
+        }
+    }
+
+    const u64 t0 = armGetSystemTick();
+    rc = swkbdShow(&kbd, out_utf8, static_cast<size_t>(out_utf8_size));
+    const u64 elapsed_ns = armTicksToNs(armGetSystemTick() - t0);
+    swkbdClose(&kbd);
+
+    if (R_SUCCEEDED(rc)) {
+        out_utf8[out_utf8_size - 1] = '\0';
+        return SWITCH2_KBD_OK;
+    }
+    // If Horizon OS immediately rejected launching the swkbd applet (< 250ms),
+    // fall back transparently to our built-in QWERTY overlay keyboard.
+    if (elapsed_ns < 250'000'000ULL) {
+        return SWITCH2_KBD_UNAVAILABLE;
+    }
+    return SWITCH2_KBD_CANCEL;
+}
+
 bool Switch2FbInit(void) {
     if (g_fb_initialized) {
         return true;

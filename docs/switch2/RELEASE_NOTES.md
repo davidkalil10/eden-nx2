@@ -7,6 +7,10 @@
 ---
 
 ### What's New / Novidades
+- **Native Switch 2 Software Keyboard (`swkbd`) + Built-In QWERTY Overlay Fallback & Profile Name Editor (`v0.1.11`):**
+  - Replaced Eden's stubbed `"Eden"` software keyboard with a real Switch 2 **`SoftwareKeyboardApplet`** supporting both Normal and Inline Switch 1 keyboard prompts (e.g. naming characters in *Pokémon*, save slots, trainer/player names).
+  - Attempts the native Horizon OS Switch 2 keyboard (`swkbdShow`) first and **seamlessly falls back to a built-in Vulkan QWERTY Virtual Keyboard overlay** (D-Pad/Stick + Touch support, Shift, Symbols, Space, Backspace, Confirm/Cancel) if the OS applet is unavailable — or force the built-in keyboard anytime via **`In-Game Keyboard` (`Teclado no Jogo`)** in `[X]` / `[Y]`.
+  - Added a **`Profile Name` (`Nome do Perfil`)** editor in Global Settings (`[X]`) that updates the emulated Switch 1 user profile name automatically.
 - **Major Game Compatibility Fix (`v0.1.10` — *Pokémon Sword*, *Super Mario Party Jamboree* & Titles Using `GetPseudoDeviceId` / Base `NACP`):**
   - Registered the launched base game container into `ManualContentProvider` so its `Control` NCA (`NACP`, `supported_languages`, `seed_for_pseudo_device_id`) is always available even without external Updates, and added a safe `program_id` fallback in `IApplicationFunctions::GetPseudoDeviceId` (fixes `2511-8191` / `0xffffffff` boot panics).
 - **FAT32 Split Game / Update / DLC Support (> 4 GB) — Verified on Switch 2 Hardware:**

@@ -76,6 +76,25 @@ void Switch2GetMemoryStats(std::uint64_t* out_used, std::uint64_t* out_total);
 std::uint64_t Switch2GetCoreMask(void);
 std::uint64_t Switch2GetSystemTickFreq(void);
 
+enum Switch2KbdStatus : int {
+    SWITCH2_KBD_OK = 0,
+    SWITCH2_KBD_CANCEL = 1,
+    SWITCH2_KBD_UNAVAILABLE = 2,
+};
+
+struct Switch2KbdRequest {
+    const char* header_text;
+    const char* sub_text;
+    const char* guide_text;
+    const char* ok_text;
+    const char* initial_text;
+    int max_len;
+    int kbd_type; // 0=Normal, 1=NumPad, 2=QWERTY
+    bool password_mode;
+};
+
+int Switch2ShowNativeKeyboard(const Switch2KbdRequest* req, char* out_utf8, int out_utf8_size);
+
 bool Switch2FbInit(void);
 std::uint32_t* Switch2FbBegin(std::uint32_t* out_stride_pixels);
 void Switch2FbEnd(void);
