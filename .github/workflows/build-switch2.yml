@@ -122,7 +122,7 @@ jobs:
         with:
           tag_name: exp-switch2-latest
           name: "Eden-NX2 Experimental (${{ env.EXP_SHORT_SHA }})"
-          body: "Rolling Switch 2 test build from \`exp/switch2-ounce\` (commit \`${{ github.sha }}\`)."
+          body: "Rolling Switch 2 test build from `exp/switch2-ounce` (commit `${{ github.sha }}`)."
           files: dist/eden-switch2.nro
           prerelease: true
           make_latest: false
