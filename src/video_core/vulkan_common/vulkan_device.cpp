@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <bitset>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -723,6 +724,17 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
         descriptor_indexing.runtimeDescriptorArray = false;
     }
 
+#ifdef __SWITCH2__
+    // Mesa NVK (OunceVK) descriptor_buffer can trigger VK_ERROR_DEVICE_LOST on complex 3D scenes
+    // when combined resource+sampler descriptor buffers are bound inside render passes or mixed
+    // with push descriptors. Use standard VK_KHR_push_descriptor + VkDescriptorPool instead.
+    if (extensions.descriptor_buffer) {
+        LOG_INFO(Render_Vulkan, "Switch 2 (NVK): disabling VK_EXT_descriptor_buffer for stability");
+        RemoveExtensionFeature(extensions.descriptor_buffer, features.descriptor_buffer,
+                               VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
+    }
+#endif
+
     // VK_EXT_descriptor_buffer requires VK_KHR_buffer_device_address
     if (extensions.descriptor_buffer && !features.buffer_device_address.bufferDeviceAddress) {
         LOG_WARNING(Render_Vulkan, "Descriptor buffer needs buffer device address, disabling.");
@@ -900,11 +912,53 @@ VkFormat Device::GetSupportedFormat(VkFormat wanted_format, VkFormatFeatureFlags
     return wanted_format;
 }
 
-void Device::ReportLoss() const {
-    LOG_CRITICAL(Render_Vulkan, "Device loss occurred!");
-
+void Device::ReportLoss(const char* source) const {
+    const char* src = (source != nullptr && source[0] != '\0') ? source : "unknown";
+    LOG_CRITICAL(Render_Vulkan,
+                 "Device loss occurred! source={} (desc_buf={} push_desc={} eds1={} eds2={} "
+                 "eds3={} vids={} sync2={} timeline={} astc_hw={} bda={})",
+                 src, extensions.descriptor_buffer ? 1 : 0, extensions.push_descriptor ? 1 : 0,
+                 extensions.extended_dynamic_state ? 1 : 0,
+                 extensions.extended_dynamic_state2 ? 1 : 0,
+                 extensions.extended_dynamic_state3 ? 1 : 0,
+                 extensions.vertex_input_dynamic_state ? 1 : 0,
+                 extensions.synchronization2 ? 1 : 0, HasTimelineSemaphore() ? 1 : 0,
+                 is_optimal_astc_supported ? 1 : 0, extensions.buffer_device_address ? 1 : 0);
+#ifdef __SWITCH2__
+    if (FILE* f = std::fopen("sdmc:/switch/eden-nx2/crash.txt", "a")) {
+        std::fprintf(f,
+                     "VK_ERROR_DEVICE_LOST at %s (desc_buf=%d push_desc=%d eds=%d/%d/%d vids=%d "
+                     "sync2=%d timeline=%d astc_hw=%d)\n",
+                     src, extensions.descriptor_buffer ? 1 : 0, extensions.push_descriptor ? 1 : 0,
+                     extensions.extended_dynamic_state ? 1 : 0,
+                     extensions.extended_dynamic_state2 ? 1 : 0,
+                     extensions.extended_dynamic_state3 ? 1 : 0,
+                     extensions.vertex_input_dynamic_state ? 1 : 0,
+                     extensions.synchronization2 ? 1 : 0, HasTimelineSemaphore() ? 1 : 0,
+                     is_optimal_astc_supported ? 1 : 0);
+        std::fflush(f);
+        std::fclose(f);
+    }
+    if (FILE* ef = std::fopen("sdmc:/switch/eden-nx2/last_load_error.txt", "w")) {
+        std::fprintf(ef,
+                     "GPU Crash (VK_ERROR_DEVICE_LOST)\n"
+                     "Source: %s | Driver: NVK\n"
+                     "Caps: desc_buf=%d eds=%d/%d/%d vids=%d timeline=%d\n"
+                     "Try GPU Accuracy = Accurate or Safe (Compat. NVK) in [Y].\n",
+                     src, extensions.descriptor_buffer ? 1 : 0,
+                     extensions.extended_dynamic_state ? 1 : 0,
+                     extensions.extended_dynamic_state2 ? 1 : 0,
+                     extensions.extended_dynamic_state3 ? 1 : 0,
+                     extensions.vertex_input_dynamic_state ? 1 : 0,
+                     HasTimelineSemaphore() ? 1 : 0);
+        std::fflush(ef);
+        std::fclose(ef);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds{250});
+#else
     // Wait for the log to flush and for Nsight Aftermath to dump the results
     std::this_thread::sleep_for(std::chrono::seconds{15});
+#endif
 }
 
 void Device::SaveShader(std::span<const u32> spirv) const {
@@ -995,6 +1049,11 @@ bool Device::HasTimelineSemaphore() const {
     if (GetDriverID() == VK_DRIVER_ID_MESA_TURNIP) {
         return false;
     }
+#ifdef __SWITCH2__
+    if (Settings::values.dyna_state.GetValue() == Settings::ExtendedDynamicState::Disabled) {
+        return false;
+    }
+#endif
     return features.timeline_semaphore.timelineSemaphore;
 }
 

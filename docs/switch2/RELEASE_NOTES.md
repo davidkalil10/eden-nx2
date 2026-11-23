@@ -7,6 +7,10 @@
 ---
 
 ### What's New / Novidades
+- **Switch 2 NVK Stability Fix (`VK_ERROR_DEVICE_LOST`) & New `Safe (NVK Compat)` GPU Mode (`v0.1.12`):**
+  - Disabled `VK_EXT_descriptor_buffer` on Switch 2 (`NVK` / `OunceVK`) in favor of mature `VK_KHR_push_descriptor` + `VkDescriptorPool` to prevent GPU hangs / `VK_ERROR_DEVICE_LOST` crashes during complex 3D cutscenes (such as *Pokémon Sword*).
+  - Upgraded **`GPU Accuracy` (`Precisão da GPU`)** in `[X]` / `[Y]` to 3 tiers: **`Fast`** (maximum speed), **`Accurate`** (High + sync shaders + `EDS2` + no `VIDS`), and **`Safe (NVK Compat)`** (disables `EDS1/2/3`, `VIDS`, `Async Present`, `Timeline Semaphore`, GPU ASTC compute, GPU query copy, and driver pipeline cache for maximum compatibility on stubborn scenes).
+  - Added instant **Vulkan crash diagnostics** (`crash.txt`, on-screen `last_load_error.txt` modal, startup Vulkan caps log, and full log flush on `std::terminate`).
 - **Native Switch 2 Software Keyboard (`swkbd`) + Built-In QWERTY Overlay Fallback & Profile Name Editor (`v0.1.11`):**
   - Replaced Eden's stubbed `"Eden"` software keyboard with a real Switch 2 **`SoftwareKeyboardApplet`** supporting both Normal and Inline Switch 1 keyboard prompts (e.g. naming characters in *Pokémon*, save slots, trainer/player names).
   - Attempts the native Horizon OS Switch 2 keyboard (`swkbdShow`) first and **seamlessly falls back to a built-in Vulkan QWERTY Virtual Keyboard overlay** (D-Pad/Stick + Touch support, Shift, Symbols, Space, Backspace, Confirm/Cancel) if the OS applet is unavailable — or force the built-in keyboard anytime via **`In-Game Keyboard` (`Teclado no Jogo`)** in `[X]` / `[Y]`.

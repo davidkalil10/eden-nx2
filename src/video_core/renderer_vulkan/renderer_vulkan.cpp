@@ -278,6 +278,23 @@ void RendererVulkan::Report() const {
     LOG_INFO(Render_Vulkan, "Available VRAM: {:.2f} GiB", available_vram);
     LOG_INFO(Render_Vulkan, "Depth clip enable (VK_EXT_depth_clip_enable): {}",
              device.IsExtDepthClipEnableSupported() ? "supported" : "not supported");
+#ifdef __SWITCH2__
+    LOG_INFO(Render_Vulkan,
+             "Switch2 Vulkan caps: desc_buf={} push_desc={} eds1={} eds2={} eds3={} vids={} "
+             "sync2={} timeline={} astc_hw={} bda={}",
+             device.IsExtDescriptorBufferSupported() ? 1 : 0,
+             device.IsKhrPushDescriptorSupported() ? 1 : 0,
+             device.IsExtExtendedDynamicStateSupported() ? 1 : 0,
+             device.IsExtExtendedDynamicState2Supported() ? 1 : 0,
+             device.IsExtExtendedDynamicState3BlendingSupported() ||
+                     device.IsExtExtendedDynamicState3EnablesSupported()
+                 ? 1
+                 : 0,
+             device.IsExtVertexInputDynamicStateSupported() ? 1 : 0,
+             device.HasSynchronization2() ? 1 : 0, device.HasTimelineSemaphore() ? 1 : 0,
+             device.IsOptimalAstcSupported() ? 1 : 0,
+             device.IsBufferDeviceAddressSupported() ? 1 : 0);
+#endif
 }
 
 vk::Buffer RendererVulkan::RenderToBuffer(std::span<const Tegra::FramebufferConfig> framebuffers,

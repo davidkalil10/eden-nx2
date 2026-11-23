@@ -16,6 +16,7 @@
 #include "video_core/renderer_vulkan/vk_texture_cache.h"
 #include "common/bit_util.h"
 #include "common/common_types.h"
+#include "common/settings.h"
 #include "video_core/engines/maxwell_3d.h"
 #include "video_core/host1x/gpu_device_memory_manager.h"
 #include "video_core/query_cache/query_cache.h"
@@ -91,7 +92,7 @@ public:
         case VK_SUCCESS:
             return;
         case VK_ERROR_DEVICE_LOST:
-            device.ReportLoss();
+            device.ReportLoss("vk_query_cache::Sync");
             [[fallthrough]];
         default:
             throw vk::Exception(query_result);
@@ -237,7 +238,11 @@ public:
         PauseCounter();
         const auto driver_id = device.GetDriverID();
         if (driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY ||
-            driver_id == VK_DRIVER_ID_ARM_PROPRIETARY || driver_id == VK_DRIVER_ID_MESA_TURNIP) {
+            driver_id == VK_DRIVER_ID_ARM_PROPRIETARY || driver_id == VK_DRIVER_ID_MESA_TURNIP
+#ifdef __SWITCH2__
+            || Settings::values.dyna_state.GetValue() == Settings::ExtendedDynamicState::Disabled
+#endif
+        ) {
             pending_sync.clear();
             sync_values_stash.clear();
             return;
