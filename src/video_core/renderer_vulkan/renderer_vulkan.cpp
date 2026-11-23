@@ -6,6 +6,9 @@
 
 #include <algorithm>
 #include <array>
+#ifdef __SWITCH2__
+#include <cstdlib>
+#endif
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -279,9 +282,11 @@ void RendererVulkan::Report() const {
     LOG_INFO(Render_Vulkan, "Depth clip enable (VK_EXT_depth_clip_enable): {}",
              device.IsExtDepthClipEnableSupported() ? "supported" : "not supported");
 #ifdef __SWITCH2__
+    const char* nak_env = std::getenv("NAK_DEBUG");
+    const char* nvk_env = std::getenv("NVK_DEBUG");
     LOG_INFO(Render_Vulkan,
              "Switch2 Vulkan caps: desc_buf={} push_desc={} eds1={} eds2={} eds3={} vids={} "
-             "sync2={} timeline={} astc_hw={} bda={}",
+             "sync2={} timeline={} astc_hw={} bda={} NAK_DEBUG={} NVK_DEBUG={}",
              device.IsExtDescriptorBufferSupported() ? 1 : 0,
              device.IsKhrPushDescriptorSupported() ? 1 : 0,
              device.IsExtExtendedDynamicStateSupported() ? 1 : 0,
@@ -293,7 +298,9 @@ void RendererVulkan::Report() const {
              device.IsExtVertexInputDynamicStateSupported() ? 1 : 0,
              device.HasSynchronization2() ? 1 : 0, device.HasTimelineSemaphore() ? 1 : 0,
              device.IsOptimalAstcSupported() ? 1 : 0,
-             device.IsBufferDeviceAddressSupported() ? 1 : 0);
+             device.IsBufferDeviceAddressSupported() ? 1 : 0,
+             (nak_env && nak_env[0]) ? nak_env : "off",
+             (nvk_env && nvk_env[0]) ? nvk_env : "off");
 #endif
 }
 

@@ -801,10 +801,18 @@ void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg,
     Settings::values.gpu_clock.SetValue(Settings::GpuClock::Boost);
 
     // GPU accuracy & NVK compatibility tiers:
-    //   0 = Fast (EDS3 + VIDS + Async Shaders + GPU ASTC + Aggressive VRAM)
+    //   0 = Fast (EDS3 + VIDS + Async Shaders + HW ASTC + Aggressive VRAM)
     //   1 = Accurate (High + Sync Shaders + EDS2 + no VIDS + Reactive Flushing)
-    //   2 = Safe (NVK Compat: High + Sync Shaders + EDS Disabled + no VIDS + CPU ASTC +
-    //             no Async Present + Fence sync + Conservative VRAM + no Driver Pipeline Cache)
+    //   2 = Safe (NVK Compat: fast HW ASTC + push_desc, disables EDS/VIDS/Sync2/Timeline/Subgroups)
+    //   3 = Ultra-Safe (NAK Serial: Safe + NAK_DEBUG=serial + NVK_DEBUG=push_sync,no_cbuf,zero_memory + CPU ASTC)
+    if (cfg.gpu_mode == 3) {
+        ::setenv("NAK_DEBUG", "serial", 1);
+        ::setenv("NVK_DEBUG", "push_sync,no_cbuf,zero_memory", 1);
+    } else {
+        ::unsetenv("NAK_DEBUG");
+        ::unsetenv("NVK_DEBUG");
+    }
+
     if (cfg.gpu_mode == 0) {
         Settings::values.async_presentation.SetValue(true);
         Settings::values.dyna_state.SetValue(Settings::ExtendedDynamicState::EDS3);
@@ -831,6 +839,20 @@ void ApplySwitch2LaunchConfig(const Switch2LaunchConfig& cfg,
         Settings::values.use_asynchronous_shaders.SetValue(false);
         Settings::values.use_asynchronous_gpu_emulation.SetValue(true);
         Settings::values.dma_accuracy.SetValue(Settings::DmaAccuracy::Default);
+        Settings::values.barrier_feedback_loops.SetValue(true);
+        Settings::values.skip_cpu_inner_invalidation.SetValue(false);
+    } else if (cfg.gpu_mode == 2) {
+        Settings::values.async_presentation.SetValue(false);
+        Settings::values.dyna_state.SetValue(Settings::ExtendedDynamicState::Disabled);
+        Settings::values.vertex_input_dynamic_state.SetValue(false);
+        Settings::values.vram_usage_mode.SetValue(Settings::VramUsageMode::Conservative);
+        Settings::values.accelerate_astc.SetValue(Settings::AstcDecodeMode::Gpu);
+        Settings::values.use_vulkan_driver_pipeline_cache.SetValue(false);
+        Settings::values.gpu_accuracy.SetValue(Settings::GpuAccuracy::High);
+        Settings::values.use_reactive_flushing.SetValue(true);
+        Settings::values.use_asynchronous_shaders.SetValue(false);
+        Settings::values.use_asynchronous_gpu_emulation.SetValue(true);
+        Settings::values.dma_accuracy.SetValue(Settings::DmaAccuracy::Safe);
         Settings::values.barrier_feedback_loops.SetValue(true);
         Settings::values.skip_cpu_inner_invalidation.SetValue(false);
     } else {
@@ -1592,7 +1614,7 @@ int main(int argc, char** argv) {
                         docked_changed = true;
                         break;
                     case 5:
-                        launch_cfg.gpu_mode = (launch_cfg.gpu_mode + dir + 3) % 3;
+                        launch_cfg.gpu_mode = (launch_cfg.gpu_mode + dir + 4) % 4;
                         setting_changed = true;
                         break;
                     case 6:

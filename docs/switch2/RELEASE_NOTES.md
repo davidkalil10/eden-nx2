@@ -7,6 +7,9 @@
 ---
 
 ### What's New / Novidades
+- **New `Ultra-Safe (NAK Serial)` GPU Mode + Faster `Safe (NVK Compat)` Mode (`v0.1.15`):**
+  - Added a 4th **`GPU Accuracy`** tier: **`Ultra-Safe (NAK Serial)`**, enabling official Mesa NVK/NAK GPU-hang workarounds **`NAK_DEBUG=serial`** (serialized Ampere instruction scheduling) and **`NVK_DEBUG=push_sync,no_cbuf,zero_memory`** (synchronous pushbuffers + disabled UBO constant-buffer promotion + zeroed VRAM) alongside CPU ASTC decoding.
+  - Restored hardware ASTC (`astc_hw=1`) and `VK_KHR_push_descriptor` in **`Safe (NVK Compat)`** so titles like ***Super Mario Party Jamboree*** stay fast and smooth while bypassing NVK freezes.
 - **Ultra-Compatible `Safe (NVK Compat)` Mode & GPU Draw Trace Diagnostics (`v0.1.14`):**
   - In **`Safe (NVK Compat)`** mode, forced **CPU ASTC texture decoding** (disables NVK hardware ASTC sampling), disabled **all SPIR-V subgroup/vote/quad/shuffle ops**, `shaderInt64`/`shaderFloat64`, `VK_KHR_push_descriptor`, `custom_border_color`, `provoking_vertex`, `depth_bias_control`, `color_write_enable`, and `shaderStorageImageReadWithoutFormat` to isolate NVK/NAK GPU hangs.
   - Added a 16-entry **GPU draw/pipeline ring-buffer dump** (`sdmc:/switch/eden-nx2/crash_gpu.txt`) capturing stage shader hashes, draw types, vertex/instance counts, and texture/image counts whenever `VK_ERROR_DEVICE_LOST` occurs.

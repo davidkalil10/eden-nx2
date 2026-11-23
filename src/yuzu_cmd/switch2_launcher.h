@@ -34,7 +34,7 @@ struct Switch2LaunchConfig {
     float resolution_scale = 1.0f;
     int scaling_filter = 0; // 0=Bilinear, 1=FSR, 2=SGSR, 3=ScaleForce, 4=MMPX, 5=Lanczos, 6=Nearest
     int anti_aliasing = 0;  // 0=None, 1=FXAA, 2=SMAA
-    int gpu_mode = 0;       // 0=Fast, 1=Accurate, 2=Safe (NVK Compat)
+    int gpu_mode = 0;       // 0=Fast, 1=Accurate, 2=Safe (NVK), 3=Ultra-Safe (NAK Serial)
     bool cpu_unsafe = true;
     int frame_gen_mult = 0; // 0 = Off, 2..4 = Lossless Scaling multiplier
     int show_fps_mode = 1;  // 0 = Off, 1 = FPS + Speed, 2 = Detailed

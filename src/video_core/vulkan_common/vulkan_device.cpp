@@ -503,10 +503,10 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
     is_blit_depth24_stencil8_supported = TestDepthStencilBlits(VK_FORMAT_D24_UNORM_S8_UINT);
     is_blit_depth32_stencil8_supported = TestDepthStencilBlits(VK_FORMAT_D32_SFLOAT_S8_UINT);
 #ifdef __SWITCH2__
-    is_optimal_astc_supported =
-        (Settings::values.dyna_state.GetValue() == Settings::ExtendedDynamicState::Disabled)
-            ? false
-            : ComputeIsOptimalAstcSupported();
+    const bool sw2_ultra_safe =
+        Settings::values.dyna_state.GetValue() == Settings::ExtendedDynamicState::Disabled &&
+        Settings::values.accelerate_astc.GetValue() == Settings::AstcDecodeMode::Cpu;
+    is_optimal_astc_supported = sw2_ultra_safe ? false : ComputeIsOptimalAstcSupported();
 #else
     is_optimal_astc_supported = ComputeIsOptimalAstcSupported();
 #endif
@@ -763,7 +763,9 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
                                VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
         RemoveExtension(extensions.conditional_rendering,
                         VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME);
-        RemoveExtension(extensions.push_descriptor, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+        if (Settings::values.accelerate_astc.GetValue() == Settings::AstcDecodeMode::Cpu) {
+            RemoveExtension(extensions.push_descriptor, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+        }
         RemoveExtensionFeature(extensions.custom_border_color, features.custom_border_color,
                                VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME);
         RemoveExtensionFeature(extensions.border_color_swizzle, features.border_color_swizzle,

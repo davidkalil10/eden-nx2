@@ -791,11 +791,11 @@ std::vector<SettingOption> MakeDefaultOptions() {
          0, true},
         {"gpu_mode",
          "Precisao da GPU", "GPU Accuracy",
-         "Fast = maximo FPS; Accurate = preciso; Safe = modo compat. NVK contra crashes.",
-         "Fast = max FPS; Accurate = precise; Safe = NVK compatibility mode for crashes.",
-         {"fast", "accurate", "safe"},
-         {"Fast (Recomendado)", "Accurate (Preciso)", "Safe (Compat. NVK)"},
-         {"Fast (Recommended)", "Accurate", "Safe (NVK Compat)"},
+         "Fast=FPS; Accurate=preciso; Safe=compat NVK; Ultra-Safe=NAK serial (anti-hang).",
+         "Fast=FPS; Accurate=precise; Safe=NVK compat; Ultra-Safe=NAK serial (anti-hang).",
+         {"fast", "accurate", "safe", "ultra_safe"},
+         {"Fast (Recomendado)", "Accurate (Preciso)", "Safe (Compat. NVK)", "Ultra-Safe (NAK Serial)"},
+         {"Fast (Recommended)", "Accurate", "Safe (NVK Compat)", "Ultra-Safe (NAK Serial)"},
          0, true},
         {"cpu_accuracy",
          "Precisao da CPU", "CPU Accuracy",
@@ -1322,7 +1322,7 @@ void FillLaunchConfig(const std::vector<SettingOption>& eff, const std::string& 
     const std::string aa = GetValue(eff, "anti_aliasing");
     cfg->anti_aliasing = (aa == "fxaa") ? 1 : (aa == "smaa" ? 2 : 0);
     const std::string gm = GetValue(eff, "gpu_mode");
-    cfg->gpu_mode = (gm == "safe") ? 2 : (gm == "accurate" ? 1 : 0);
+    cfg->gpu_mode = (gm == "ultra_safe") ? 3 : (gm == "safe" ? 2 : (gm == "accurate" ? 1 : 0));
     cfg->cpu_unsafe = (GetValue(eff, "cpu_accuracy") == "unsafe");
 
     const std::string fg = GetValue(eff, "frame_gen");
@@ -3087,7 +3087,10 @@ bool Switch2SavePerGameQuickConfig(const Switch2LaunchConfig& cfg) {
     set_kv("scaling_filter", sf_str);
     set_kv("anti_aliasing", aa_str);
     set_kv("console_mode", cfg.docked_mode ? "docked" : "handheld");
-    set_kv("gpu_mode", cfg.gpu_mode == 2 ? "safe" : (cfg.gpu_mode == 1 ? "accurate" : "fast"));
+    set_kv("gpu_mode", cfg.gpu_mode == 3 ? "ultra_safe"
+                                         : (cfg.gpu_mode == 2 ? "safe"
+                                                              : (cfg.gpu_mode == 1 ? "accurate"
+                                                                                   : "fast")));
     set_kv("fastload_boost", cfg.cpu_boost ? "on" : "off");
     set_kv("show_fps", fps_str);
 
@@ -3214,9 +3217,11 @@ void Switch2RenderQuickMenuOverlay(const Switch2LaunchConfig& cfg, int volume_pc
                                       : T(en, "Desligado", "Off"));
     const std::string mode_val = cfg.docked_mode ? "Docked (1080p)" : "Handheld (720p)";
     const std::string gpu_val =
-        (cfg.gpu_mode == 2)
-            ? T(en, "Safe (Compat. NVK)", "Safe (NVK Compat)")
-            : (cfg.gpu_mode == 1 ? "Accurate" : T(en, "Fast (Rapido)", "Fast"));
+        (cfg.gpu_mode == 3)
+            ? "Ultra-Safe (NAK)"
+            : (cfg.gpu_mode == 2
+                   ? T(en, "Safe (Compat. NVK)", "Safe (NVK Compat)")
+                   : (cfg.gpu_mode == 1 ? "Accurate" : T(en, "Fast (Rapido)", "Fast")));
     const std::string boost_val =
         cfg.cpu_boost ? "FastLoad (CPU+)" : T(en, "Normal (GPU Max)", "Normal (Full GPU)");
     const std::string fps_val =
