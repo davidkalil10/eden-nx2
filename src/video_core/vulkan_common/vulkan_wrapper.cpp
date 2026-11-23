@@ -5,6 +5,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
+#ifdef __SWITCH2__
+#include <atomic>
+#include <cstdio>
+#include <cstring>
+#endif
 #include <memory>
 #include <optional>
 #include <utility>
@@ -334,6 +339,48 @@ bool Load(VkInstance instance, InstanceDispatch& dld) noexcept {
 const char* Exception::what() const noexcept {
     return string_VkResult(result);
 }
+
+#ifdef __SWITCH2__
+namespace {
+std::atomic<u64> g_switch2_last_pipeline_hash{0};
+std::atomic<u32> g_switch2_last_pipeline_kind{0}; // 1=graphics, 2=compute
+} // namespace
+
+void Switch2RecordLastPipeline(u64 hash, bool is_compute) noexcept {
+    g_switch2_last_pipeline_hash.store(hash, std::memory_order_relaxed);
+    g_switch2_last_pipeline_kind.store(is_compute ? 2u : 1u, std::memory_order_relaxed);
+}
+
+void Switch2LogVulkanException(VkResult result, const char* file, unsigned int line,
+                               const char* func) noexcept {
+    const char* f = (file != nullptr) ? file : "?";
+    if (const char* slash = std::strrchr(f, '/')) {
+        f = slash + 1;
+    }
+    const char* fn = (func != nullptr) ? func : "?";
+    const u64 phash = g_switch2_last_pipeline_hash.load(std::memory_order_relaxed);
+    const u32 pkind = g_switch2_last_pipeline_kind.load(std::memory_order_relaxed);
+    const char* pstr = (pkind == 2u) ? "compute" : ((pkind == 1u) ? "gfx" : "none");
+    LOG_CRITICAL(Render_Vulkan, "VK_ERROR_DEVICE_LOST thrown at {}:{} ({}) last_pipe={}:{:016X}",
+                 f, line, fn, pstr, phash);
+    if (FILE* cf = std::fopen("sdmc:/switch/eden-nx2/crash.txt", "a")) {
+        std::fprintf(cf, "VK_ERROR_DEVICE_LOST at %s:%u (%s) last_pipe=%s:%016llX\n", f, line, fn,
+                     pstr, static_cast<unsigned long long>(phash));
+        std::fflush(cf);
+        std::fclose(cf);
+    }
+    if (FILE* ef = std::fopen("sdmc:/switch/eden-nx2/last_load_error.txt", "w")) {
+        std::fprintf(ef,
+                     "GPU Crash (VK_ERROR_DEVICE_LOST)\n"
+                     "At: %s:%u\n"
+                     "Func: %s\n"
+                     "Last pipeline: %s %016llX\n",
+                     f, line, fn, pstr, static_cast<unsigned long long>(phash));
+        std::fflush(ef);
+        std::fclose(ef);
+    }
+}
+#endif
 
 void Destroy(VkInstance instance, const InstanceDispatch& dld) noexcept {
     dld.vkDestroyInstance(instance, nullptr);

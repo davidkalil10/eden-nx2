@@ -733,6 +733,30 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
         RemoveExtensionFeature(extensions.descriptor_buffer, features.descriptor_buffer,
                                VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
     }
+    if (Settings::values.dyna_state.GetValue() == Settings::ExtendedDynamicState::Disabled) {
+        LOG_INFO(Render_Vulkan,
+                 "Switch 2 Safe (NVK Compat): disabling advanced shader/sync/xfb extensions");
+        RemoveExtensionFeature(extensions.synchronization2, features.synchronization2,
+                               VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+        RemoveExtensionFeature(extensions.workgroup_memory_explicit_layout,
+                               features.workgroup_memory_explicit_layout,
+                               VK_KHR_WORKGROUP_MEMORY_EXPLICIT_LAYOUT_EXTENSION_NAME);
+        RemoveExtensionFeature(extensions.shader_quad_control, features.shader_quad_control,
+                               VK_KHR_SHADER_QUAD_CONTROL_EXTENSION_NAME);
+        RemoveExtensionFeature(extensions.shader_demote_to_helper_invocation,
+                               features.shader_demote_to_helper_invocation,
+                               VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME);
+        RemoveExtensionFeature(extensions.shader_atomic_int64, features.shader_atomic_int64,
+                               VK_KHR_SHADER_ATOMIC_INT64_EXTENSION_NAME);
+        features.shader_atomic_int64.shaderBufferInt64Atomics = false;
+        features.shader_atomic_int64.shaderSharedInt64Atomics = false;
+        RemoveExtensionFeature(extensions.transform_feedback, features.transform_feedback,
+                               VK_EXT_TRANSFORM_FEEDBACK_EXTENSION_NAME);
+        RemoveExtensionFeature(extensions.subgroup_size_control, features.subgroup_size_control,
+                               VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
+        RemoveExtension(extensions.conditional_rendering,
+                        VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME);
+    }
 #endif
 
     // VK_EXT_descriptor_buffer requires VK_KHR_buffer_device_address
@@ -1499,9 +1523,17 @@ void Device::RemoveUnsuitableExtensions() {
                                        VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
 
     // VK_EXT_robustness2
+#ifdef __SWITCH2__
+    // Keep robustBufferAccess2 & robustImageAccess2 enabled on Switch 2 (NVK / Ampere GPU MMU)
+    // so out-of-bounds translated shader accesses clamp safely instead of faulting the GPU MMU.
+    extensions.robustness_2 = features.robustness2.nullDescriptor ||
+                              features.robustness2.robustBufferAccess2 ||
+                              features.robustness2.robustImageAccess2;
+#else
     features.robustness2.robustBufferAccess2 = VK_FALSE;
     features.robustness2.robustImageAccess2 = VK_FALSE;
     extensions.robustness_2 = features.robustness2.nullDescriptor;
+#endif
 
     const char* robustness2_extension_name =
         loaded_extensions.contains(VK_KHR_ROBUSTNESS_2_EXTENSION_NAME)

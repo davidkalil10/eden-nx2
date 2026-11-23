@@ -7,6 +7,7 @@
 #include <cctype>
 #ifdef __SWITCH2__
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #endif
 #include "core/core.h"
@@ -116,6 +117,13 @@ void Break(Core::System& system, BreakReason reason, u64 info1, u64 info2) {
         if (std::FILE* ef = std::fopen("sdmc:/switch/eden-nx2/last_load_error.txt", "w")) {
             std::fprintf(ef, "Guest PANIC / Abort (reason=0x%llx)\n",
                          static_cast<unsigned long long>(reason));
+            if (has_dumped_buffer && debug_buffer.size() == 4) {
+                u32 raw_res = 0;
+                std::memcpy(&raw_res, debug_buffer.data(), sizeof(raw_res));
+                const u32 mod = raw_res & 0x1FFu;
+                const u32 desc = (raw_res >> 9) & 0x1FFFu;
+                std::fprintf(ef, "Result=0x%08X (2%03u-%04u)\n", raw_res, mod, desc);
+            }
             std::ifstream pin("sdmc:/switch/eden-nx2/last_guest_panic.txt");
             int copied = 0;
             for (std::string pline; pin && std::getline(pin, pline) && copied < 3;) {

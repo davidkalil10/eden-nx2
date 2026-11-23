@@ -345,7 +345,7 @@ void MasterSemaphore::WaitThread(std::stop_token token) {
             wait_queue.pop();
         }
 
-        fence.Wait();
+        vk::Check(fence.Wait());
         fence.Reset();
 
         {

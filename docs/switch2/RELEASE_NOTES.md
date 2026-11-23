@@ -7,6 +7,10 @@
 ---
 
 ### What's New / Novidades
+- **Deeper Switch 2 NVK Stability (`robustness2` + Expanded `Safe (NVK Compat)` Mode) & Exact Crash Diagnostics (`v0.1.13`):**
+  - Enabled **`VK_EXT_robustness2` (`robustBufferAccess2` + `robustImageAccess2`)** on Switch 2 so out-of-bounds translated shader reads/writes clamp safely instead of faulting the NVK/Ampere GPU MMU (`VK_ERROR_DEVICE_LOST`), and enabled NVK `fp16` float-control workaround.
+  - Expanded **`Safe (NVK Compat)`** mode (verified to get ***Super Mario Party Jamboree*** past its title-screen freeze!) to also disable `VK_KHR_synchronization2`, `workgroup_memory_explicit_layout`, `shader_quad_control`, `demote_to_helper_invocation`, `shader_atomic_int64`, `transform_feedback`, `subgroup_size_control`, and `conditional_rendering`, plus strict shader bounds checks (`has_broken_robust`).
+  - Instrumented `vk::Exception` / `vk::Check` with `std::source_location` + last bound graphics/compute pipeline hash, and decoded 4-byte Switch `Result` codes (`2xxx-xxxx`) in `svcBreak` error modals.
 - **Switch 2 NVK Stability Fix (`VK_ERROR_DEVICE_LOST`) & New `Safe (NVK Compat)` GPU Mode (`v0.1.12`):**
   - Disabled `VK_EXT_descriptor_buffer` on Switch 2 (`NVK` / `OunceVK`) in favor of mature `VK_KHR_push_descriptor` + `VkDescriptorPool` to prevent GPU hangs / `VK_ERROR_DEVICE_LOST` crashes during complex 3D cutscenes (such as *Pokémon Sword*).
   - Upgraded **`GPU Accuracy` (`Precisão da GPU`)** in `[X]` / `[Y]` to 3 tiers: **`Fast`** (maximum speed), **`Accurate`** (High + sync shaders + `EDS2` + no `VIDS`), and **`Safe (NVK Compat)`** (disables `EDS1/2/3`, `VIDS`, `Async Present`, `Timeline Semaphore`, GPU ASTC compute, GPU query copy, and driver pipeline cache for maximum compatibility on stubborn scenes).

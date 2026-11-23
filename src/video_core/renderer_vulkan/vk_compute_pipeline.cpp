@@ -317,6 +317,9 @@ bool ComputePipeline::Configure(Tegra::Engines::KeplerCompute& kepler_compute,
         if (!pipeline) {
             return;
         }
+#ifdef __SWITCH2__
+        vk::Switch2RecordLastPipeline(shader_hash, true);
+#endif
         cmdbuf.BindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, *pipeline);
         if (!descriptor_set_layout) {
             return;

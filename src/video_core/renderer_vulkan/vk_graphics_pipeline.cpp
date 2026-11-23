@@ -669,6 +669,9 @@ bool GraphicsPipeline::ConfigureDraw(const RescalingPushConstant& rescaling,
             if (!pipeline) {
                 return;
             }
+#ifdef __SWITCH2__
+            vk::Switch2RecordLastPipeline(key.Hash(), false);
+#endif
             cmdbuf.BindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
         }
         cmdbuf.PushConstants(*pipeline_layout, VK_SHADER_STAGE_ALL_GRAPHICS,

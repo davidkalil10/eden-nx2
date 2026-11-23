@@ -11,6 +11,9 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#ifdef __SWITCH2__
+#include <source_location>
+#endif
 #include <span>
 #include <type_traits>
 #include <utility>
@@ -114,12 +117,28 @@ private:
     std::size_t num = 0;
 };
 
+#ifdef __SWITCH2__
+void Switch2LogVulkanException(VkResult result, const char* file, unsigned int line,
+                               const char* func) noexcept;
+void Switch2RecordLastPipeline(u64 hash, bool is_compute) noexcept;
+#endif
+
 /// Vulkan exception generated from a VkResult.
 class Exception final : public std::exception {
 public:
     /// Construct the exception with a result.
     /// @pre result != VK_SUCCESS
+#ifdef __SWITCH2__
+    explicit Exception(VkResult result_,
+                       const std::source_location loc = std::source_location::current())
+        : result{result_} {
+        if (result == VK_ERROR_DEVICE_LOST) {
+            Switch2LogVulkanException(result, loc.file_name(), loc.line(), loc.function_name());
+        }
+    }
+#else
     explicit Exception(VkResult result_) : result{result_} {}
+#endif
     virtual ~Exception() = default;
 
     const char* what() const noexcept override;
@@ -132,6 +151,24 @@ private:
 };
 
 /// Throws a Vulkan exception if result is not success.
+#ifdef __SWITCH2__
+inline void Check(VkResult result,
+                  const std::source_location loc = std::source_location::current()) {
+    if (result != VK_SUCCESS) {
+        throw Exception(result, loc);
+    }
+}
+
+/// Throws a Vulkan exception if result is an error.
+/// @return result
+inline VkResult Filter(VkResult result,
+                       const std::source_location loc = std::source_location::current()) {
+    if (result < 0) {
+        throw Exception(result, loc);
+    }
+    return result;
+}
+#else
 inline void Check(VkResult result) {
     if (result != VK_SUCCESS) {
         throw Exception(result);
@@ -146,6 +183,7 @@ inline VkResult Filter(VkResult result) {
     }
     return result;
 }
+#endif
 
 inline constexpr VkPipelineStageFlags PIPELINE_STAGE_GRAPHICS_COMPUTE =
     VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;

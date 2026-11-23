@@ -9,7 +9,7 @@
 #include <functional>
 #include <string>
 
-#define EDEN_NX2_VERSION "0.1.12"
+#define EDEN_NX2_VERSION "0.1.13"
 
 struct Switch2UpdateInfo {
     bool ok = false;
