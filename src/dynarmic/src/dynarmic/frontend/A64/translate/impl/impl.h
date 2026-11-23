@@ -1072,6 +1072,22 @@ struct TranslatorVisitor final {
     bool FMSUB_float(Imm<2> type, Vec Vm, Vec Va, Vec Vn, Vec Vd);
     bool FNMADD_float(Imm<2> type, Vec Vm, Vec Va, Vec Vn, Vec Vd);
     bool FNMSUB_float(Imm<2> type, Vec Vm, Vec Va, Vec Vn, Vec Vd);
+
+    // ARMv8.3 Pointer Authentication
+    bool PACAUT_reg(bool Z, Imm<3> op, Reg Rn, Reg Rd);
+    bool XPAC_1(bool D, Reg Rd);
+    bool PACGA(Reg Rm, Reg Rn, Reg Rd);
+    bool RETA(bool M);
+    bool BRA_BLRA(bool Z, bool L, bool M, Reg Rn, Reg Rm);
+    bool LDRA(bool M, bool S, Imm<9> imm9, bool W, Reg Rn, Reg Rt);
+
+    // ARMv8.5 Memory Tagging
+    bool STG_family(Imm<2> opc, Imm<9> imm9, Imm<2> mode, Reg Rn, Reg Rt);
+    bool STGP(Imm<2> mode, Imm<7> imm7, Reg Rt2, Reg Rn, Reg Rt);
+    bool IRG(Reg Rm, Reg Rn, Reg Rd);
+    bool GMI(Reg Rm, Reg Rn, Reg Rd);
+    bool ADDG(Imm<6> offset_imm, Imm<4> tag_offset, Reg Rn, Reg Rd);
+    bool SUBG(Imm<6> offset_imm, Imm<4> tag_offset, Reg Rn, Reg Rd);
 };
 
 inline std::optional<size_t> FPGetDataSize(Imm<2> type) {
