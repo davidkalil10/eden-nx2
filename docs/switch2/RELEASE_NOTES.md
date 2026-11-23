@@ -7,6 +7,10 @@
 ---
 
 ### What's New / Novidades
+- **Built-In Switch 1 Firmware Manager & Installer (`.zip` or `.nca` Folders) (`v0.1.16`):**
+  - Added a dedicated **`Switch 1 Firmware` (`Firmware Switch 1`)** manager inside **`[X]` Global Settings** with live status (`FW OK (N NCAs)` vs `Synthesized`).
+  - Place Switch 1 firmware dumps (either **`.zip`** archives or extracted **`.nca`** folders, including `<id>.nca/00` Switch NAND dumps) into `sdmc:/switch/eden-nx2/firmware/` (or browse anywhere on `sdmc:/` via the built-in SD browser) and install/switch firmware with a live progress bar — or revert to synthesized mode anytime!
+  - Fixes games requiring real Switch 1 Miis, system fonts/button icons, and system archives (*Mario Kart 8 Deluxe*, *Nintendo Switch Sports*, *Super Mario Party / Jamboree*, *Miitopia*, etc.).
 - **New `Ultra-Safe (NAK Serial)` GPU Mode + Faster `Safe (NVK Compat)` Mode (`v0.1.15`):**
   - Added a 4th **`GPU Accuracy`** tier: **`Ultra-Safe (NAK Serial)`**, enabling official Mesa NVK/NAK GPU-hang workarounds **`NAK_DEBUG=serial`** (serialized Ampere instruction scheduling) and **`NVK_DEBUG=push_sync,no_cbuf,zero_memory`** (synchronous pushbuffers + disabled UBO constant-buffer promotion + zeroed VRAM) alongside CPU ASTC decoding.
   - Restored hardware ASTC (`astc_hw=1`) and `VK_KHR_push_descriptor` in **`Safe (NVK Compat)`** so titles like ***Super Mario Party Jamboree*** stay fast and smooth while bypassing NVK freezes.
@@ -75,6 +79,7 @@ sdmc:/
 │       ├── roms/                     # .nsp / .nsz / .xci / .xcz / .nca / .nro games
 │       ├── updates/                  # Game Update packages (optional subfolders)
 │       ├── dlc/                      # Game DLC packages (files or per-game subfolders)
+│       ├── firmware/                 # Switch 1 firmware dumps (.zip or .nca folders)
 │       ├── keys/
 │       │   └── prod.keys             # Your dumped Switch 1 decryption keys
 │       └── Lossless.dll              # (Optional) Enables LSFG 2x/3x/4x Frame Generation

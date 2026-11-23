@@ -24,6 +24,7 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+#include <zlib.h>
 
 #include "common/overlay_panels.h"
 #include "common/stb.h"
@@ -527,6 +528,10 @@ constexpr const char* kLastFolderPath = "sdmc:/switch/eden-nx2/last_folder.txt";
 constexpr const char* kDefaultRomsDir = "sdmc:/switch/eden-nx2/roms";
 constexpr const char* kDefaultUpdatesDir = "sdmc:/switch/eden-nx2/updates/";
 constexpr const char* kDefaultDlcDir = "sdmc:/switch/eden-nx2/dlc/";
+constexpr const char* kDefaultFirmwareDir = "sdmc:/switch/eden-nx2/firmware/";
+constexpr const char* kNandRegisteredDir =
+    "sdmc:/switch/eden-nx2/.local/share/eden/nand/system/Contents/registered";
+constexpr const char* kFirmwareInfoPath = "sdmc:/switch/eden-nx2/firmware_info.txt";
 
 enum class LsfgBadge { Ready, Missing, Invalid };
 
@@ -703,6 +708,7 @@ std::string ReadInitialFolder() {
     std::filesystem::create_directories(kDefaultRomsDir, ec);
     std::filesystem::create_directories(kDefaultUpdatesDir, ec);
     std::filesystem::create_directories(kDefaultDlcDir, ec);
+    std::filesystem::create_directories(kDefaultFirmwareDir, ec);
     std::filesystem::create_directories("sdmc:/switch/eden-nx2/games", ec);
     std::ifstream in(kLastFolderPath);
     std::string folder;
@@ -885,6 +891,14 @@ std::vector<SettingOption> MakeDefaultOptions() {
          {"Eden"},
          {"Eden"},
          0, false},
+        {"firmware",
+         "Firmware Switch 1", "Switch 1 Firmware",
+         "Instale firmware Switch 1 (.zip ou pasta com .nca em firmware/) para Miis e fontes.",
+         "Install Switch 1 firmware (.zip or .nca folder in firmware/) for Miis & system fonts.",
+         {"synth"},
+         {"Sintetizado (23.0)"},
+         {"Synthesized (23.0)"},
+         0, false},
         {"kbd_mode",
          "Teclado no Jogo", "In-Game Keyboard",
          "Auto usa o teclado nativo do Switch 2 (com fallback automatico p/ teclado interno).",
@@ -987,6 +1001,9 @@ void LoadIniInto(std::vector<SettingOption>& opts, const std::string& path, bool
                 SetAddonOptionValue(opt, v);
                 continue;
             }
+            if (opt.key == "firmware") {
+                continue;
+            }
             if (opt.key == "profile_name" && !v.empty()) {
                 opt.values = {v};
                 opt.labels_pt = {v};
@@ -1009,6 +1026,7 @@ void SaveGlobalIni(const std::vector<SettingOption>& opts) {
     std::filesystem::create_directories("sdmc:/switch/eden-nx2", ec);
     std::ofstream out(kGlobalSettingsPath, std::ios::trunc);
     for (const auto& opt : opts) {
+        if (opt.key == "firmware") continue;
         out << opt.key << '=' << opt.values[static_cast<std::size_t>(opt.selected)] << '\n';
     }
 }
@@ -2268,6 +2286,819 @@ bool RunDlcPickerModal(Canvas& cv, SettingOption& dlc_opt, const PerGameContext&
     return false;
 }
 
+bool EndsWithInsensitive(std::string_view s, std::string_view suffix) {
+    if (s.size() < suffix.size()) return false;
+    const std::size_t off = s.size() - suffix.size();
+    for (std::size_t i = 0; i < suffix.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(s[off + i])) !=
+            std::tolower(static_cast<unsigned char>(suffix[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int CountInstalledFirmwareNcas() {
+    int count = 0;
+    SafeForEachDirEntry(kNandRegisteredDir, [&](const std::filesystem::directory_entry& e,
+                                                std::error_code&) {
+        std::error_code ec;
+        if (e.is_regular_file(ec) && !ec) {
+            if (EndsWithInsensitive(e.path().filename().string(), ".nca")) {
+                ++count;
+            }
+        } else if (e.is_directory(ec) && !ec) {
+            SafeForEachDirEntry(e.path().generic_string(),
+                                [&](const std::filesystem::directory_entry& sub, std::error_code&) {
+                                    std::error_code sec;
+                                    if (sub.is_regular_file(sec) && !sec &&
+                                        EndsWithInsensitive(sub.path().filename().string(), ".nca")) {
+                                        ++count;
+                                    }
+                                });
+        }
+    });
+    return count;
+}
+
+std::string ReadInstalledFirmwareLabel() {
+    std::ifstream in(kFirmwareInfoPath);
+    std::string line;
+    if (in && std::getline(in, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+            line.pop_back();
+        }
+        return line;
+    }
+    return {};
+}
+
+void RefreshFirmwareOption(SettingOption& opt) {
+    const int ncas = CountInstalledFirmwareNcas();
+    if (ncas <= 0) {
+        opt.values = {"synth"};
+        opt.labels_pt = {"Sintetizado (23.0)"};
+        opt.labels_en = {"Synthesized (23.0)"};
+        opt.selected = 0;
+        return;
+    }
+    const std::string lbl = ReadInstalledFirmwareLabel();
+    const std::string suffix = " (" + std::to_string(ncas) + " NCAs)";
+    opt.values = {"installed"};
+    opt.labels_pt = {(lbl.empty() ? std::string("Instalado") : lbl) + suffix};
+    opt.labels_en = {(lbl.empty() ? std::string("Installed") : lbl) + suffix};
+    opt.selected = 0;
+}
+
+void CollectFirmwareNcasFromDir(const std::string& dir,
+                                std::vector<std::pair<std::string, std::string>>& out,
+                                int depth = 0) {
+    if (depth > 3) return;
+    SafeForEachDirEntry(dir, [&](const std::filesystem::directory_entry& e, std::error_code&) {
+        std::error_code ec;
+        const std::string fname = e.path().filename().string();
+        if (fname.empty() || fname[0] == '.') return;
+        if (e.is_regular_file(ec) && !ec) {
+            if (EndsWithInsensitive(fname, ".nca")) {
+                out.emplace_back(e.path().generic_string(), fname);
+            }
+        } else if (e.is_directory(ec) && !ec) {
+            if (EndsWithInsensitive(fname, ".nca")) {
+                const std::filesystem::path p00 = e.path() / "00";
+                if (std::filesystem::is_regular_file(p00, ec) && !ec) {
+                    out.emplace_back(p00.generic_string(), fname);
+                    return;
+                }
+            }
+            CollectFirmwareNcasFromDir(e.path().generic_string(), out, depth + 1);
+        }
+    });
+}
+
+void ClearInstalledFirmware() {
+    std::error_code ec;
+    if (std::filesystem::exists(kNandRegisteredDir, ec)) {
+        std::filesystem::remove_all(kNandRegisteredDir, ec);
+    }
+    std::filesystem::create_directories(kNandRegisteredDir, ec);
+    std::filesystem::remove(kFirmwareInfoPath, ec);
+}
+
+void DrawFirmwareProgressBox(Canvas& cv, bool en, const std::string& status_title,
+                             const std::string& line1, const std::string& line2,
+                             int progress_pct) {
+    cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 215);
+    cv.DrawRoundedRect(140, 170, 1000, 380, 16, kPanelBg, kCyan);
+    cv.DrawTextMaxWidth(180, 198, 920,
+                        T(en, "INSTALADOR DE FIRMWARE SWITCH 1", "SWITCH 1 FIRMWARE INSTALLER"),
+                        kCyan, 2, true);
+    cv.FillRect(172, 234, 936, 2, kBorderDim);
+    cv.DrawTextMaxWidth(180, 260, 920, status_title, kAccent, 2, true);
+    if (!line1.empty()) cv.DrawTextMaxWidth(180, 304, 920, line1, kTextPrimary, 2);
+    if (!line2.empty()) cv.DrawTextMaxWidth(180, 342, 920, line2, kTextMuted, 1);
+
+    if (progress_pct >= 0) {
+        const int clamped = std::clamp(progress_pct, 0, 100);
+        cv.DrawRoundedRect(180, 396, 920, 34, 8, kCardBg, kBorderDim);
+        const int fill_w = (912 * clamped) / 100;
+        if (fill_w > 0) {
+            cv.DrawRoundedRect(184, 400, fill_w, 26, 6, kAccent, kAccent);
+        }
+        cv.DrawText(616, 446, std::to_string(clamped) + "%", kCyan, 2);
+    }
+    cv.Present();
+}
+
+bool CopySingleFileBuffered(const std::string& src, const std::string& dst,
+                            std::vector<char>& buf) {
+    std::ifstream in(src, std::ios::binary);
+    if (!in) return false;
+    std::ofstream out(dst, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    while (in) {
+        in.read(buf.data(), static_cast<std::streamsize>(buf.size()));
+        const std::streamsize got = in.gcount();
+        if (got > 0) {
+            out.write(buf.data(), got);
+            if (!out) return false;
+        }
+    }
+    return static_cast<bool>(out);
+}
+
+bool InstallFirmwareFromDir(Canvas& cv, const std::string& src_dir, const std::string& label,
+                            bool en, std::string* out_msg) {
+    std::vector<std::pair<std::string, std::string>> ncas;
+    CollectFirmwareNcasFromDir(src_dir, ncas);
+    if (ncas.empty()) {
+        if (out_msg) {
+            *out_msg = T(en, "Nenhum arquivo .nca encontrado nesta pasta!",
+                         "No .nca files found in this folder!");
+        }
+        return false;
+    }
+
+    DrawFirmwareProgressBox(cv, en, T(en, "Limpando firmware antigo...", "Clearing old firmware..."),
+                            label, "", 0);
+    ClearInstalledFirmware();
+
+    std::vector<char> buf(256u * 1024u);
+    int copied = 0;
+    const int total = static_cast<int>(ncas.size());
+    for (int i = 0; i < total; ++i) {
+        if (i == 0 || i == total - 1 || (i % 4) == 0) {
+            const int pct = (i * 100) / std::max(1, total);
+            DrawFirmwareProgressBox(
+                cv, en, T(en, "Instalando Firmware...", "Installing Firmware..."), label,
+                std::to_string(i + 1) + " / " + std::to_string(total) + " NCAs  (" +
+                    ncas[static_cast<std::size_t>(i)].second + ")",
+                pct);
+        }
+        const std::string dst =
+            std::string(kNandRegisteredDir) + "/" + ncas[static_cast<std::size_t>(i)].second;
+        if (CopySingleFileBuffered(ncas[static_cast<std::size_t>(i)].first, dst, buf)) {
+            ++copied;
+        }
+    }
+
+    if (copied <= 0) {
+        if (out_msg) {
+            *out_msg = T(en, "Falha ao copiar arquivos .nca para a NAND!",
+                         "Failed to copy .nca files to NAND!");
+        }
+        return false;
+    }
+
+    {
+        std::ofstream info_out(kFirmwareInfoPath, std::ios::trunc);
+        if (info_out) info_out << label << '\n';
+    }
+    DrawFirmwareProgressBox(cv, en, T(en, "Concluido!", "Done!"), label,
+                            std::to_string(copied) + " NCAs", 100);
+    Switch2SleepMs(300);
+    if (out_msg) {
+        *out_msg = std::string(T(en, "Firmware instalado: ", "Firmware installed: ")) + label +
+                   " (" + std::to_string(copied) + " NCAs)";
+    }
+    return true;
+}
+
+std::uint16_t ReadLE16(const std::uint8_t* p) {
+    return static_cast<std::uint16_t>(p[0]) | (static_cast<std::uint16_t>(p[1]) << 8);
+}
+
+std::uint32_t ReadLE32(const std::uint8_t* p) {
+    return static_cast<std::uint32_t>(p[0]) | (static_cast<std::uint32_t>(p[1]) << 8) |
+           (static_cast<std::uint32_t>(p[2]) << 16) | (static_cast<std::uint32_t>(p[3]) << 24);
+}
+
+std::string ExtractNcaTargetNameFromZipEntry(std::string_view entry_name) {
+    std::string norm(entry_name);
+    for (char& ch : norm) {
+        if (ch == '\\') ch = '/';
+    }
+    while (!norm.empty() && norm.back() == '/') norm.pop_back();
+    if (norm.empty()) return {};
+
+    // Support both "<id>.nca" and "<id>.nca/00" layouts inside firmware zips.
+    if (EndsWithInsensitive(norm, ".nca/00")) {
+        norm.resize(norm.size() - 3); // strip "/00"
+    }
+    const std::string base = BaseName(norm);
+    if (base.empty() || base[0] == '.' || !EndsWithInsensitive(base, ".nca")) {
+        return {};
+    }
+    return base;
+}
+
+bool InstallFirmwareFromZip(Canvas& cv, const std::string& zip_path, const std::string& label,
+                            bool en, std::string* out_msg) {
+    std::ifstream in(zip_path, std::ios::binary | std::ios::ate);
+    if (!in) {
+        if (out_msg) *out_msg = T(en, "Nao foi possivel abrir o .zip!", "Could not open .zip!");
+        return false;
+    }
+    const std::streamoff file_size = in.tellg();
+    if (file_size < 22) {
+        if (out_msg) *out_msg = T(en, "Arquivo .zip invalido!", "Invalid .zip file!");
+        return false;
+    }
+
+    const std::size_t tail_len =
+        static_cast<std::size_t>(std::min<std::streamoff>(file_size, 65557));
+    std::vector<std::uint8_t> tail(tail_len);
+    in.seekg(file_size - static_cast<std::streamoff>(tail_len), std::ios::beg);
+    in.read(reinterpret_cast<char*>(tail.data()), static_cast<std::streamsize>(tail_len));
+
+    std::size_t eocd = std::string::npos;
+    for (std::size_t i = tail_len - 22;; --i) {
+        if (tail[i] == 0x50 && tail[i + 1] == 0x4B && tail[i + 2] == 0x05 && tail[i + 3] == 0x06) {
+            eocd = i;
+            break;
+        }
+        if (i == 0) break;
+    }
+    if (eocd == std::string::npos) {
+        if (out_msg) *out_msg = T(en, "Cabecalho ZIP nao encontrado!", "ZIP header not found!");
+        return false;
+    }
+
+    const std::uint32_t cd_size = ReadLE32(&tail[eocd + 12]);
+    const std::uint32_t cd_offset = ReadLE32(&tail[eocd + 16]);
+    if (static_cast<std::streamoff>(cd_offset) + static_cast<std::streamoff>(cd_size) > file_size ||
+        cd_size == 0 || cd_size > 32u * 1024u * 1024u) {
+        if (out_msg) *out_msg = T(en, "Diretorio central ZIP invalido!", "Invalid ZIP directory!");
+        return false;
+    }
+
+    std::vector<std::uint8_t> cd(cd_size);
+    in.seekg(static_cast<std::streamoff>(cd_offset), std::ios::beg);
+    in.read(reinterpret_cast<char*>(cd.data()), static_cast<std::streamsize>(cd_size));
+
+    struct ZipNcaEntry {
+        std::string dst_name;
+        std::uint16_t method = 0;
+        std::uint32_t comp_size = 0;
+        std::uint32_t uncomp_size = 0;
+        std::uint32_t lfh_offset = 0;
+    };
+    std::vector<ZipNcaEntry> entries;
+
+    std::size_t pos = 0;
+    while (pos + 46 <= cd.size()) {
+        if (cd[pos] != 0x50 || cd[pos + 1] != 0x4B || cd[pos + 2] != 0x01 || cd[pos + 3] != 0x02) {
+            break;
+        }
+        const std::uint16_t method = ReadLE16(&cd[pos + 10]);
+        const std::uint32_t comp_size = ReadLE32(&cd[pos + 20]);
+        const std::uint32_t uncomp_size = ReadLE32(&cd[pos + 24]);
+        const std::uint16_t name_len = ReadLE16(&cd[pos + 28]);
+        const std::uint16_t extra_len = ReadLE16(&cd[pos + 30]);
+        const std::uint16_t comment_len = ReadLE16(&cd[pos + 32]);
+        const std::uint32_t lfh_offset = ReadLE32(&cd[pos + 42]);
+        if (pos + 46 + name_len + extra_len + comment_len > cd.size()) break;
+
+        const std::string_view ename(reinterpret_cast<const char*>(&cd[pos + 46]), name_len);
+        const std::string target = ExtractNcaTargetNameFromZipEntry(ename);
+        if (!target.empty() && (method == 0 || method == 8)) {
+            entries.push_back(ZipNcaEntry{target, method, comp_size, uncomp_size, lfh_offset});
+        }
+        pos += 46 + name_len + extra_len + comment_len;
+    }
+
+    if (entries.empty()) {
+        if (out_msg) {
+            *out_msg = T(en, "Nenhum arquivo .nca encontrado dentro do .zip!",
+                         "No .nca files found inside the .zip!");
+        }
+        return false;
+    }
+
+    DrawFirmwareProgressBox(cv, en, T(en, "Limpando firmware antigo...", "Clearing old firmware..."),
+                            label, "", 0);
+    ClearInstalledFirmware();
+
+    std::vector<std::uint8_t> in_buf(128u * 1024u);
+    std::vector<std::uint8_t> out_buf(128u * 1024u);
+    int extracted = 0;
+    const int total = static_cast<int>(entries.size());
+
+    for (int i = 0; i < total; ++i) {
+        const auto& e = entries[static_cast<std::size_t>(i)];
+        if (i == 0 || i == total - 1 || (i % 4) == 0) {
+            const int pct = (i * 100) / std::max(1, total);
+            DrawFirmwareProgressBox(
+                cv, en, T(en, "Extraindo Firmware (.zip)...", "Extracting Firmware (.zip)..."),
+                label,
+                std::to_string(i + 1) + " / " + std::to_string(total) + " NCAs  (" + e.dst_name +
+                    ")",
+                pct);
+        }
+
+        std::uint8_t lfh[30]{};
+        in.clear();
+        in.seekg(static_cast<std::streamoff>(e.lfh_offset), std::ios::beg);
+        in.read(reinterpret_cast<char*>(lfh), 30);
+        if (!in || lfh[0] != 0x50 || lfh[1] != 0x4B || lfh[2] != 0x03 || lfh[3] != 0x04) {
+            continue;
+        }
+        const std::uint16_t lfh_name_len = ReadLE16(&lfh[26]);
+        const std::uint16_t lfh_extra_len = ReadLE16(&lfh[28]);
+        const std::streamoff data_off = static_cast<std::streamoff>(e.lfh_offset) + 30 +
+                                        lfh_name_len + lfh_extra_len;
+        in.seekg(data_off, std::ios::beg);
+
+        const std::string dst_path = std::string(kNandRegisteredDir) + "/" + e.dst_name;
+        std::ofstream out(dst_path, std::ios::binary | std::ios::trunc);
+        if (!out) continue;
+
+        bool ok = true;
+        if (e.method == 0) {
+            std::uint32_t rem = e.comp_size;
+            while (rem > 0) {
+                const std::size_t chunk = std::min<std::size_t>(rem, in_buf.size());
+                in.read(reinterpret_cast<char*>(in_buf.data()),
+                        static_cast<std::streamsize>(chunk));
+                const std::streamsize got = in.gcount();
+                if (got <= 0) {
+                    ok = false;
+                    break;
+                }
+                out.write(reinterpret_cast<const char*>(in_buf.data()), got);
+                if (!out) {
+                    ok = false;
+                    break;
+                }
+                rem -= static_cast<std::uint32_t>(got);
+            }
+        } else {
+            z_stream zs{};
+            if (inflateInit2(&zs, -MAX_WBITS) != Z_OK) {
+                continue;
+            }
+            std::uint32_t rem = e.comp_size;
+            int zret = Z_OK;
+            while (rem > 0 && zret != Z_STREAM_END) {
+                const std::size_t chunk = std::min<std::size_t>(rem, in_buf.size());
+                in.read(reinterpret_cast<char*>(in_buf.data()),
+                        static_cast<std::streamsize>(chunk));
+                const std::streamsize got = in.gcount();
+                if (got <= 0) {
+                    ok = false;
+                    break;
+                }
+                rem -= static_cast<std::uint32_t>(got);
+                zs.next_in = in_buf.data();
+                zs.avail_in = static_cast<uInt>(got);
+                while (zs.avail_in > 0 && zret != Z_STREAM_END) {
+                    zs.next_out = out_buf.data();
+                    zs.avail_out = static_cast<uInt>(out_buf.size());
+                    zret = inflate(&zs, Z_NO_FLUSH);
+                    if (zret != Z_OK && zret != Z_STREAM_END) {
+                        ok = false;
+                        break;
+                    }
+                    const std::size_t produced = out_buf.size() - zs.avail_out;
+                    if (produced > 0) {
+                        out.write(reinterpret_cast<const char*>(out_buf.data()),
+                                  static_cast<std::streamsize>(produced));
+                        if (!out) {
+                            ok = false;
+                            break;
+                        }
+                    }
+                }
+                if (!ok) break;
+            }
+            inflateEnd(&zs);
+        }
+        if (ok && out) {
+            ++extracted;
+        }
+    }
+
+    if (extracted <= 0) {
+        if (out_msg) {
+            *out_msg = T(en, "Falha ao extrair arquivos .nca do .zip!",
+                         "Failed to extract .nca files from .zip!");
+        }
+        return false;
+    }
+
+    {
+        std::ofstream info_out(kFirmwareInfoPath, std::ios::trunc);
+        if (info_out) info_out << label << '\n';
+    }
+    DrawFirmwareProgressBox(cv, en, T(en, "Concluido!", "Done!"), label,
+                            std::to_string(extracted) + " NCAs", 100);
+    Switch2SleepMs(300);
+    if (out_msg) {
+        *out_msg = std::string(T(en, "Firmware instalado: ", "Firmware installed: ")) + label +
+                   " (" + std::to_string(extracted) + " NCAs)";
+    }
+    return true;
+}
+
+bool RunFirmwareSdBrowserModal(Canvas& cv, const std::string& start_dir, bool en,
+                               std::string* out_path, bool* out_is_zip, bool* out_app_exit) {
+    struct Item {
+        std::string label;
+        std::string full_path;
+        std::uint64_t size_bytes = 0;
+        bool is_dir = false;
+        bool is_parent = false;
+    };
+
+    std::string cur_dir = start_dir;
+    std::error_code ec;
+    if (cur_dir.empty() || !std::filesystem::is_directory(cur_dir, ec)) {
+        cur_dir = "sdmc:/";
+    }
+    if (!cur_dir.empty() && cur_dir.back() != '/') cur_dir.push_back('/');
+
+    auto scan_dir = [](const std::string& dir, bool en_flag) {
+        std::vector<Item> items;
+        if (dir != "sdmc:/" && dir != "sdmc:") {
+            items.push_back(Item{T(en_flag, ".. (Pasta anterior)", ".. (Parent folder)"),
+                                 ParentFolder(dir), 0, true, true});
+        }
+        std::vector<Item> sub;
+        SafeForEachDirEntry(dir, [&](const std::filesystem::directory_entry& e, std::error_code&) {
+            std::error_code sec;
+            const std::string fname = e.path().filename().string();
+            if (fname.empty() || fname[0] == '.') return;
+            if (e.is_directory(sec) && !sec) {
+                sub.push_back(Item{fname, e.path().generic_string(), 0, true, false});
+            } else if (e.is_regular_file(sec) && !sec && EndsWithInsensitive(fname, ".zip")) {
+                const std::uint64_t sz = e.file_size(sec);
+                sub.push_back(Item{fname, e.path().generic_string(), sec ? 0 : sz, false, false});
+            }
+        });
+        std::sort(sub.begin(), sub.end(), [](const Item& a, const Item& b) {
+            if (a.is_dir != b.is_dir) return a.is_dir;
+            return a.label < b.label;
+        });
+        items.insert(items.end(), std::make_move_iterator(sub.begin()),
+                     std::make_move_iterator(sub.end()));
+        return items;
+    };
+
+    auto items = scan_dir(cur_dir, en);
+    int selected = 0;
+    constexpr int kMaxVis = 11;
+    bool redraw = true;
+    bool prev_touch = true;
+    Switch2PadSnapshot pad{};
+
+    while (Switch2PollInput(&pad, false)) {
+        const std::uint64_t down = pad.raw_down;
+        const int total = static_cast<int>(items.size());
+        if (down & SWITCH2_BTN_B) {
+            return false;
+        }
+        if (down & SWITCH2_BTN_X) {
+            if (out_path) *out_path = cur_dir;
+            if (out_is_zip) *out_is_zip = false;
+            return true;
+        }
+        if (total > 0 && (down & (SWITCH2_BTN_UP | SWITCH2_BTN_DOWN))) {
+            if (down & SWITCH2_BTN_UP) selected = (selected + total - 1) % total;
+            if (down & SWITCH2_BTN_DOWN) selected = (selected + 1) % total;
+            redraw = true;
+        }
+        bool activate = (total > 0 && (down & SWITCH2_BTN_A));
+        if (pad.has_touch && !prev_touch) {
+            const int tx = static_cast<int>(pad.touch_x * kScreenW);
+            const int ty = static_cast<int>(pad.touch_y * kScreenH);
+            const int start = std::clamp(selected - kMaxVis / 2, 0, std::max(0, total - kMaxVis));
+            if (tx >= 96 && tx <= 1176 && ty >= 112 && ty < 112 + kMaxVis * 40) {
+                const int tapped = start + (ty - 112) / 40;
+                if (tapped >= 0 && tapped < total) {
+                    if (tapped == selected) {
+                        activate = true;
+                    } else {
+                        selected = tapped;
+                        redraw = true;
+                    }
+                }
+            }
+        }
+        prev_touch = pad.has_touch;
+
+        if (activate) {
+            const auto& it = items[static_cast<std::size_t>(selected)];
+            if (it.is_dir) {
+                cur_dir = it.full_path;
+                if (!cur_dir.empty() && cur_dir.back() != '/') cur_dir.push_back('/');
+                items = scan_dir(cur_dir, en);
+                selected = 0;
+                redraw = true;
+            } else {
+                if (out_path) *out_path = it.full_path;
+                if (out_is_zip) *out_is_zip = true;
+                return true;
+            }
+        }
+
+        if (redraw) {
+            cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 215);
+            cv.DrawRoundedRect(70, 36, 1140, 648, 16, kPanelBg, kCyan);
+            cv.DrawTextMaxWidth(
+                100, 54, 960,
+                T(en, "PROCURAR FIRMWARE (.ZIP OU PASTA .NCA)", "BROWSE FIRMWARE (.ZIP OR .NCA DIR)"),
+                kCyan, 2, true);
+            cv.DrawTextMaxWidth(100, 82, 1070, cur_dir, kTextMuted, 1);
+            cv.FillRect(96, 100, 1088, 2, kBorderDim);
+
+            const int cur_total = static_cast<int>(items.size());
+            const int cur_start =
+                std::clamp(selected - kMaxVis / 2, 0, std::max(0, cur_total - kMaxVis));
+            const int cur_end = std::min(cur_total, cur_start + kMaxVis);
+            for (int i = cur_start; i < cur_end; ++i) {
+                const int vis = i - cur_start;
+                const int ry = 112 + vis * 40;
+                const bool is_sel = (i == selected);
+                const auto& it = items[static_cast<std::size_t>(i)];
+                cv.DrawRoundedRect(96, ry, 1080, 34, 6, is_sel ? kCardSelected : kCardBg,
+                                   is_sel ? kCyan : kBorderDim);
+                const std::uint32_t tag_bg =
+                    it.is_parent ? PackRGBA(55, 65, 81)
+                                 : (it.is_dir ? PackRGBA(37, 78, 128) : PackRGBA(14, 116, 90));
+                const char* tag_txt = it.is_parent ? "UP" : (it.is_dir ? "DIR" : "ZIP");
+                cv.DrawPill(106, ry + 7, tag_txt, tag_bg, kTextPrimary, 1);
+                cv.DrawTextMaxWidth(164, ry + 13, 890, it.label,
+                                    is_sel ? kTextPrimary : PackRGBA(220, 228, 240), 1);
+                if (!it.is_dir && it.size_bytes > 0) {
+                    cv.DrawTextMaxWidth(1070, ry + 13, 96, FormatSize(it.size_bytes), kTextMuted, 1);
+                }
+            }
+            DrawScrollbar(cv, 1188, 112, kMaxVis * 40 - 6, cur_start, kMaxVis, cur_total);
+
+            cv.FillRect(96, 570, 1088, 1, kBorderDim);
+            int fx = 100;
+            fx += cv.DrawPill(fx, 594, T(en, "[A] Abrir / Instalar .zip", "[A] Open / Install .zip"),
+                              kAccentSoft, kAccent, 1) + 12;
+            fx += cv.DrawPill(fx, 594,
+                              T(en, "[X] Instalar desta pasta", "[X] Install from this folder"),
+                              PackRGBA(20, 62, 86), kCyan, 1) + 12;
+            cv.DrawPill(fx, 594, T(en, "[B] Cancelar", "[B] Cancel"), kCardBg, kTextPrimary, 1);
+            cv.Present();
+            redraw = false;
+        }
+        Switch2SleepMs(16);
+    }
+    if (out_app_exit) *out_app_exit = true;
+    return false;
+}
+
+bool RunFirmwareManagerModal(Canvas& cv, SettingOption& fw_opt, bool en) {
+    struct Row {
+        enum Kind { Browse, Zip, Dir, Remove } kind;
+        std::string label;
+        std::string path;
+        std::string badge;
+        std::string extra;
+    };
+
+    auto build_rows = [&](bool en_flag) {
+        std::vector<Row> rows;
+        rows.push_back(Row{Row::Browse,
+                           T(en_flag, "+ Procurar Firmware (.zip ou pasta) no SD...",
+                             "+ Browse Firmware (.zip or folder) on SD..."),
+                           "", "SD", ""});
+
+        auto scan_fw_root = [&](const std::string& root, const char* root_tag) {
+            std::vector<std::pair<std::string, std::string>> direct_ncas;
+            SafeForEachDirEntry(root, [&](const std::filesystem::directory_entry& e,
+                                          std::error_code&) {
+                std::error_code ec;
+                const std::string fname = e.path().filename().string();
+                if (fname.empty() || fname[0] == '.') return;
+                if (e.is_regular_file(ec) && !ec) {
+                    if (EndsWithInsensitive(fname, ".zip")) {
+                        const std::uint64_t sz = e.file_size(ec);
+                        std::string clean_lbl = fname;
+                        if (clean_lbl.size() > 4) clean_lbl.resize(clean_lbl.size() - 4);
+                        rows.push_back(Row{Row::Zip, clean_lbl, e.path().generic_string(), "ZIP",
+                                           ec ? std::string{} : FormatSize(sz)});
+                    } else if (EndsWithInsensitive(fname, ".nca")) {
+                        direct_ncas.emplace_back(e.path().generic_string(), fname);
+                    }
+                } else if (e.is_directory(ec) && !ec) {
+                    std::vector<std::pair<std::string, std::string>> sub_ncas;
+                    CollectFirmwareNcasFromDir(e.path().generic_string(), sub_ncas, 0);
+                    if (!sub_ncas.empty()) {
+                        rows.push_back(Row{Row::Dir, fname, e.path().generic_string(), "DIR",
+                                           std::to_string(sub_ncas.size()) + " NCAs"});
+                    }
+                }
+            });
+            if (!direct_ncas.empty()) {
+                rows.push_back(Row{Row::Dir, std::string(root_tag) + " (NCAs)", root, "DIR",
+                                   std::to_string(direct_ncas.size()) + " NCAs"});
+            }
+        };
+
+        scan_fw_root(kDefaultFirmwareDir, "firmware");
+        std::error_code ec;
+        if (std::filesystem::is_directory("sdmc:/firmware", ec) && !ec) {
+            scan_fw_root("sdmc:/firmware", "sdmc:/firmware");
+        }
+
+        if (CountInstalledFirmwareNcas() > 0) {
+            rows.push_back(Row{Row::Remove,
+                               T(en_flag, "Remover Firmware Instalado (voltar p/ Sintetizado)",
+                                 "Remove Installed Firmware (revert to Synthesized)"),
+                               "", "OFF", ""});
+        }
+        return rows;
+    };
+
+    auto rows = build_rows(en);
+    int selected = 0;
+    constexpr int kMaxVis = 10;
+    bool redraw = true;
+    bool prev_touch = true;
+    std::string status_msg;
+    std::uint32_t status_col = kAccent;
+    Switch2PadSnapshot pad{};
+
+    while (Switch2PollInput(&pad, false)) {
+        const std::uint64_t down = pad.raw_down;
+        const int total = static_cast<int>(rows.size());
+        if (down & SWITCH2_BTN_B) {
+            RefreshFirmwareOption(fw_opt);
+            return true;
+        }
+        if (total > 0 && (down & (SWITCH2_BTN_UP | SWITCH2_BTN_DOWN))) {
+            if (down & SWITCH2_BTN_UP) selected = (selected + total - 1) % total;
+            if (down & SWITCH2_BTN_DOWN) selected = (selected + 1) % total;
+            redraw = true;
+        }
+
+        bool activate = (total > 0 && (down & SWITCH2_BTN_A));
+        if (pad.has_touch && !prev_touch) {
+            const int tx = static_cast<int>(pad.touch_x * kScreenW);
+            const int ty = static_cast<int>(pad.touch_y * kScreenH);
+            const int start = std::clamp(selected - kMaxVis / 2, 0, std::max(0, total - kMaxVis));
+            if (tx >= 96 && tx <= 1176 && ty >= 126 && ty < 126 + kMaxVis * 40) {
+                const int tapped = start + (ty - 126) / 40;
+                if (tapped >= 0 && tapped < total) {
+                    if (tapped == selected) {
+                        activate = true;
+                    } else {
+                        selected = tapped;
+                        redraw = true;
+                    }
+                }
+            }
+        }
+        prev_touch = pad.has_touch;
+
+        if (activate) {
+            const auto r = rows[static_cast<std::size_t>(selected)];
+            if (r.kind == Row::Browse) {
+                std::string picked;
+                bool is_zip = false;
+                bool app_exit = false;
+                if (RunFirmwareSdBrowserModal(cv, kDefaultFirmwareDir, en, &picked, &is_zip,
+                                              &app_exit)) {
+                    std::string lbl = BaseName(picked);
+                    if (is_zip && lbl.size() > 4) lbl.resize(lbl.size() - 4);
+                    const bool ok =
+                        is_zip ? InstallFirmwareFromZip(cv, picked, lbl, en, &status_msg)
+                               : InstallFirmwareFromDir(cv, picked, lbl, en, &status_msg);
+                    status_col = ok ? kAccent : kAmber;
+                    RefreshFirmwareOption(fw_opt);
+                    rows = build_rows(en);
+                    selected = std::clamp(selected, 0, std::max(0, static_cast<int>(rows.size()) - 1));
+                }
+                if (app_exit) return false;
+                redraw = true;
+            } else if (r.kind == Row::Zip) {
+                const bool ok = InstallFirmwareFromZip(cv, r.path, r.label, en, &status_msg);
+                status_col = ok ? kAccent : kAmber;
+                RefreshFirmwareOption(fw_opt);
+                rows = build_rows(en);
+                selected = std::clamp(selected, 0, std::max(0, static_cast<int>(rows.size()) - 1));
+                redraw = true;
+            } else if (r.kind == Row::Dir) {
+                const bool ok = InstallFirmwareFromDir(cv, r.path, r.label, en, &status_msg);
+                status_col = ok ? kAccent : kAmber;
+                RefreshFirmwareOption(fw_opt);
+                rows = build_rows(en);
+                selected = std::clamp(selected, 0, std::max(0, static_cast<int>(rows.size()) - 1));
+                redraw = true;
+            } else if (r.kind == Row::Remove) {
+                ClearInstalledFirmware();
+                status_msg = T(en, "Firmware removido! Voltando para modo Sintetizado.",
+                               "Firmware removed! Reverted to Synthesized mode.");
+                status_col = kCyan;
+                RefreshFirmwareOption(fw_opt);
+                rows = build_rows(en);
+                selected = 0;
+                redraw = true;
+            }
+        }
+
+        if (redraw) {
+            const int installed_ncas = CountInstalledFirmwareNcas();
+            const std::string installed_lbl = ReadInstalledFirmwareLabel();
+
+            cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 215);
+            cv.DrawRoundedRect(70, 36, 1140, 648, 16, kPanelBg, kCyan);
+            cv.DrawTextMaxWidth(100, 52, 760,
+                                T(en, "GERENCIAR FIRMWARE SWITCH 1", "MANAGE SWITCH 1 FIRMWARE"),
+                                kCyan, 2, true);
+            const std::string sub =
+                (installed_ncas > 0)
+                    ? (std::string(T(en, "Atual: ", "Current: ")) +
+                       (installed_lbl.empty() ? T(en, "Instalado", "Installed") : installed_lbl) +
+                       " (" + std::to_string(installed_ncas) + " NCAs)")
+                    : std::string(T(en, "Atual: Sintetizado (coloque .zip ou pasta em firmware/)",
+                                    "Current: Synthesized (place .zip or folder in firmware/)"));
+            cv.DrawTextMaxWidth(100, 82, 760, sub, kTextMuted, 1);
+
+            cv.DrawPill(900, 52,
+                        (installed_ncas > 0) ? ("FW OK (" + std::to_string(installed_ncas) + ")")
+                                             : T(en, "SINTETIZADO", "SYNTHESIZED"),
+                        (installed_ncas > 0) ? kAccentSoft : kCardBg,
+                        (installed_ncas > 0) ? kAccent : kAmber, 2);
+            cv.FillRect(96, 108, 1088, 2, kBorderDim);
+
+            const int cur_total = static_cast<int>(rows.size());
+            const int cur_start =
+                std::clamp(selected - kMaxVis / 2, 0, std::max(0, cur_total - kMaxVis));
+            const int cur_end = std::min(cur_total, cur_start + kMaxVis);
+            for (int i = cur_start; i < cur_end; ++i) {
+                const int vis = i - cur_start;
+                const int ry = 126 + vis * 40;
+                const bool is_sel = (i == selected);
+                const auto& r = rows[static_cast<std::size_t>(i)];
+                cv.DrawRoundedRect(96, ry, 1080, 34, 7, is_sel ? kCardSelected : kCardBg,
+                                   is_sel ? kCyan : kBorderDim);
+                const std::uint32_t bbg =
+                    (r.kind == Row::Zip)
+                        ? kAccentSoft
+                        : ((r.kind == Row::Dir)
+                               ? PackRGBA(37, 78, 128)
+                               : ((r.kind == Row::Remove) ? PackRGBA(90, 34, 42)
+                                                          : PackRGBA(20, 62, 86)));
+                cv.DrawPill(108, ry + 7, r.badge, bbg,
+                            (r.kind == Row::Zip) ? kAccent : kTextPrimary, 1);
+                cv.DrawTextMaxWidth(174, ry + 13, 860, r.label,
+                                    is_sel ? kAccent : kTextPrimary, 1);
+                if (!r.extra.empty()) {
+                    cv.DrawTextMaxWidth(1046, ry + 13, 118, r.extra, kTextMuted, 1);
+                }
+            }
+            DrawScrollbar(cv, 1188, 126, kMaxVis * 40 - 6, cur_start, kMaxVis, cur_total);
+
+            cv.FillRect(96, 548, 1088, 1, kBorderDim);
+            if (!status_msg.empty()) {
+                cv.DrawTextMaxWidth(100, 562, 1080, status_msg, status_col, 2);
+            } else {
+                cv.DrawTextMaxWidth(
+                    100, 566, 1080,
+                    T(en,
+                      "Coloque dumps de firmware (.zip ou pasta com .nca) em sdmc:/switch/eden-nx2/firmware/",
+                      "Place Switch 1 firmware (.zip or .nca folder) in sdmc:/switch/eden-nx2/firmware/"),
+                    kTextMuted, 1);
+            }
+
+            int fx = 100;
+            fx += cv.DrawPill(fx, 610, T(en, "[A] Instalar / Abrir", "[A] Install / Open"),
+                              kAccentSoft, kAccent, 1) + 12;
+            cv.DrawPill(fx, 610, T(en, "[B] Voltar", "[B] Back"), kCardBg, kTextPrimary, 1);
+            cv.Present();
+            redraw = false;
+        }
+        Switch2SleepMs(16);
+    }
+    RefreshFirmwareOption(fw_opt);
+    return false;
+}
+
 void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int selected,
                        const std::string& title, bool en) {
     cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 205);
@@ -2288,7 +3119,9 @@ void DrawSettingsModal(Canvas& cv, const std::vector<SettingOption>& opts, int s
         const int ry = 98 + vis * 40;
         const bool is_sel = (i == selected);
         const std::size_t idx = static_cast<std::size_t>(i);
-        const bool is_addon_row = (opts[idx].key == "update_pkg" || opts[idx].key == "dlc_pkg");
+        const bool is_addon_row =
+            (opts[idx].key == "update_pkg" || opts[idx].key == "dlc_pkg" ||
+             opts[idx].key == "firmware");
         const bool is_text_row = (opts[idx].key == "profile_name");
         const bool is_modal_row = is_addon_row || is_text_row;
 
@@ -2510,6 +3343,10 @@ bool RunSettingsModal(Canvas& cv, std::vector<SettingOption>& opts, const std::s
                                 ? RunUpdatePickerModal(cv, opt, *pg_ctx, en)
                                 : RunDlcPickerModal(cv, opt, *pg_ctx, en);
             if (!ok) return false;
+            redraw = true;
+        } else if (opt.key == "firmware" &&
+                   (touch_activate || (down & (SWITCH2_BTN_A | SWITCH2_BTN_RIGHT | SWITCH2_BTN_LEFT)))) {
+            if (!RunFirmwareManagerModal(cv, opt, en)) return false;
             redraw = true;
         } else if (opt.key == "profile_name" &&
                    (touch_activate || (down & (SWITCH2_BTN_A | SWITCH2_BTN_RIGHT | SWITCH2_BTN_LEFT)))) {
@@ -2846,6 +3683,12 @@ bool Switch2RunLauncher(Switch2LaunchConfig* out_cfg, const char* self_nro_path)
 
     auto global_opts = MakeDefaultOptions();
     LoadIniInto(global_opts, kGlobalSettingsPath, false);
+    for (auto& o : global_opts) {
+        if (o.key == "firmware") {
+            RefreshFirmwareOption(o);
+            break;
+        }
+    }
 
     std::string folder = ReadInitialFolder();
     const AddonLists addon_cache = ScanAddonListsOnce();
