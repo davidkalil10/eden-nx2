@@ -106,7 +106,7 @@ sdmc:/
 
 ### Tips for First Boot
 - **Keys (`prod.keys`):** Place `prod.keys` inside `sdmc:/switch/eden-nx2/keys/prod.keys` or `sdmc:/.local/share/eden/keys/prod.keys`.
-- **FAT32 Split Games (> 4 GB):** Split clean base `.nsp` / `.xci` / `.nsz` files into `00`, `01`, `02`... folders (via SAK / `splitNSP`) or `.nsp.00` / 7-Zip `.001` files. **Tip:** keep Updates separate in `sdmc:/switch/eden-nx2/updates/` instead of consolidating Base + Update into a single `(1G+1U)` NSP before splitting, as some repacked Super-NSPs omit the `.tik` ticket (`ErrorMissingTitlekey`).
+- **FAT32 Split Games (> 4 GB):** Split clean base `.nsp` / `.xci` / `.nsz` files into `00`, `01`, `02`... folders (via SAK / `splitNSP`) or `.nsp.00` / 7-Zip `.001` files. Verified working on Switch 2 hardware with ***Pokémon Sword*** (3-part split) and ***Super Mario Party Jamboree*** (split). **Tip:** keep Updates separate in `sdmc:/switch/eden-nx2/updates/` instead of consolidating Base + Update into a single `(1G+1U)` NSP before splitting, as some repacked Super-NSPs omit the `.tik` ticket (`ErrorMissingTitlekey`).
 - **Updates & DLC:** Put Update `.nsp`/`.xci` files in `sdmc:/switch/eden-nx2/updates/` and DLC `.nsp`/`.xci` files (or subfolders) in `sdmc:/switch/eden-nx2/dlc/` for automatic discovery, or assign/disable them individually per game via **`[Y]` Per-Game Settings**.
 - **2-Player Individual Joy-Cons (*Super Mario Party*, *1-2-Switch*, *Mario Kart 8*):**
   1. In the **Switch 2 System Settings / Controllers** menu, detach and pair the two Joy-Cons as **two separate horizontal controllers**.

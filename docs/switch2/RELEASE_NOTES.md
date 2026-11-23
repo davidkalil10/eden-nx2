@@ -7,10 +7,11 @@
 ---
 
 ### What's New / Novidades
-- **Major Game Compatibility Fix (`v0.1.10` — *Pokémon Sword* & Titles Using `GetPseudoDeviceId` / Base `NACP`):**
-  - Registered the launched base game container into `ManualContentProvider` so its `Control` NCA (`NACP`, `supported_languages`, `seed_for_pseudo_device_id`) is always available to games even without external Updates, and added a safe `program_id` fallback in `IApplicationFunctions::GetPseudoDeviceId` (fixes `2511-8191` / `0xffffffff` boot panics).
-- **FAT32 Split Game / Update / DLC Support (> 4 GB):**
+- **Major Game Compatibility Fix (`v0.1.10` — *Pokémon Sword*, *Super Mario Party Jamboree* & Titles Using `GetPseudoDeviceId` / Base `NACP`):**
+  - Registered the launched base game container into `ManualContentProvider` so its `Control` NCA (`NACP`, `supported_languages`, `seed_for_pseudo_device_id`) is always available even without external Updates, and added a safe `program_id` fallback in `IApplicationFunctions::GetPseudoDeviceId` (fixes `2511-8191` / `0xffffffff` boot panics).
+- **FAT32 Split Game / Update / DLC Support (> 4 GB) — Verified on Switch 2 Hardware:**
   - Stream split Switch 1 containers seamlessly via `ConcatenatedVfsFile` without re-merging or extra RAM!
+  - **Tested & working on Switch 2:** ***Pokémon Sword*** (3-part split `00`/`01`/`02`) and ***Super Mario Party Jamboree*** (split `00`/`01`).
   - Automatically detects **split folders** (`Game.nsp/` or plain `Game/` containing `00`, `01`, `02`, ... from SAK / `splitNSP` / DBI), **dot-numbered splits** (`.nsp.00`, `.01`, ...), **7-Zip splits** (`.nsp.001`, `.002`, ...), and **`.xc0`/`.ns0`** splits — shown as a single clean entry with a **`SPLIT`** badge and total size in the launcher, Update picker, and DLC manager.
 - **4-Player Local Multiplayer + Individual Joy-Con Auto-Detection (*Super Mario Party*, *1-2-Switch*, *Mario Kart*):**
   - Expanded Switch 2 HID input to **4 simultaneous players (P1–P4)** with **independent 6-axis gyro/accelerometer and HD Rumble** per player.
