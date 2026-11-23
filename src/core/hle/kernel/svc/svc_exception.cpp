@@ -6,6 +6,7 @@
 
 #include <cctype>
 #ifdef __SWITCH2__
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -161,6 +162,20 @@ void Break(Core::System& system, BreakReason reason, u64 info1, u64 info2) {
                     for (std::size_t bi = 0; bi < bt.size() && bi < 3; ++bi) {
                         std::fprintf(ef, "BT[%zu]: %s+0x%llx\n", bi, bt[bi].module.c_str(),
                                      static_cast<unsigned long long>(bt[bi].offset));
+                    }
+                    auto& mem = GetCurrentMemory(system.Kernel());
+                    for (const std::size_t ri : {3, 4, 5, 6, 7}) {
+                        const u64 ptr = ctx.r[ri];
+                        if (ptr >= 0x10000000ULL && ptr < 0x10000000000ULL &&
+                            mem.IsValidVirtualAddress(ptr)) {
+                            std::string s = mem.ReadCString(ptr, 160);
+                            if (s.size() >= 4 && std::all_of(s.begin(), s.end(), [](unsigned char c) {
+                                    return (c >= 0x20 && c < 0x7f) || c == '\n' || c == '\r' ||
+                                           c == '\t';
+                                })) {
+                                LOG_CRITICAL(Debug_Emulated, "GuestAbortStr[X{}]={}", ri, s);
+                            }
+                        }
                     }
                 }
             }
