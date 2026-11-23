@@ -39,7 +39,10 @@ void Break(Core::System& system, BreakReason reason, u64 info1, u64 info2) {
 
         // This typically is an error code so we're going to assume this is the case
         if (sz == sizeof(u32)) {
-            LOG_CRITICAL(Debug_Emulated, "debug_buffer_err_code={:X}", memory.Read32(addr));
+            const u32 err_code = memory.Read32(addr);
+            debug_buffer.resize(sizeof(u32));
+            std::memcpy(debug_buffer.data(), &err_code, sizeof(u32));
+            LOG_CRITICAL(Debug_Emulated, "debug_buffer_err_code={:X}", err_code);
         } else {
             // We don't know what's in here so we'll hexdump it
             debug_buffer.resize(sz);

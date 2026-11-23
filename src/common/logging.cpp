@@ -299,12 +299,20 @@ struct FileBackend final : public Backend {
             // Don't close the file so we can print a stacktrace if necessary
             if (write_limit_exceeded)
                 enabled = false;
+#ifdef __SWITCH2__
+            file->Commit();
+#else
             file->Flush();
+#endif
         }
     }
 
     void Flush() noexcept override {
+#ifdef __SWITCH2__
+        file->Commit();
+#else
         file->Flush();
+#endif
     }
 private:
     std::optional<FS::IOFile> file;
