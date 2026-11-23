@@ -7,15 +7,19 @@
 #include <tuple>
 #include "common/assert.h"
 #include "common/scope_exit.h"
+#include "common/settings.h"
 #include "core/core.h"
 #include "core/hle/kernel/k_client_port.h"
 #include "core/hle/kernel/k_client_session.h"
 #include "core/hle/kernel/k_port.h"
 #include "core/hle/kernel/k_scoped_resource_reservation.h"
 #include "core/hle/kernel/k_server_port.h"
+#include "core/hle/kernel/k_session.h"
 #include "core/hle/result.h"
 #include "core/hle/service/cmif_types.h"
+#include "core/hle/service/hle_ipc.h"
 #include "core/hle/service/ipc_helpers.h"
+#include "core/hle/service/nx2_stub_interface.h"
 #include "core/hle/service/server_manager.h"
 #include "core/hle/service/sm/sm.h"
 #include "core/hle/service/sm/sm_controller.h"
@@ -187,6 +191,22 @@ Result SM::GetServiceImpl(Kernel::KClientSession** out_client_session, HLEReques
     }
 
     if (port_result != ResultSuccess) {
+        if (Settings::CurrentProgramIsSwitch2()) {
+            LOG_WARNING(Service_SM,
+                        "(STUBBED) Switch 2 service {} does not exist, returning a stub", name);
+            auto* stub_session = Kernel::KSession::Create(kernel);
+            stub_session->Initialize(kernel, nullptr, 0);
+            Kernel::KSession::Register(kernel, stub_session);
+
+            auto manager = std::make_shared<SessionRequestManager>(
+                kernel, ctx.GetManager()->GetServerManager());
+            manager->SetSessionHandler(std::make_shared<INx2StubInterface>(
+                system, INx2StubInterface::InternName(fmt::format("{}{}", Nx2StubPrefix, name))));
+            ctx.GetManager()->GetServerManager().RegisterSession(&stub_session->GetServerSession(),
+                                                                 manager);
+            *out_client_session = &stub_session->GetClientSession();
+            return ResultSuccess;
+        }
         LOG_INFO(Service_SM, "Waiting for service {} to become available", name);
         ctx.SetIsDeferred();
         return Service::SM::ResultNotRegistered;

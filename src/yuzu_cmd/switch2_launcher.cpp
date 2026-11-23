@@ -3633,7 +3633,13 @@ void ShowLoadErrorModalIfPresent(Canvas& cv, bool en) {
         }
     }
     std::error_code ec;
-    std::filesystem::remove(kErrPath, ec);
+    std::filesystem::remove("sdmc:/switch/eden-nx2/last_load_error_saved.txt", ec);
+    ec.clear();
+    std::filesystem::rename(kErrPath, "sdmc:/switch/eden-nx2/last_load_error_saved.txt", ec);
+    if (ec) {
+        ec.clear();
+        std::filesystem::remove(kErrPath, ec);
+    }
     if (lines.empty()) return;
 
     cv.FillRect(0, 0, kScreenW, kScreenH, PackRGBA(4, 8, 14), 215);
