@@ -201,7 +201,7 @@ Result SM::GetServiceImpl(Kernel::KClientSession** out_client_session, HLEReques
             auto manager = std::make_shared<SessionRequestManager>(
                 kernel, ctx.GetManager()->GetServerManager());
             manager->SetSessionHandler(std::make_shared<INx2StubInterface>(
-                system, INx2StubInterface::InternName(fmt::format("{}{}", Nx2StubPrefix, name))));
+                system, INx2StubInterface::InternName(std::format("{}{}", Nx2StubPrefix, name))));
             ctx.GetManager()->GetServerManager().RegisterSession(&stub_session->GetServerSession(),
                                                                  manager);
             *out_client_session = &stub_session->GetClientSession();

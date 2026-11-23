@@ -7,11 +7,10 @@
 #pragma once
 
 #include <deque>
+#include <format>
 #include <mutex>
 #include <string>
 #include <string_view>
-
-#include <fmt/format.h>
 
 #include "core/hle/service/ipc_helpers.h"
 #include "core/hle/service/service.h"
@@ -47,7 +46,7 @@ public:
 inline void ReturnNx2StubInterface(Core::System& system, HLERequestContext& ctx,
                                    std::string_view owner) {
     const char* name =
-        INx2StubInterface::InternName(fmt::format("{}{}::{}", Nx2StubPrefix, owner, ctx.GetCommand()));
+        INx2StubInterface::InternName(std::format("{}{}::{}", Nx2StubPrefix, owner, ctx.GetCommand()));
     LOG_WARNING(Service, "(STUBBED) Switch 2 {}::{} -> stub interface {}", owner, ctx.GetCommand(),
                 name);
     IPC::ResponseBuilder rb{ctx, 2, 0, 1};
