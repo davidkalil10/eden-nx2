@@ -50,6 +50,10 @@ public:
         return m_arm_interface;
     }
 
+    std::size_t CoreIndex() const {
+        return m_core_index;
+    }
+
     // Wait for an interrupt.
     void Idle();
 

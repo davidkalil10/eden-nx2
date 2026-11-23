@@ -146,21 +146,28 @@ void Break(Core::System& system, BreakReason reason, u64 info1, u64 info2) {
                              static_cast<unsigned long long>(info1),
                              static_cast<unsigned long long>(info2));
             }
-            if (auto* arm = system.CurrentPhysicalCore().GetArmInterface()) {
-                Kernel::Svc::ThreadContext ctx{};
-                arm->GetContext(ctx);
-                std::fprintf(ef, "PC=0x%llx LR=0x%llx\n",
-                             static_cast<unsigned long long>(ctx.pc),
-                             static_cast<unsigned long long>(ctx.lr));
-                const auto bt = Core::GetBacktraceFromContext(GetCurrentProcessPointer(system.Kernel()), ctx);
-                for (std::size_t bi = 0; bi < bt.size() && bi < 3; ++bi) {
-                    std::fprintf(ef, "BT[%zu]: %s+0x%llx\n", bi, bt[bi].module.c_str(),
-                                 static_cast<unsigned long long>(bt[bi].offset));
+            if (auto* process = GetCurrentProcessPointer(system.Kernel())) {
+                auto* arm = process->GetArmInterface(system.CurrentPhysicalCore().CoreIndex());
+                if (!arm) {
+                    arm = system.CurrentPhysicalCore().GetArmInterface();
+                }
+                if (arm) {
+                    Kernel::Svc::ThreadContext ctx{};
+                    arm->GetContext(ctx);
+                    std::fprintf(ef, "PC=0x%llx LR=0x%llx\n",
+                                 static_cast<unsigned long long>(ctx.pc),
+                                 static_cast<unsigned long long>(ctx.lr));
+                    const auto bt = Core::GetBacktraceFromContext(process, ctx);
+                    for (std::size_t bi = 0; bi < bt.size() && bi < 3; ++bi) {
+                        std::fprintf(ef, "BT[%zu]: %s+0x%llx\n", bi, bt[bi].module.c_str(),
+                                     static_cast<unsigned long long>(bt[bi].offset));
+                    }
                 }
             }
             std::fflush(ef);
             std::fclose(ef);
         }
+        Common::Log::DumpRecentLogTail("sdmc:/switch/eden-nx2/last_eden_log_tail.txt");
 #endif
     }
 

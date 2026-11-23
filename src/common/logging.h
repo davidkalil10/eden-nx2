@@ -134,6 +134,11 @@ void Start();
 /// Explicitly stops the logger thread and flushes the buffers
 void Stop();
 
+#ifdef __SWITCH2__
+/// Writes the last few dozen log lines directly to a file and closes it (for FAT32 visibility).
+void DumpRecentLogTail(const char* path);
+#endif
+
 /// The global filter will prevent any messages from even being processed if they are filtered.
 void SetGlobalFilter(const Filter& filter);
 [[nodiscard]] bool IsMessageEnabled(Class log_class, Level log_level);

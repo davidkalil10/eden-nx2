@@ -9,6 +9,10 @@
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
+#ifdef __SWITCH2__
+#include <deque>
+#include <mutex>
+#endif
 #include <format>
 #include <regex>
 #include <thread>
@@ -28,6 +32,21 @@
 
 #include "common/fs/file.h"
 #include "common/fs/fs.h"
+
+#ifdef __SWITCH2__
+namespace {
+std::mutex g_sw2_recent_log_mutex;
+std::deque<std::string> g_sw2_recent_log_lines;
+
+void RecordRecentSwitch2LogLine(const std::string& line) {
+    std::scoped_lock lk{g_sw2_recent_log_mutex};
+    g_sw2_recent_log_lines.push_back(line);
+    if (g_sw2_recent_log_lines.size() > 60) {
+        g_sw2_recent_log_lines.pop_front();
+    }
+}
+} // namespace
+#endif
 #include "common/fs/fs_paths.h"
 #include "common/fs/path_util.h"
 #include "common/literals.h"
@@ -285,6 +304,9 @@ struct FileBackend final : public Backend {
         }
 #endif
         bytes_written += file->WriteSpan(std::span<const char>{message.begin(), message.end()});
+#ifdef __SWITCH2__
+        RecordRecentSwitch2LogLine(message);
+#endif
 
         // Option to log each line rather than 4k buffers
         if (Settings::values.log_flush_line.GetValue())
@@ -470,4 +492,24 @@ void FmtLogMessageImpl(Class log_class, Level log_level, const char* filename, u
         });
     }
 }
+
+#ifdef __SWITCH2__
+void DumpRecentLogTail(const char* path) {
+    if (!path) {
+        return;
+    }
+    std::deque<std::string> copy;
+    {
+        std::scoped_lock lk{g_sw2_recent_log_mutex};
+        copy = g_sw2_recent_log_lines;
+    }
+    if (std::FILE* f = std::fopen(path, "w")) {
+        for (const auto& line : copy) {
+            std::fwrite(line.data(), 1, line.size(), f);
+        }
+        std::fflush(f);
+        std::fclose(f);
+    }
+}
+#endif
 } // namespace Common::Log
