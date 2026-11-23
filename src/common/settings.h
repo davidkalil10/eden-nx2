@@ -1035,6 +1035,8 @@ bool IsNceEnabled();
 
 void SetCurrentProgramID(u64 program_id);
 u64 GetCurrentProgramID();
+void SetCurrentProgramIsSwitch2(bool is_switch2);
+bool CurrentProgramIsSwitch2();
 
 bool IsOpenGL();
 

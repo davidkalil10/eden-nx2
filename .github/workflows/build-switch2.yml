@@ -2,7 +2,7 @@ name: Build Eden-NX2 (Nintendo Switch 2)
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master, main, "exp/**" ]
     tags: [ "v*" ]
     paths-ignore: [ "README.md", "docs/**", "*.md" ]
   pull_request:

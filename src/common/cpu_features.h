@@ -20,6 +20,7 @@ namespace Common {
 class WallClock {
 public:
     static constexpr u64 CNTFRQ = 19'200'000;         // CNTPCT_EL0 Frequency = 19.2 MHz
+    static constexpr u64 Switch2CNTFRQ = 31'250'000;  // Switch 2 CNTPCT_EL0 Frequency = 31.25 MHz
     static constexpr u64 GPUTickFreq = 614'400'000;   // GM20B GPU Tick Frequency = 614.4 MHz
     static constexpr u64 CPUTickFreq = 1'020'000'000; // T210/4 A57 CPU Tick Frequency = 1020.0 MHz
 
@@ -48,6 +49,11 @@ public:
 
     // @returns Nanoseconds to native ticks
     u64 NsToTicks(std::chrono::nanoseconds ns) const;
+
+    void SetGuestCNTFRQ(u64 cntfrq) const;
+    [[nodiscard]] u64 GetGuestCNTFRQ() const {
+        return guest_cntfrq;
+    }
 
     static inline u64 NSToCNTPCT(u64 ns) {
         return ns * NsToCNTPCTRatio::num / NsToCNTPCTRatio::den;
@@ -91,6 +97,7 @@ public:
     using CPUTickToCNTPCTRatio = std::ratio<CNTFRQ, CPUTickFreq>;
     using CPUTickToGPUTickRatio = std::ratio<GPUTickFreq, CPUTickFreq>;
 
+    mutable u64 guest_cntfrq{CNTFRQ};
 #if defined(ARCHITECTURE_x86_64)
     u64 rdtsc_frequency;
     u64 ns_rdtsc_factor;
@@ -98,7 +105,7 @@ public:
     u64 ms_rdtsc_factor;
     u64 rdtsc_ns_integer;
     u64 rdtsc_ns_factor;
-    u64 cntpct_rdtsc_factor;
+    mutable u64 cntpct_rdtsc_factor;
     u64 gputick_rdtsc_factor;
     bool invariant;
 #elif defined(HAS_NCE) || defined(__SWITCH2__)
@@ -110,7 +117,7 @@ public:
     FactorType us_cntfrq_factor;
     FactorType ms_cntfrq_factor;
     FactorType cntfrq_ns_factor;
-    FactorType guest_cntfrq_factor;
+    mutable FactorType guest_cntfrq_factor;
     FactorType gputick_cntfrq_factor;
 #endif
 };

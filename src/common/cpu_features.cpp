@@ -294,6 +294,13 @@ bool WallClock::IsNative() const {
 u64 WallClock::NsToTicks(std::chrono::nanoseconds ns) const {
     return ns.count() * rdtsc_ns_integer + MultiplyHigh(ns.count(), rdtsc_ns_factor);
 }
+
+void WallClock::SetGuestCNTFRQ(u64 cntfrq) const {
+    guest_cntfrq = cntfrq;
+    if (invariant) {
+        cntpct_rdtsc_factor = GetFixedPoint64Factor(cntfrq, rdtsc_frequency);
+    }
+}
 #elif defined(HAS_NCE) || defined(__SWITCH2__)
 #ifdef __SWITCH2__
 extern "C" u64 __attribute__((weak)) Switch2GetSystemTickFreq(void);
@@ -391,6 +398,12 @@ bool WallClock::IsNative() const {
 u64 WallClock::NsToTicks(std::chrono::nanoseconds ns) const {
     return MultiplyHigh(ns.count(), cntfrq_ns_factor);
 }
+
+void WallClock::SetGuestCNTFRQ(u64 cntfrq) const {
+    guest_cntfrq = cntfrq;
+    const u64 host_cntfrq = std::max<u64>(GetHostCNTFRQ(), 1);
+    guest_cntfrq_factor = GetFixedPointFactor(cntfrq, host_cntfrq);
+}
 #else
 WallClock::WallClock(bool invariant_, u64 rdtsc_frequency_) noexcept {}
 
@@ -424,6 +437,10 @@ bool WallClock::IsNative() const {
 
 u64 WallClock::NsToTicks(std::chrono::nanoseconds ns) const {
     return ns.count();
+}
+
+void WallClock::SetGuestCNTFRQ(u64 cntfrq) const {
+    guest_cntfrq = cntfrq;
 }
 #endif
 

@@ -13,6 +13,7 @@
 #include "common/fs/fs.h"
 #include "common/logging.h"
 #include "common/adpf.h"
+#include "common/cpu_features.h"
 #include "common/settings.h"
 #include "common/settings_enums.h"
 #include "common/string_util.h"
@@ -24,11 +25,16 @@
 #include "core/cpu_manager.h"
 #include "core/debugger/debugger.h"
 #include "core/device_memory.h"
+#include "core/file_sys/card_image.h"
+#include "core/file_sys/content_archive.h"
 #include "core/file_sys/fs_filesystem.h"
+#include "core/file_sys/nup_container.h"
 #include "core/file_sys/patch_manager.h"
+#include "core/file_sys/program_metadata.h"
 #include "core/file_sys/registered_cache.h"
 #include "core/file_sys/romfs_factory.h"
 #include "core/file_sys/savedata_factory.h"
+#include "core/file_sys/submission_package.h"
 #include "core/file_sys/vfs/vfs_concat.h"
 #include "core/file_sys/vfs/vfs_real.h"
 #include "core/gpu_dirty_memory_manager.h"
@@ -71,7 +77,105 @@
 // This is defined by synchapi.h and conflicts with Timing::CreateEvent
 #undef CreateEvent
 
+#ifdef __SWITCH2__
+extern "C" void __attribute__((weak)) Switch2GetMemoryStats(std::uint64_t* out_used,
+                                                             std::uint64_t* out_total);
+#endif
+
 namespace Core {
+
+namespace {
+
+bool IsSwitch2Program(const FileSys::VirtualFile& file, u64 program_id, std::size_t program_index) {
+    if (file == nullptr) {
+        return false;
+    }
+    FileSys::ProgramMetadata metadata;
+    if (FileSys::NupContainer::IsNupFile(file)) {
+        FileSys::NupContainer nup{file};
+        if (nup.GetStatus() != Loader::ResultStatus::Success) {
+            return false;
+        }
+        const auto base = nup.FindBasePackage();
+        const auto update = nup.FindBestUpdatePackage();
+        std::optional<std::size_t> program;
+        if (update && nup.GetExeFSDir(*update) != nullptr) {
+            program = update;
+        } else if (base && nup.GetExeFSDir(*base) != nullptr) {
+            program = base;
+        }
+        const auto exefs = program ? nup.GetExeFSDir(*program) : nullptr;
+        const auto npdm = exefs != nullptr ? exefs->GetFile("main.npdm") : nullptr;
+        return npdm != nullptr && metadata.Load(npdm) == Loader::ResultStatus::Success &&
+               metadata.IsSwitch2();
+    }
+    const auto type = Loader::IdentifyFile(file);
+    if (type == Loader::FileType::XCI || type == Loader::FileType::XCZ) {
+        const FileSys::XCI xci{file, program_id, program_index};
+        if (xci.GetStatus() != Loader::ResultStatus::Success) {
+            return false;
+        }
+        const auto partition = xci.GetSecurePartitionNSP();
+        const auto program =
+            partition != nullptr
+                ? partition->GetNCA(xci.GetProgramTitleID(), FileSys::ContentRecordType::Program)
+                : nullptr;
+        const auto exefs = program != nullptr ? program->GetExeFS() : nullptr;
+        const auto npdm = exefs != nullptr ? exefs->GetFile("main.npdm") : nullptr;
+        return npdm != nullptr && metadata.Load(npdm) == Loader::ResultStatus::Success &&
+               metadata.IsSwitch2();
+    }
+    if (type == Loader::FileType::NSP || type == Loader::FileType::NSZ) {
+        const FileSys::NSP nsp{file, program_id, program_index};
+        if (nsp.GetStatus() != Loader::ResultStatus::Success) {
+            return false;
+        }
+        const auto program = nsp.GetNCA(nsp.GetProgramTitleID(), FileSys::ContentRecordType::Program);
+        const auto exefs = program != nullptr ? program->GetExeFS() : nullptr;
+        const auto npdm = exefs != nullptr ? exefs->GetFile("main.npdm") : nullptr;
+        return npdm != nullptr && metadata.Load(npdm) == Loader::ResultStatus::Success &&
+               metadata.IsSwitch2();
+    }
+    if (type == Loader::FileType::NCA) {
+        const FileSys::NCA nca{file};
+        const auto exefs = nca.GetExeFS();
+        const auto npdm = exefs != nullptr ? exefs->GetFile("main.npdm") : nullptr;
+        return npdm != nullptr && metadata.Load(npdm) == Loader::ResultStatus::Success &&
+               metadata.IsSwitch2();
+    }
+    return false;
+}
+
+Settings::MemoryLayout SelectSwitch2MemoryLayout() {
+#ifdef __SWITCH2__
+    if (Switch2GetMemoryStats != nullptr) {
+        std::uint64_t used = 0;
+        std::uint64_t total = 0;
+        Switch2GetMemoryStats(&used, &total);
+        // Reserve ~1.5 GiB for OunceVK, shaders, JIT pool & Horizon userland overhead.
+        constexpr std::uint64_t kHeadroom = 1536ULL * 1024ULL * 1024ULL;
+        const std::uint64_t avail = (total > kHeadroom) ? (total - kHeadroom) : 0;
+        LOG_INFO(Core, "Switch 2 userland heap: total={} MiB, used={} MiB, budget={} MiB",
+                 total >> 20, used >> 20, avail >> 20);
+        if (avail >= 12ULL * 1024ULL * 1024ULL * 1024ULL) {
+            return Settings::MemoryLayout::Memory_12Gb;
+        }
+        if (avail >= 10ULL * 1024ULL * 1024ULL * 1024ULL) {
+            return Settings::MemoryLayout::Memory_10Gb;
+        }
+        if (avail >= 8ULL * 1024ULL * 1024ULL * 1024ULL) {
+            return Settings::MemoryLayout::Memory_8Gb;
+        }
+        if (avail >= 6ULL * 1024ULL * 1024ULL * 1024ULL) {
+            return Settings::MemoryLayout::Memory_6Gb;
+        }
+        return Settings::MemoryLayout::Memory_4Gb;
+    }
+#endif
+    return Settings::MemoryLayout::Memory_12Gb;
+}
+
+} // namespace
 
 FileSys::VirtualFile GetGameFileFromPath(const FileSys::VirtualFilesystem& vfs,
                                          const std::string& path) {
@@ -204,10 +308,11 @@ struct System::Impl {
     u64 program_id;
 
     void Initialize(System& system) {
+        device_memory.reset();
         device_memory.emplace();
 
         is_multicore = Settings::values.use_multi_core.GetValue();
-        extended_memory_layout = Settings::values.memory_layout_mode.GetValue() != Settings::MemoryLayout::Memory_4Gb;
+        memory_layout_mode = Settings::values.memory_layout_mode.GetValue();
 
         core_timing.SetMulticore(is_multicore);
         core_timing.Initialize([&system]() { system.RegisterHostThread(); });
@@ -234,8 +339,7 @@ struct System::Impl {
         const bool must_reinitialize =
             !device_memory.has_value() ||
             is_multicore != Settings::values.use_multi_core.GetValue() ||
-            extended_memory_layout != (Settings::values.memory_layout_mode.GetValue() !=
-                                       Settings::MemoryLayout::Memory_4Gb);
+            memory_layout_mode != Settings::values.memory_layout_mode.GetValue();
 
         if (!must_reinitialize) {
             return;
@@ -244,8 +348,7 @@ struct System::Impl {
         LOG_DEBUG(Kernel, "Re-initializing");
 
         is_multicore = Settings::values.use_multi_core.GetValue();
-        extended_memory_layout =
-            Settings::values.memory_layout_mode.GetValue() != Settings::MemoryLayout::Memory_4Gb;
+        memory_layout_mode = Settings::values.memory_layout_mode.GetValue();
 
         Initialize(system);
     }
@@ -385,6 +488,28 @@ struct System::Impl {
         if (params.launch_type == Service::AM::LaunchType::FrontendInitiated) {
             fs_controller.InitTempStorage();
         }
+
+        const bool switch2_program =
+            virtual_filesystem != nullptr &&
+            IsSwitch2Program(GetGameFileFromPath(virtual_filesystem, filepath), params.program_id,
+                             params.program_index);
+        Settings::SetCurrentProgramIsSwitch2(switch2_program);
+
+        if (switch2_program) {
+            const auto target_layout = SelectSwitch2MemoryLayout();
+            if (Settings::values.memory_layout_mode.GetValue() != target_layout) {
+                LOG_INFO(Core, "Switch 2 program: using memory layout {}",
+                         static_cast<int>(target_layout));
+                Settings::values.memory_layout_mode.SetGlobal(false);
+                Settings::values.memory_layout_mode.SetValue(target_layout);
+            }
+        }
+
+        const u64 cntfrq = switch2_program ? Common::WallClock::Switch2CNTFRQ
+                                           : Common::WallClock::CNTFRQ;
+        Common::g_wall_clock.SetGuestCNTFRQ(cntfrq);
+        LOG_INFO(Core, "Guest counter frequency: {} Hz (switch2_program={})", cntfrq,
+                 switch2_program);
 
         InitializeKernel(system);
 
@@ -622,7 +747,7 @@ struct System::Impl {
     std::atomic_bool is_shutting_down{};
     std::atomic_bool is_powered_on{};
     bool is_multicore : 1 = false;
-    bool extended_memory_layout : 1 = false;
+    Settings::MemoryLayout memory_layout_mode{Settings::MemoryLayout::Memory_4Gb};
     bool exit_locked : 1 = false;
     bool exit_requested : 1 = false;
     bool nvdec_active : 1 = false;

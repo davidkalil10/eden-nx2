@@ -722,6 +722,9 @@ HostMemory::HostMemory(size_t backing_size_, size_t virtual_size_)
                 backing_size >> 20);
     fallback_buffer = true;
     backing_base = static_cast<u8*>(memalign(PageAlignment, AlignUp(backing_size, PageAlignment)));
+    if (backing_base == nullptr) {
+        LOG_CRITICAL(HW_Memory, "Switch 2 memalign failed for {} MiB!", backing_size >> 20);
+    }
     virtual_base = nullptr;
 #elif defined(__OPENORBIS__) || defined(__managarm__)
     LOG_WARNING(HW_Memory, "Platform doesn't support fastmem");

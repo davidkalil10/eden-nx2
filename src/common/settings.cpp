@@ -212,6 +212,7 @@ bool IsNceEnabled() {
 }
 
 static u64 current_program_id = 0;
+static bool current_program_is_switch2 = false;
 
 void SetCurrentProgramID(u64 program_id) {
     current_program_id = program_id;
@@ -219,6 +220,14 @@ void SetCurrentProgramID(u64 program_id) {
 
 u64 GetCurrentProgramID() {
     return current_program_id;
+}
+
+void SetCurrentProgramIsSwitch2(bool is_switch2) {
+    current_program_is_switch2 = is_switch2;
+}
+
+bool CurrentProgramIsSwitch2() {
+    return current_program_is_switch2;
 }
 
 bool IsDockedMode() {

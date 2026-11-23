@@ -183,9 +183,10 @@ AppLoader_DeconstructedRomDirectory::LoadResult AppLoader_DeconstructedRomDirect
     metadata.Print();
 
     if (metadata.GetPlatform() == FileSys::ContentMetaPlatform::Ounce) {
-        LOG_CRITICAL(Loader, "Cannot execute Switch 2 program {:016X}: CPU pointer authentication "
-                            "and Switch 2 runtime support are not implemented", metadata.GetTitleID());
-        return {ResultStatus::ErrorUnsupportedSwitch2, {}};
+        LOG_WARNING(Loader,
+                    "Experimental Switch 2 (Ounce) program {:016X}: attempting boot in "
+                    "exp/switch2-ounce",
+                    metadata.GetTitleID());
     }
 
     // Enable NCE only for applications with 39-bit address space.

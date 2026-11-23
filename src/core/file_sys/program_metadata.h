@@ -84,6 +84,9 @@ public:
     u64 GetFilesystemPermissions() const;
     u32 GetSystemResourceSize() const;
     ContentMetaPlatform GetPlatform() const;
+    bool IsSwitch2() const {
+        return GetPlatform() == ContentMetaPlatform::Ounce;
+    }
     u32 GetRemoteMemorySize() const;
     PoolPartition GetPoolPartition() const;
     const KernelCapabilityDescriptors& GetKernelCapabilities() const;
