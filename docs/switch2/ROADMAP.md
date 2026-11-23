@@ -61,9 +61,11 @@
 ### 3.2 Emulação de Amiibo (`.bin` no SD)
 - [ ] Opção **`[ Escanear Amiibo... ]`** no Menu Rápido (`L + R + +`) lendo arquivos `.bin` de `sdmc:/switch/eden-nx2/amiibo/` e enviando direto ao serviço NFC (`Cabinet`) do jogo ativo.
 
-### 3.3 Teclado Nativo do Switch 2 (`swkbd`) & Perfil de Usuário ✅ Concluída em `v0.1.11`
+### 3.3 Teclado Nativo do Switch 2 (`swkbd`), Perfil de Usuário & Gerenciador de Firmware ✅ Concluída em `v0.1.11`–`v0.1.16`
 - [x] Conectado o `SoftwareKeyboardApplet` (`swkbd`) do Eden ao **teclado nativo do Horizon OS (`libnx swkbdShow`)**, com **fallback automático para Teclado Virtual QWERTY integrado** (controle + toque na tela) e opção **`Teclado no Jogo`** (`Auto` / `Teclado Integrado`) em `[X]`/`[Y]`.
 - [x] Editor de **Nome do Perfil** (gravado no `ProfileManager` da conta Switch 1) nas Configurações Globais (`[X]`) do launcher.
+- [x] **Gerenciador e Instalador de Firmware Switch 1** (`v0.1.16`) em `[X]` (`Firmware Switch 1`), instalando direto de `.zip` ou pastas com `.nca` em `sdmc:/switch/eden-nx2/firmware/` (ou via navegador SD) com barra de progresso ao vivo e opção de remover/reverter para sintetizado.
+- [x] **Modos de Compatibilidade NVK** (`v0.1.12`–`v0.1.15`): `Safe (Compat. NVK)` (destravou *Super Mario Party Jamboree*), `Ultra-Safe (NAK Serial)`, `VK_EXT_robustness2` ativo no Switch 2 e diagnóstico completo de `VK_ERROR_DEVICE_LOST` / `crash_gpu.txt`.
 
 ### 3.4 Gerenciador de Saves (Backup / Importar / Exportar)
 - [ ] Opção no `[Y]` para **exportar** o save do jogo selecionado para `sdmc:/switch/eden-nx2/saves_backup/<Jogo>/` e **importar** saves vindos de um Switch 1 (JKSV / Checkpoint) ou do Eden no PC.

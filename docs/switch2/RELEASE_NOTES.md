@@ -73,21 +73,20 @@ Download **`eden-switch2.nro`** from the **Assets** section below and place your
 
 ```text
 sdmc:/
-├── switch/
-│   └── eden-nx2/
-│       ├── eden-switch2.nro          # Homebrew binary (OUN0)
-│       ├── roms/                     # .nsp / .nsz / .xci / .xcz / .nca / .nro games
-│       ├── updates/                  # Game Update packages (optional subfolders)
-│       ├── dlc/                      # Game DLC packages (files or per-game subfolders)
-│       ├── firmware/                 # Switch 1 firmware dumps (.zip or .nca folders)
-│       ├── keys/
-│       │   └── prod.keys             # Your dumped Switch 1 decryption keys
-│       └── Lossless.dll              # (Optional) Enables LSFG 2x/3x/4x Frame Generation
-└── .local/
-    └── share/
-        └── eden/
-            ├── keys/                 # Alternative standard keys path (prod.keys)
-            └── nand/                 # Emulated Switch NAND & saves
+└── switch/
+    └── eden-nx2/
+        ├── eden-switch2.nro          # Homebrew binary (OUN0)
+        ├── roms/                     # .nsp / .nsz / .xci / .xcz / .nca / .nro (or split folders)
+        ├── updates/                  # Game Update packages (optional subfolders)
+        ├── dlc/                      # Game DLC packages (files or per-game subfolders)
+        ├── firmware/                 # Switch 1 firmware dumps (.zip or .nca folders)
+        ├── keys/
+        │   └── prod.keys             # Your dumped Switch 1 decryption keys
+        ├── Lossless.dll              # (Optional) Enables LSFG 2x/3x/4x Frame Generation
+        └── .local/
+            └── share/
+                └── eden/
+                    └── nand/         # Emulated Switch 1 NAND, installed firmware & saves
 ```
 
 > [!NOTE]
