@@ -72,7 +72,7 @@ void ServiceFrameworkBase::ReportUnimplementedFunction(HLERequestContext& ctx,
     system.GetReporter().SaveUnimplementedFunctionReport(ctx, ctx.GetCommand(), function_name, service_name);
     UNIMPLEMENTED_MSG("Unknown / unimplemented {}", buf);
     if (Settings::values.use_auto_stub || Settings::CurrentProgramIsSwitch2() ||
-        service_name.starts_with("nx2:")) {
+        std::string_view(service_name).starts_with("nx2:")) {
         LOG_WARNING(Service, "Using auto stub fallback!");
         IPC::ResponseBuilder rb{ctx, 2};
         rb.Push(ResultSuccess);
