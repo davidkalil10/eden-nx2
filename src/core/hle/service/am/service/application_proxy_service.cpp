@@ -11,6 +11,7 @@
 #include "core/hle/service/am/service/application_proxy_service.h"
 #include "core/hle/service/am/window_system.h"
 #include "core/hle/service/cmif_serialization.h"
+#include "core/hle/service/nx2_stub_interface.h"
 
 namespace Service::AM {
 
@@ -19,6 +20,10 @@ IApplicationProxyService::IApplicationProxyService(Core::System& system_,
     : ServiceFramework{system_, "appletOE"}, m_window_system{window_system} {
     static const FunctionInfo functions[] = {
         {0, D<&IApplicationProxyService::OpenApplicationProxy>, "OpenApplicationProxy"},
+        // Switch 2 SDKs open the proxy with OpenApplicationProxy2, same arguments.
+        {10, D<&IApplicationProxyService::OpenApplicationProxy>, "OpenApplicationProxy2"},
+        {2000, &IApplicationProxyService::OpenCompatApplicationFunctions,
+         "OpenCompatApplicationFunctions"},
     };
     RegisterHandlers(functions);
 }
@@ -42,6 +47,10 @@ Result IApplicationProxyService::OpenApplicationProxy(
 
 std::shared_ptr<Applet> IApplicationProxyService::GetAppletFromProcessId(ProcessId process_id) {
     return m_window_system.GetByAppletResourceUserId(process_id.pid);
+}
+
+void IApplicationProxyService::OpenCompatApplicationFunctions(HLERequestContext& ctx) {
+    ReturnNx2StubInterface(system, ctx, "appletOE::OpenCompatApplicationFunctions");
 }
 
 } // namespace Service::AM

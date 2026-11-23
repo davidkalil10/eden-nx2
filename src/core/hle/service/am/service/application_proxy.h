@@ -42,6 +42,7 @@ private:
         Out<SharedPointer<ILibraryAppletCreator>> out_library_applet_creator);
     Result GetApplicationFunctions(
         Out<SharedPointer<IApplicationFunctions>> out_application_functions);
+    void GetNx2Interface(HLERequestContext& ctx);
 
 private:
     WindowSystem& m_window_system;

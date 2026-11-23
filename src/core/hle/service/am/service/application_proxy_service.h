@@ -25,6 +25,7 @@ public:
 private:
     Result OpenApplicationProxy(Out<SharedPointer<IApplicationProxy>> out_application_proxy,
                                 ClientProcessId pid, InCopyHandle<Kernel::KProcess> process_handle);
+    void OpenCompatApplicationFunctions(HLERequestContext& ctx);
 
 private:
     std::shared_ptr<Applet> GetAppletFromProcessId(ProcessId pid);
