@@ -24,8 +24,17 @@
 
 namespace {
 
+#ifndef EDEN_NX2_GIT_SHA
+#define EDEN_NX2_GIT_SHA ""
+#endif
+
+#ifdef EDEN_NX2_UPDATER_CHANNEL_EXP
+constexpr const char* kLatestReleaseApiUrl =
+    "https://api.github.com/repos/davidkalil10/eden-nx2/releases/tags/exp-switch2-latest";
+#else
 constexpr const char* kLatestReleaseApiUrl =
     "https://api.github.com/repos/davidkalil10/eden-nx2/releases/latest";
+#endif
 
 struct ScopedSocketInit {
     bool initialized = false;
@@ -128,6 +137,23 @@ bool IsNewerVersion(std::string_view latest, std::string_view current) {
     }
     return false;
 }
+
+#ifdef EDEN_NX2_UPDATER_CHANNEL_EXP
+std::string ExtractExpShortSha(std::string_view release_name) {
+    const std::size_t lparen = release_name.rfind('(');
+    const std::size_t rparen = release_name.rfind(')');
+    if (lparen == std::string_view::npos || rparen == std::string_view::npos || rparen <= lparen + 1) {
+        return {};
+    }
+    const std::string_view inside = release_name.substr(lparen + 1, rparen - lparen - 1);
+    for (char c : inside) {
+        if (!std::isxdigit(static_cast<unsigned char>(c))) {
+            return {};
+        }
+    }
+    return std::string(inside);
+}
+#endif
 
 // Extracts a JSON string value for a given key starting at pos.
 bool ExtractJsonString(const std::string& json, const std::string& key, std::size_t start_pos,
@@ -279,7 +305,13 @@ std::string Switch2ResolveSelfNroPath(const char* argv0) {
 
 Switch2UpdateInfo Switch2CheckForUpdate() {
     Switch2UpdateInfo info;
+#ifdef EDEN_NX2_UPDATER_CHANNEL_EXP
+    info.current_version = (EDEN_NX2_GIT_SHA[0] != '\0')
+                               ? (std::string(EDEN_NX2_VERSION) + "+" + EDEN_NX2_GIT_SHA)
+                               : std::string(EDEN_NX2_VERSION);
+#else
     info.current_version = EDEN_NX2_VERSION;
+#endif
 
     ScopedSocketInit sock;
     if (!sock.initialized) {
@@ -338,7 +370,6 @@ Switch2UpdateInfo Switch2CheckForUpdate() {
         return info;
     }
     ExtractJsonString(body, "name", 0, &info.release_name);
-    info.latest_version = NormalizeVersion(info.tag_name);
     info.download_url = FindNroAssetUrl(body);
     if (info.download_url.empty()) {
         info.error_msg = "Release found (" + info.tag_name + "), but eden-switch2.nro asset missing.";
@@ -346,7 +377,19 @@ Switch2UpdateInfo Switch2CheckForUpdate() {
     }
 
     info.ok = true;
+#ifdef EDEN_NX2_UPDATER_CHANNEL_EXP
+    const std::string remote_sha = ExtractExpShortSha(info.release_name);
+    if (!remote_sha.empty()) {
+        info.latest_version = std::string(EDEN_NX2_VERSION) + "+" + remote_sha;
+        info.update_available = (remote_sha != std::string_view(EDEN_NX2_GIT_SHA));
+    } else {
+        info.latest_version = info.tag_name;
+        info.update_available = true;
+    }
+#else
+    info.latest_version = NormalizeVersion(info.tag_name);
     info.update_available = IsNewerVersion(info.latest_version, info.current_version);
+#endif
     return info;
 }
 

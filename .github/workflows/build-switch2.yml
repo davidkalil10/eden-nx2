@@ -111,3 +111,18 @@ jobs:
           files: dist/eden-switch2.nro
           generate_release_notes: true
           prerelease: false
+
+      - name: Prepare experimental short SHA
+        if: github.event_name == 'push' && github.ref == 'refs/heads/exp/switch2-ounce' && hashFiles('dist/eden-switch2.nro') != ''
+        run: echo "EXP_SHORT_SHA=${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+
+      - name: Publish Experimental Pre-Release (exp/switch2-ounce)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/exp/switch2-ounce' && hashFiles('dist/eden-switch2.nro') != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: exp-switch2-latest
+          name: "Eden-NX2 Experimental (${{ env.EXP_SHORT_SHA }})"
+          body: "Rolling Switch 2 test build from \`exp/switch2-ounce\` (commit \`${{ github.sha }}\`)."
+          files: dist/eden-switch2.nro
+          prerelease: true
+          make_latest: false

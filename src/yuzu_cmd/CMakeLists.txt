@@ -48,6 +48,29 @@ target_link_libraries(yuzu-cmd PRIVATE ${PLATFORM_LIBRARIES} Threads::Threads)
 if (NINTENDO_SWITCH2)
     target_sources(yuzu-cmd PRIVATE switch2_runtime.cpp switch2_launcher.cpp switch2_updater.cpp)
     target_link_libraries(yuzu-cmd PRIVATE dynarmic::dynarmic curl mbedtls mbedx509 mbedcrypto z)
+    execute_process(
+        COMMAND git rev-parse --short=7 HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE EDEN_NX2_GIT_SHA
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if (EDEN_NX2_GIT_SHA)
+        target_compile_definitions(yuzu-cmd PRIVATE EDEN_NX2_GIT_SHA="${EDEN_NX2_GIT_SHA}")
+    endif()
+    set(EDEN_NX2_GIT_REF "$ENV{GITHUB_REF_NAME}")
+    if (NOT EDEN_NX2_GIT_REF)
+        execute_process(
+            COMMAND git rev-parse --abbrev-ref HEAD
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            OUTPUT_VARIABLE EDEN_NX2_GIT_REF
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+    endif()
+    if (EDEN_NX2_GIT_REF STREQUAL "exp/switch2-ounce")
+        target_compile_definitions(yuzu-cmd PRIVATE EDEN_NX2_UPDATER_CHANNEL_EXP=1)
+    endif()
 endif()
 
 create_resource("../../dist/eden.bmp" "yuzu_cmd/yuzu_icon.h" "yuzu_icon")
