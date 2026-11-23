@@ -194,8 +194,9 @@ enum class KMemoryAttribute : u8 {
     DeviceShared = static_cast<u8>(Svc::MemoryAttribute::DeviceShared),
     Uncached = static_cast<u8>(Svc::MemoryAttribute::Uncached),
     PermissionLocked = static_cast<u8>(Svc::MemoryAttribute::PermissionLocked),
+    GpuAccessible = static_cast<u8>(Svc::MemoryAttribute::GpuAccessible),
 
-    SetMask = Uncached | PermissionLocked,
+    SetMask = Uncached | PermissionLocked | GpuAccessible,
 };
 DECLARE_ENUM_FLAG_OPERATORS(KMemoryAttribute);
 

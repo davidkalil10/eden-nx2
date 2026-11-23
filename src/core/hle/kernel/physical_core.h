@@ -46,6 +46,10 @@ public:
     // Log backtrace of current processor state.
     void LogBacktrace(KernelCore& kernel);
 
+    Core::ArmInterface* GetArmInterface() const {
+        return m_arm_interface;
+    }
+
     // Wait for an interrupt.
     void Idle();
 
