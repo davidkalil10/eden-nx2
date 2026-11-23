@@ -670,7 +670,8 @@ bool GraphicsPipeline::ConfigureDraw(const RescalingPushConstant& rescaling,
                 return;
             }
 #ifdef __SWITCH2__
-            vk::Switch2RecordLastPipeline(key.Hash(), false);
+            vk::Switch2RecordGfxPipelineDetail(key.Hash(), key.unique_hashes.data(), num_textures,
+                                               num_image_elements);
 #endif
             cmdbuf.BindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
         }

@@ -342,13 +342,55 @@ const char* Exception::what() const noexcept {
 
 #ifdef __SWITCH2__
 namespace {
+struct Switch2GpuTraceEntry {
+    u64 pipe_hash{};
+    u64 stages[6]{};
+    u32 pipe_kind{}; // 1=gfx, 2=compute
+    u32 num_tex{};
+    u32 num_img{};
+    u32 draw_kind{}; // 1=Draw, 2=DrawIndexed, 3=DrawIndirect, 4=DrawIndexedIndirect
+    u32 vcount{};
+    u32 icount{};
+    u32 first_or_base{};
+};
+constexpr std::size_t kGpuTraceRingSize = 16;
+Switch2GpuTraceEntry g_switch2_gpu_trace[kGpuTraceRingSize]{};
+std::atomic<u64> g_switch2_gpu_trace_seq{0};
 std::atomic<u64> g_switch2_last_pipeline_hash{0};
 std::atomic<u32> g_switch2_last_pipeline_kind{0}; // 1=graphics, 2=compute
+u64 g_switch2_cur_stages[6]{};
+u32 g_switch2_cur_tex{0};
+u32 g_switch2_cur_img{0};
 } // namespace
 
 void Switch2RecordLastPipeline(u64 hash, bool is_compute) noexcept {
     g_switch2_last_pipeline_hash.store(hash, std::memory_order_relaxed);
     g_switch2_last_pipeline_kind.store(is_compute ? 2u : 1u, std::memory_order_relaxed);
+}
+
+void Switch2RecordGfxPipelineDetail(u64 hash, const u64* stage_hashes, u32 num_tex,
+                                    u32 num_img) noexcept {
+    g_switch2_last_pipeline_hash.store(hash, std::memory_order_relaxed);
+    g_switch2_last_pipeline_kind.store(1u, std::memory_order_relaxed);
+    if (stage_hashes != nullptr) {
+        std::memcpy(g_switch2_cur_stages, stage_hashes, sizeof(g_switch2_cur_stages));
+    }
+    g_switch2_cur_tex = num_tex;
+    g_switch2_cur_img = num_img;
+}
+
+void Switch2RecordDrawEvent(u32 kind, u32 vcount, u32 icount, u32 first_or_base) noexcept {
+    const u64 seq = g_switch2_gpu_trace_seq.fetch_add(1, std::memory_order_relaxed);
+    auto& e = g_switch2_gpu_trace[seq % kGpuTraceRingSize];
+    e.pipe_hash = g_switch2_last_pipeline_hash.load(std::memory_order_relaxed);
+    e.pipe_kind = g_switch2_last_pipeline_kind.load(std::memory_order_relaxed);
+    std::memcpy(e.stages, g_switch2_cur_stages, sizeof(e.stages));
+    e.num_tex = g_switch2_cur_tex;
+    e.num_img = g_switch2_cur_img;
+    e.draw_kind = kind;
+    e.vcount = vcount;
+    e.icount = icount;
+    e.first_or_base = first_or_base;
 }
 
 void Switch2LogVulkanException(VkResult result, const char* file, unsigned int line,
@@ -369,12 +411,35 @@ void Switch2LogVulkanException(VkResult result, const char* file, unsigned int l
         std::fflush(cf);
         std::fclose(cf);
     }
+    if (FILE* gf = std::fopen("sdmc:/switch/eden-nx2/crash_gpu.txt", "w")) {
+        const u64 total = g_switch2_gpu_trace_seq.load(std::memory_order_relaxed);
+        std::fprintf(gf, "VK_ERROR_DEVICE_LOST at %s:%u (%s) total_draws=%llu\n", f, line, fn,
+                     static_cast<unsigned long long>(total));
+        const u64 start = (total > kGpuTraceRingSize) ? (total - kGpuTraceRingSize) : 0;
+        for (u64 i = start; i < total; ++i) {
+            const auto& e = g_switch2_gpu_trace[i % kGpuTraceRingSize];
+            std::fprintf(gf,
+                         "#%llu pipe=%016llX(k=%u) draw=%u v=%u inst=%u base=%u tex=%u img=%u "
+                         "stages=[%016llX %016llX %016llX %016llX %016llX %016llX]\n",
+                         static_cast<unsigned long long>(i),
+                         static_cast<unsigned long long>(e.pipe_hash), e.pipe_kind, e.draw_kind,
+                         e.vcount, e.icount, e.first_or_base, e.num_tex, e.num_img,
+                         static_cast<unsigned long long>(e.stages[0]),
+                         static_cast<unsigned long long>(e.stages[1]),
+                         static_cast<unsigned long long>(e.stages[2]),
+                         static_cast<unsigned long long>(e.stages[3]),
+                         static_cast<unsigned long long>(e.stages[4]),
+                         static_cast<unsigned long long>(e.stages[5]));
+        }
+        std::fflush(gf);
+        std::fclose(gf);
+    }
     if (FILE* ef = std::fopen("sdmc:/switch/eden-nx2/last_load_error.txt", "w")) {
         std::fprintf(ef,
                      "GPU Crash (VK_ERROR_DEVICE_LOST)\n"
                      "At: %s:%u\n"
                      "Func: %s\n"
-                     "Last pipeline: %s %016llX\n",
+                     "Last pipeline: %s %016llX (see crash_gpu.txt)\n",
                      f, line, fn, pstr, static_cast<unsigned long long>(phash));
         std::fflush(ef);
         std::fclose(ef);

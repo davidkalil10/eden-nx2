@@ -121,7 +121,7 @@ if [[ -n "${ELF_PATH}" ]]; then
     mkdir -p "${ROOT_DIR}/dist"
     NACP_PATH="${BUILD_DIR}/eden-switch2.nacp"
     NRO_PATH="${ROOT_DIR}/dist/eden-switch2.nro"
-    nacptool --create "Eden-NX2" "davidkalil10 (ko-fi.com/davidkalil10)" "0.1.13" "${NACP_PATH}"
+    nacptool --create "Eden-NX2" "davidkalil10 (ko-fi.com/davidkalil10)" "0.1.14" "${NACP_PATH}"
     elf2nro "${ELF_PATH}" "${NRO_PATH}" --icon="${ROOT_DIR}/dist/eden_profile.jpg" --nacp="${NACP_PATH}"
     python3 "${ROOT_DIR}/tools/verify_switch2_package.py" "${NRO_PATH}"
 fi

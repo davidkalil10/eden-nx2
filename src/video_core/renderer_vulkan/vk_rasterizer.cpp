@@ -342,6 +342,12 @@ void RasterizerVulkan::Draw(bool is_indexed, u32 instance_count) {
 
         const auto record_draw = [this](const DrawParams& params) {
             scheduler.Record([params](vk::CommandBuffer cmdbuf) {
+#ifdef __SWITCH2__
+                vk::Switch2RecordDrawEvent(params.is_indexed ? 2u : 1u, params.num_vertices,
+                                           params.num_instances,
+                                           params.is_indexed ? params.first_index
+                                                             : params.base_vertex);
+#endif
                 if (params.is_indexed) {
                     cmdbuf.DrawIndexed(params.num_vertices, params.num_instances,
                                        params.first_index, params.base_vertex,
@@ -426,6 +432,11 @@ void RasterizerVulkan::DrawIndirect() {
             return;
         }
         scheduler.Record([buffer_obj = buffer->Handle(), offset, params](vk::CommandBuffer cmdbuf) {
+#ifdef __SWITCH2__
+            vk::Switch2RecordDrawEvent(params.is_indexed ? 4u : 3u,
+                                       static_cast<u32>(params.max_draw_counts),
+                                       static_cast<u32>(params.stride), 0u);
+#endif
             if (params.is_indexed) {
                 cmdbuf.DrawIndexedIndirect(buffer_obj, offset,
                                            static_cast<u32>(params.max_draw_counts),

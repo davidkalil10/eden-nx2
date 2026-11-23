@@ -121,6 +121,9 @@ private:
 void Switch2LogVulkanException(VkResult result, const char* file, unsigned int line,
                                const char* func) noexcept;
 void Switch2RecordLastPipeline(u64 hash, bool is_compute) noexcept;
+void Switch2RecordGfxPipelineDetail(u64 hash, const u64* stage_hashes, u32 num_tex,
+                                    u32 num_img) noexcept;
+void Switch2RecordDrawEvent(u32 kind, u32 vcount, u32 icount, u32 first_or_base) noexcept;
 #endif
 
 /// Vulkan exception generated from a VkResult.

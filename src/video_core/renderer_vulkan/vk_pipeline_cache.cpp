@@ -381,6 +381,13 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
     if (driver_id == VK_DRIVER_ID_MESA_TURNIP) {
         supported_subgroup_stages &= ~(1u << static_cast<u32>(Shader::Stage::Geometry));
     }
+#ifdef __SWITCH2__
+    const bool sw2_safe =
+        Settings::values.dyna_state.GetValue() == Settings::ExtendedDynamicState::Disabled;
+    if (sw2_safe) {
+        supported_subgroup_stages = 0;
+    }
+#endif
     profile = Shader::Profile{
         .supported_spirv = device.SupportedSpirvVersion(),
         .unified_descriptor_binding = true,
@@ -416,10 +423,20 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
         .support_workgroup_layout_16bit_access =
             device.IsWorkgroupMemoryExplicitLayout16BitAccessSupported(),
         .support_shader_quad_control = device.IsKhrShaderQuadControlSupported(),
+#ifdef __SWITCH2__
+        .support_quad_shuffles =
+            !sw2_safe && device.IsSubgroupFeatureSupported(VK_SUBGROUP_FEATURE_QUAD_BIT),
+        .support_vote =
+            !sw2_safe && device.IsSubgroupFeatureSupported(VK_SUBGROUP_FEATURE_VOTE_BIT),
+        .support_shuffle_relative =
+            !sw2_safe &&
+            device.IsSubgroupFeatureSupported(VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT),
+#else
         .support_quad_shuffles = device.IsSubgroupFeatureSupported(VK_SUBGROUP_FEATURE_QUAD_BIT),
         .support_vote = device.IsSubgroupFeatureSupported(VK_SUBGROUP_FEATURE_VOTE_BIT),
         .support_shuffle_relative =
             device.IsSubgroupFeatureSupported(VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT),
+#endif
         .supported_subgroup_stages = supported_subgroup_stages,
         .support_viewport_index_layer_non_geometry =
             device.IsExtShaderViewportIndexLayerSupported(),

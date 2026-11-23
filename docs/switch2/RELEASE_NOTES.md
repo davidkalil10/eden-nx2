@@ -7,6 +7,9 @@
 ---
 
 ### What's New / Novidades
+- **Ultra-Compatible `Safe (NVK Compat)` Mode & GPU Draw Trace Diagnostics (`v0.1.14`):**
+  - In **`Safe (NVK Compat)`** mode, forced **CPU ASTC texture decoding** (disables NVK hardware ASTC sampling), disabled **all SPIR-V subgroup/vote/quad/shuffle ops**, `shaderInt64`/`shaderFloat64`, `VK_KHR_push_descriptor`, `custom_border_color`, `provoking_vertex`, `depth_bias_control`, `color_write_enable`, and `shaderStorageImageReadWithoutFormat` to isolate NVK/NAK GPU hangs.
+  - Added a 16-entry **GPU draw/pipeline ring-buffer dump** (`sdmc:/switch/eden-nx2/crash_gpu.txt`) capturing stage shader hashes, draw types, vertex/instance counts, and texture/image counts whenever `VK_ERROR_DEVICE_LOST` occurs.
 - **Deeper Switch 2 NVK Stability (`robustness2` + Expanded `Safe (NVK Compat)` Mode) & Exact Crash Diagnostics (`v0.1.13`):**
   - Enabled **`VK_EXT_robustness2` (`robustBufferAccess2` + `robustImageAccess2`)** on Switch 2 so out-of-bounds translated shader reads/writes clamp safely instead of faulting the NVK/Ampere GPU MMU (`VK_ERROR_DEVICE_LOST`), and enabled NVK `fp16` float-control workaround.
   - Expanded **`Safe (NVK Compat)`** mode (verified to get ***Super Mario Party Jamboree*** past its title-screen freeze!) to also disable `VK_KHR_synchronization2`, `workgroup_memory_explicit_layout`, `shader_quad_control`, `demote_to_helper_invocation`, `shader_atomic_int64`, `transform_feedback`, `subgroup_size_control`, and `conditional_rendering`, plus strict shader bounds checks (`has_broken_robust`).

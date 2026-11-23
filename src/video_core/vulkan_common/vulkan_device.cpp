@@ -502,7 +502,14 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
 
     is_blit_depth24_stencil8_supported = TestDepthStencilBlits(VK_FORMAT_D24_UNORM_S8_UINT);
     is_blit_depth32_stencil8_supported = TestDepthStencilBlits(VK_FORMAT_D32_SFLOAT_S8_UINT);
+#ifdef __SWITCH2__
+    is_optimal_astc_supported =
+        (Settings::values.dyna_state.GetValue() == Settings::ExtendedDynamicState::Disabled)
+            ? false
+            : ComputeIsOptimalAstcSupported();
+#else
     is_optimal_astc_supported = ComputeIsOptimalAstcSupported();
+#endif
     is_warp_potentially_bigger = !extensions.subgroup_size_control ||
                                  properties.subgroup_size_control.maxSubgroupSize > GuestWarpSize;
 
@@ -735,7 +742,7 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
     }
     if (Settings::values.dyna_state.GetValue() == Settings::ExtendedDynamicState::Disabled) {
         LOG_INFO(Render_Vulkan,
-                 "Switch 2 Safe (NVK Compat): disabling advanced shader/sync/xfb extensions");
+                 "Switch 2 Safe (NVK Compat): disabling advanced shader/sync/xfb/astc extensions");
         RemoveExtensionFeature(extensions.synchronization2, features.synchronization2,
                                VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
         RemoveExtensionFeature(extensions.workgroup_memory_explicit_layout,
@@ -756,6 +763,20 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
                                VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
         RemoveExtension(extensions.conditional_rendering,
                         VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME);
+        RemoveExtension(extensions.push_descriptor, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+        RemoveExtensionFeature(extensions.custom_border_color, features.custom_border_color,
+                               VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME);
+        RemoveExtensionFeature(extensions.border_color_swizzle, features.border_color_swizzle,
+                               VK_EXT_BORDER_COLOR_SWIZZLE_EXTENSION_NAME);
+        RemoveExtensionFeature(extensions.provoking_vertex, features.provoking_vertex,
+                               VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME);
+        RemoveExtensionFeature(extensions.depth_bias_control, features.depth_bias_control,
+                               VK_EXT_DEPTH_BIAS_CONTROL_EXTENSION_NAME);
+        RemoveExtensionFeature(extensions.color_write_enable, features.color_write_enable,
+                               VK_EXT_COLOR_WRITE_ENABLE_EXTENSION_NAME);
+        features.features.shaderInt64 = false;
+        features.features.shaderFloat64 = false;
+        features.features.shaderStorageImageReadWithoutFormat = false;
     }
 #endif
 
