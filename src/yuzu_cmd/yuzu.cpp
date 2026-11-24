@@ -1893,6 +1893,7 @@ int main(int argc, char** argv) {
     for (int p = 0; p < 4; ++p) {
         Switch2SetPlayerVibration(p, 0, 160.0f, 0, 320.0f, 0, 160.0f, 0, 320.0f);
     }
+    Common::Log::DumpRecentLogTail("sdmc:/switch/eden-nx2/last_eden_log_tail.txt");
     system->DetachDebugger();
     if (system->IsPoweredOn()) {
         system->Pause();

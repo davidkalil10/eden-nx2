@@ -13,13 +13,17 @@
 #include <initializer_list>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <span>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "common/assert.h"
 #include "common/logging.h"
+#include "common/settings.h"
 #include "core/core.h"
 #include "core/core_timing.h"
 #include "core/hle/kernel/k_client_session.h"
@@ -28,6 +32,8 @@
 #include "core/hle/kernel/k_resource_limit.h"
 #include "core/hle/kernel/k_session.h"
 #include "core/hle/kernel/k_transfer_memory.h"
+#include "core/hle/kernel/svc_results.h"
+#include "core/hle/result.h"
 #include "core/hle/service/hle_ipc.h"
 #include "core/hle/service/ipc_helpers.h"
 #include "core/hle/service/kernel_helpers.h"
@@ -98,6 +104,7 @@ public:
         static const FunctionInfo functions[] = {
             {0, &INx2SyncptSession::Handshake, "Ping"},
             {1, &INx2SyncptSession::GetCount, "GetCount"},
+            {21, &INx2SyncptSession::StubZeroed, "Unknown21"},
             {22, &INx2SyncptSession::GetSlotEvent, "GetSlotEvent"},
             {103, &INx2SyncptSession::QueryCounter, "QueryCounter"},
             {201, &INx2SyncptSession::RequestSlotEvent, "RequestSlotEvent"},
@@ -119,6 +126,10 @@ private:
 
     void Handshake(HLERequestContext& ctx) {
         TipcHandshake(ctx, "nx2:syncpt");
+    }
+
+    void StubZeroed(HLERequestContext& ctx) {
+        TipcReplyWords(ctx, {});
     }
 
     void GetCount(HLERequestContext& ctx) {
@@ -162,6 +173,418 @@ private:
 
     KernelHelpers::ServiceContext m_context;
     std::map<u32, Kernel::KEvent*> m_events;
+};
+
+class INx2GpuSession final : public ServiceFramework<INx2GpuSession> {
+public:
+    explicit INx2GpuSession(Core::System& system_)
+        : ServiceFramework{system_, "nx2:gpu"}, m_context{system_, "nx2:gpu"} {
+        static const FunctionInfo functions[] = {
+            {0, &INx2GpuSession::Handshake, "Handshake"},
+            {11, &INx2GpuSession::GetIdRange, "GetEventIdRange"},
+            {12, &INx2GpuSession::GetIdEvent, "CreateEvent"},
+            {21, &INx2GpuSession::Start, "RequestKUserWorkerSession"},
+            {22, &INx2GpuSession::OpenSubSession, "GetKUserWorkerSession"},
+            {33, &INx2GpuSession::GetCount33, "CreateGpuAddressSpace"},
+            {41, &INx2GpuSession::CreateGraphicsDevice, "CreateGraphicsDevice"},
+            {42, &INx2GpuSession::DestroyGraphicsDevice, "DestroyGraphicsDevice"},
+            {101, &INx2GpuSession::SubRegisterMemory, "CreateGpuMemory"},
+            {102, &INx2GpuSession::SubDestroyMemory, "DestroyGpuMemory"},
+            {201, &INx2GpuSession::GetUserPartition, "GetUserPartitionGpuAddress"},
+            {202, &INx2GpuSession::GetGsvPartition, "GetGsvPartitionGpuAddress"},
+            {203, &INx2GpuSession::GetVaRange, "GetVaRange"},
+            {211, &INx2GpuSession::SubSubmitJob, "NormalMapGpuMemory4K"},
+            {212, &INx2GpuSession::SubModifyKind, "NormalModifyMemoryKind4K"},
+            {213, &INx2GpuSession::SubUnmapJob, "NormalUnmapGpuMemory4K"},
+            {214, &INx2GpuSession::SubCreateGpuOnlyRegion, "CreateSparseRegion"},
+            {215, &INx2GpuSession::SubDestroySparseRegion, "DestroySparseRegion"},
+            {216, &INx2GpuSession::SubSparseMap, "ExecuteSparseMapRequests"},
+        };
+        RegisterHandlersTipc(functions);
+    }
+
+    ~INx2GpuSession() override {
+        for (auto* event : m_events) {
+            if (event != nullptr) {
+                m_context.CloseEvent(event);
+            }
+        }
+    }
+
+private:
+    static constexpr u32 NumIds = 32;
+
+    Kernel::KEvent* EventFor(u32 id) {
+        id %= NumIds;
+        if (m_events[id] == nullptr) {
+            m_events[id] = m_context.CreateEvent(std::format("nx2:gpu:Event{}", id));
+        }
+        return m_events[id];
+    }
+
+    void Handshake(HLERequestContext& ctx) {
+        TipcHandshake(ctx, "nx2:gpu");
+    }
+
+    void GetIdRange(HLERequestContext& ctx) {
+        LOG_WARNING(Service, "(STUBBED) nx2:gpu TIPC 11, returning [0, {}]", NumIds - 1);
+        TipcReplyWords(ctx, {0, NumIds - 1});
+    }
+
+    void GetIdEvent(HLERequestContext& ctx) {
+        const u32 id = ctx.CommandBuffer()[2];
+        LOG_WARNING(Service, "(STUBBED) nx2:gpu TIPC 12 id={}", id);
+        IPC::ResponseBuilder rb{ctx, 2, 1, 0};
+        rb.Push(ResultSuccess);
+        rb.PushCopyObjects(ctx, EventFor(id)->GetReadableEvent());
+    }
+
+    void Start(HLERequestContext& ctx) {
+        const u32 id = ctx.CommandBuffer()[2];
+        LOG_WARNING(Service, "(STUBBED) nx2:gpu TIPC 21 id={}, signalling completion", id);
+        EventFor(id)->Signal(system.Kernel());
+        TipcReplyWords(ctx, {});
+    }
+
+    void OpenSubSession(HLERequestContext& ctx) {
+        LOG_WARNING(Service, "(STUBBED) nx2:gpu TIPC 22, returning sub-session on nx2:gpu");
+        ReturnRawSession(system, ctx, std::static_pointer_cast<INx2GpuSession>(shared_from_this()));
+    }
+
+    void GetCount33(HLERequestContext& ctx) {
+        LOG_WARNING(Service, "(STUBBED) nx2:gpu TIPC 33 [2]={:#x}, returning 1",
+                    ctx.CommandBuffer()[2]);
+        TipcReplyWords(ctx, {1});
+    }
+
+    void GetVaRange(HLERequestContext& ctx) {
+        LOG_WARNING(Service, "(STUBBED) nx2:gpu TIPC 203 [2]={:#x}", ctx.CommandBuffer()[2]);
+        constexpr u64 kind = 1;
+        constexpr u64 start = 0x8000000ULL;
+        constexpr u64 size = 0xC000000000ULL - start;
+        TipcReplyWords(ctx, {static_cast<u32>(kind), static_cast<u32>(kind >> 32),
+                             static_cast<u32>(start), static_cast<u32>(start >> 32),
+                             static_cast<u32>(size), static_cast<u32>(size >> 32)});
+    }
+
+    void GetUserPartition(HLERequestContext& ctx) {
+        LOG_WARNING(Service, "(STUBBED) nx2:gpu TIPC 201 [2]={:#x}", ctx.CommandBuffer()[2]);
+        constexpr u64 first = 0x8000000ULL;
+        constexpr u64 second = 0xC000000000ULL - first;
+        TipcReplyWords(ctx, {static_cast<u32>(first), static_cast<u32>(first >> 32),
+                             static_cast<u32>(second), static_cast<u32>(second >> 32)});
+    }
+
+    void GetGsvPartition(HLERequestContext& ctx) {
+        LOG_WARNING(Service, "(STUBBED) nx2:gpu TIPC 202 [2]={:#x}, empty", ctx.CommandBuffer()[2]);
+        TipcReplyWords(ctx, {~0U, ~0U, 0, 0});
+    }
+
+    void CreateGraphicsDevice(HLERequestContext& ctx) {
+        u32 id = 0;
+        for (u32 candidate = 1; candidate < m_devices.size(); ++candidate) {
+            if (!m_devices[candidate]) {
+                m_devices[candidate] = true;
+                id = candidate;
+                break;
+            }
+        }
+        LOG_INFO(Service, "nx2:gpu TIPC 41 create graphics device -> id {}", id);
+        IPC::ResponseBuilder rb{ctx, 3};
+        rb.PushRaw<u32>(id != 0 ? ResultSuccess.raw : Kernel::ResultOutOfResource.raw);
+        rb.Push<u32>(id);
+    }
+
+    void DestroyGraphicsDevice(HLERequestContext& ctx) {
+        const u32 id = ctx.CommandBuffer()[2] & 0xff;
+        const bool existed = id < m_devices.size() && std::exchange(m_devices[id], false);
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.PushRaw<u32>(existed ? ResultSuccess.raw : Kernel::ResultNotFound.raw);
+    }
+
+    void SubRegisterMemory(HLERequestContext& ctx) {
+        const u32 handle = m_next_memory_handle++;
+        TipcReplyWords(ctx, {handle});
+    }
+
+    void SubDestroyMemory(HLERequestContext& ctx) {
+        const u32 slot = ctx.CommandBuffer()[3];
+        EventFor(slot)->Signal(system.Kernel());
+        TipcReplyWords(ctx, {});
+    }
+
+    void SubSubmitJob(HLERequestContext& ctx) {
+        const u32 slot = ctx.CommandBuffer()[17];
+        EventFor(slot)->Signal(system.Kernel());
+        TipcReplyWords(ctx, {});
+    }
+
+    void SubModifyKind(HLERequestContext& ctx) {
+        const u32 slot = ctx.CommandBuffer()[10];
+        EventFor(slot)->Signal(system.Kernel());
+        TipcReplyWords(ctx, {});
+    }
+
+    void SubUnmapJob(HLERequestContext& ctx) {
+        const u32 slot = ctx.CommandBuffer()[8];
+        EventFor(slot)->Signal(system.Kernel());
+        TipcReplyWords(ctx, {});
+    }
+
+    void SubCreateGpuOnlyRegion(HLERequestContext& ctx) {
+        const u32 slot = ctx.CommandBuffer()[11];
+        EventFor(slot)->Signal(system.Kernel());
+        TipcReplyWords(ctx, {});
+    }
+
+    void SubDestroySparseRegion(HLERequestContext& ctx) {
+        const u32 slot = ctx.CommandBuffer()[8];
+        EventFor(slot)->Signal(system.Kernel());
+        TipcReplyWords(ctx, {});
+    }
+
+    void SubSparseMap(HLERequestContext& ctx) {
+        const auto* w = ctx.CommandBuffer();
+        const u32 slot = w[14];
+        const u32 count = w[3] > 0 ? w[3] : 1;
+        EventFor(slot)->Signal(system.Kernel());
+        TipcReplyWords(ctx, {count});
+    }
+
+    KernelHelpers::ServiceContext m_context;
+    std::array<Kernel::KEvent*, NumIds> m_events{};
+    std::array<bool, 16> m_devices{};
+    u32 m_next_memory_handle{1};
+};
+
+class INx2Vi2Session final : public ServiceFramework<INx2Vi2Session> {
+public:
+    explicit INx2Vi2Session(Core::System& system_)
+        : ServiceFramework{system_, "nx2:vi2"}, m_context{system_, "nx2:vi2"} {
+        static const FunctionInfo functions[] = {
+            {0, &INx2Vi2Session::Handshake, "Handshake"},
+            {1, &INx2Vi2Session::ReturnOne, "Unknown1"},
+            {3, &INx2Vi2Session::ReturnOne, "GetDisplayCount"},
+            {5, &INx2Vi2Session::GetTimestampRecorderCount, "GetTimestampRecorderCount"},
+            {11, &INx2Vi2Session::ReturnEvent, "Unknown11"},
+            {31, &INx2Vi2Session::AcquireNativeEvent, "AcquireNativeEvent"},
+            {32, &INx2Vi2Session::DuplicateNativeEvent, "DuplicateNativeEvent"},
+            {103, &INx2Vi2Session::QueryDisplayRefreshRate, "QueryDisplayRefreshRate"},
+            {104, &INx2Vi2Session::QueryDisplayHdrStatus, "QueryDisplayHdrStatus"},
+            {105, &INx2Vi2Session::QueryDisplayHdrPaperWhite, "QueryDisplayHdrPaperWhite"},
+            {106, &INx2Vi2Session::GetBufferMaxResolution, "GetBufferMaxResolution"},
+            {212, &INx2Vi2Session::GetLayerBufferBits, "GetLayerBufferBits"},
+            {228, &INx2Vi2Session::CancelClientBuffer, "CancelClientBuffer"},
+            {229, &INx2Vi2Session::PresentClientBuffer, "PresentClientBuffer"},
+            {261, &INx2Vi2Session::BindVsync, "BindDisplayVsyncEvent"},
+            {262, &INx2Vi2Session::UnbindNativeEvent, "UnbindDisplayVsyncEvent"},
+            {263, &INx2Vi2Session::BindChange, "BindDisplayRefreshRateEvent"},
+            {264, &INx2Vi2Session::UnbindNativeEvent, "UnbindDisplayRefreshRateEvent"},
+            {265, &INx2Vi2Session::BindChange, "BindDisplayHdrStatusEvent"},
+            {266, &INx2Vi2Session::UnbindNativeEvent, "UnbindDisplayHdrStatusEvent"},
+            {267, &INx2Vi2Session::BindChange, "BindDisplayHdrPaperWhiteEvent"},
+            {268, &INx2Vi2Session::UnbindNativeEvent, "UnbindDisplayHdrPaperWhiteEvent"},
+            {269, &INx2Vi2Session::BindChange, "BindDisplayBufferMaxResolutionEvent"},
+            {270, &INx2Vi2Session::UnbindNativeEvent, "UnbindDisplayBufferMaxResolutionEvent"},
+            {271, &INx2Vi2Session::BindChange, "BindDisplayModeCapabilityEvent"},
+            {272, &INx2Vi2Session::UnbindNativeEvent, "UnbindDisplayModeCapabilityEvent"},
+        };
+        RegisterHandlersTipc(functions);
+    }
+
+    ~INx2Vi2Session() override {
+        {
+            std::scoped_lock lk{m_vsync->mutex};
+            m_vsync->events.clear();
+        }
+        if (m_vsync_timer) {
+            system.CoreTiming().UnscheduleEvent(m_vsync_timer);
+        }
+        for (auto* event : m_events) {
+            if (event != nullptr) {
+                m_context.CloseEvent(event);
+            }
+        }
+    }
+
+private:
+    struct VsyncState {
+        std::mutex mutex;
+        std::vector<Kernel::KEvent*> events;
+    };
+
+    void Handshake(HLERequestContext& ctx) {
+        TipcHandshake(ctx, "nx2:vi2");
+    }
+
+    void ReturnOne(HLERequestContext& ctx) {
+        TipcReplyWords(ctx, {1});
+    }
+
+    void GetTimestampRecorderCount(HLERequestContext& ctx) {
+        TipcReplyWords(ctx, {7});
+    }
+
+    void QueryDisplayRefreshRate(HLERequestContext& ctx) {
+        TipcReplyWords(ctx, {60, 0});
+    }
+
+    void QueryDisplayHdrStatus(HLERequestContext& ctx) {
+        TipcReplyWords(ctx, {1, 0, 400});
+    }
+
+    void QueryDisplayHdrPaperWhite(HLERequestContext& ctx) {
+        TipcReplyWords(ctx, {203});
+    }
+
+    void GetBufferMaxResolution(HLERequestContext& ctx) {
+        const auto* packet = ctx.CommandBuffer();
+        const u64 name = u64{packet[2]} | (u64{packet[3]} << 32);
+        constexpr u64 DefaultDisplay = 0x00746c7561666564ULL; // "default"
+        Result result = Kernel::ResultInvalidCombination;
+        u64 mode{};
+        if (packet[0] == 0x7a && packet[1] == 2) {
+            result = Result{ErrorModule::VI, 7};
+            if (name == DefaultDisplay) {
+                mode = Settings::IsDockedMode() ? 4 : 2;
+                result = ResultSuccess;
+            }
+        }
+        IPC::ResponseBuilder rb{ctx, 4};
+        rb.PushRaw<u32>(result.raw);
+        rb.Push<u32>(static_cast<u32>(mode));
+        rb.Push<u32>(static_cast<u32>(mode >> 32));
+    }
+
+    void GetLayerBufferBits(HLERequestContext& ctx) {
+        constexpr u64 AvailableSlots = 0x7fff;
+        TipcReplyWords(ctx, {static_cast<u32>(AvailableSlots),
+                             static_cast<u32>(AvailableSlots >> 32)});
+    }
+
+    void CancelClientBuffer(HLERequestContext& ctx) {
+        constexpr u64 AvailableSlots = 0x7fff;
+        TipcReplyWords(ctx, {static_cast<u32>(AvailableSlots),
+                             static_cast<u32>(AvailableSlots >> 32)});
+    }
+
+    void PresentClientBuffer(HLERequestContext& ctx) {
+        ++m_presents;
+        if (m_presents <= 4 || (m_presents % 300) == 0) {
+            LOG_INFO(Service, "nx2:vi2 229 present #{}", m_presents);
+        }
+        constexpr u64 AvailableSlots = 0x7fff;
+        TipcReplyWords(ctx, {static_cast<u32>(AvailableSlots),
+                             static_cast<u32>(AvailableSlots >> 32), 0, 0, 0, 0});
+    }
+
+    void ReturnEvent(HLERequestContext& ctx) {
+        auto* event = m_context.CreateEvent(std::format("nx2:vi2:Event{}", m_events.size()));
+        m_events.push_back(event);
+        IPC::ResponseBuilder rb{ctx, 2, 1, 0};
+        rb.Push(ResultSuccess);
+        rb.PushCopyObjects(ctx, event->GetReadableEvent());
+    }
+
+    void AcquireNativeEvent(HLERequestContext& ctx) {
+        const u32 index = ctx.CommandBuffer()[2];
+        if (index >= m_native_events.size()) {
+            IPC::ResponseBuilder rb{ctx, 2};
+            rb.PushRaw<u32>(ResultUnknown.raw);
+            return;
+        }
+        ReplyNativeEvent(ctx, index);
+    }
+
+    void DuplicateNativeEvent(HLERequestContext& ctx) {
+        const u32* words = ctx.CommandBuffer();
+        u32 data = 2;
+        if (words[1] >> 31) {
+            const u32 desc = words[2];
+            data = 3 + ((desc >> 1) & 0xf) + ((desc >> 5) & 0xf) + ((desc & 1) ? 2 : 0);
+        }
+        const u32 index = words[data];
+        if (index >= m_native_events.size()) {
+            IPC::ResponseBuilder rb{ctx, 2};
+            rb.PushRaw<u32>(ResultUnknown.raw);
+            return;
+        }
+        ReplyNativeEvent(ctx, index);
+    }
+
+    void BindVsync(HLERequestContext& ctx) {
+        const u32 index = ctx.CommandBuffer()[4];
+        if (index < m_native_events.size() && m_native_events[index] != nullptr) {
+            SetVsyncSlot(index, true);
+        }
+        TipcReplyWords(ctx, {});
+    }
+
+    void BindChange(HLERequestContext& ctx) {
+        const u32 index = ctx.CommandBuffer()[4];
+        if (index < m_native_events.size() && m_native_events[index] != nullptr) {
+            SetVsyncSlot(index, false);
+            m_native_events[index]->Signal(system.Kernel());
+        }
+        TipcReplyWords(ctx, {});
+    }
+
+    void UnbindNativeEvent(HLERequestContext& ctx) {
+        const u32 index = ctx.CommandBuffer()[4];
+        if (index < m_native_events.size() && m_native_events[index] != nullptr) {
+            SetVsyncSlot(index, false);
+        }
+        TipcReplyWords(ctx, {});
+    }
+
+    void ReplyNativeEvent(HLERequestContext& ctx, u32 index) {
+        auto*& event = m_native_events[index];
+        if (event == nullptr) {
+            event = m_context.CreateEvent(std::format("nx2:vi2:Native{}", index));
+            m_events.push_back(event);
+            SetVsyncSlot(index, true);
+            StartVsyncTimer();
+        }
+        IPC::ResponseBuilder rb{ctx, 2, 1, 0};
+        rb.Push(ResultSuccess);
+        rb.PushCopyObjects(ctx, event->GetReadableEvent());
+    }
+
+    void SetVsyncSlot(u32 index, bool on) {
+        auto* event = m_native_events[index];
+        std::scoped_lock lk{m_vsync->mutex};
+        auto& list = m_vsync->events;
+        const auto it = std::find(list.begin(), list.end(), event);
+        if (on && it == list.end()) {
+            list.push_back(event);
+        } else if (!on && it != list.end()) {
+            list.erase(it);
+        }
+    }
+
+    void StartVsyncTimer() {
+        if (!m_vsync_timer) {
+            m_vsync_timer = Core::Timing::CreateEvent(
+                "nx2:vi2 vsync",
+                [vsync_state = m_vsync, &kernel = system.Kernel()](
+                    s64, std::chrono::nanoseconds) -> std::optional<std::chrono::nanoseconds> {
+                    std::scoped_lock lk{vsync_state->mutex};
+                    for (auto* vsync : vsync_state->events) {
+                        vsync->Signal(kernel);
+                    }
+                    return std::nullopt;
+                });
+            constexpr std::chrono::nanoseconds VblankInterval{16'666'667};
+            system.CoreTiming().ScheduleLoopingEvent(VblankInterval, VblankInterval, m_vsync_timer);
+        }
+    }
+
+    KernelHelpers::ServiceContext m_context;
+    std::array<Kernel::KEvent*, 8> m_native_events{};
+    std::vector<Kernel::KEvent*> m_events;
+    std::shared_ptr<VsyncState> m_vsync{std::make_shared<VsyncState>()};
+    std::shared_ptr<Core::Timing::EventType> m_vsync_timer;
+    u64 m_presents{};
 };
 
 class INx2TipcStubSession final : public ServiceFramework<INx2TipcStubSession> {
@@ -395,12 +818,12 @@ private:
 
     void OpenViSession(HLERequestContext& ctx) {
         LOG_WARNING(Service, "(STUBBED) nx2:gsv TIPC 305, returning nx2:vi2 session");
-        ReturnRawSession(system, ctx, std::make_shared<INx2TipcStubSession>(system, "nx2:vi2"));
+        ReturnRawSession(system, ctx, std::make_shared<INx2Vi2Session>(system));
     }
 
     void OpenGpuSession(HLERequestContext& ctx) {
         LOG_WARNING(Service, "(STUBBED) nx2:gsv TIPC 497, returning nx2:gpu session");
-        ReturnRawSession(system, ctx, std::make_shared<INx2TipcStubSession>(system, "nx2:gpu"));
+        ReturnRawSession(system, ctx, std::make_shared<INx2GpuSession>(system));
     }
 
     void OpenCameraSession(HLERequestContext& ctx) {
