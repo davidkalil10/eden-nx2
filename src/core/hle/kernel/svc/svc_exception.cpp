@@ -174,6 +174,7 @@ void Break(Core::System& system, BreakReason reason, u64 info1, u64 info2) {
                                            c == '\t';
                                 })) {
                                 LOG_CRITICAL(Debug_Emulated, "GuestAbortStr[X{}]={}", ri, s);
+                                std::fprintf(ef, "X%zu=%s\n", ri, s.c_str());
                             }
                         }
                     }
