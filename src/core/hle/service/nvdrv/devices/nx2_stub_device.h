@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <compare>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -38,6 +39,8 @@ inline NvResult Nx2UnknownIoctl(const char* device, Ioctl command, std::span<con
 class Nx2GpuMemoryRegistry {
 public:
     using Listener = std::function<void(u64 gpu_address, u64 cpu_address, u64 size)>;
+    using UnmapListener = std::function<void(u64 gpu_address, u64 size)>;
+    using ReleaseListener = std::function<void(u64 cpu_address, u64 size)>;
 
     static Nx2GpuMemoryRegistry& Get() {
         static Nx2GpuMemoryRegistry registry;
@@ -50,23 +53,87 @@ public:
 
     void MapAt(u64 gpu_address, u64 cpu_address, u64 size) {
         std::scoped_lock lk{mutex};
+        TrimMappings(gpu_address, size);
         mappings.push_back({gpu_address, cpu_address, size});
         for (auto& [owner, listener] : listeners) {
-            listener(gpu_address, cpu_address, size);
+            listener.map(gpu_address, cpu_address, size);
         }
     }
 
-    void AddListener(const void* owner, Listener listener) {
+    void Unmap(u64 gpu_address, u64 size) {
+        std::scoped_lock lk{mutex};
+        TrimMappings(gpu_address, size);
+        for (auto& [owner, listener] : listeners) {
+            if (listener.unmap) {
+                listener.unmap(gpu_address, size);
+            }
+        }
+    }
+
+    void ReleaseBacking(u64 cpu_address, u64 size) {
+        {
+            std::scoped_lock lk{device_mutex};
+            device_ranges.erase(cpu_address);
+        }
+        std::scoped_lock lk{mutex};
+        for (auto& [owner, listener] : listeners) {
+            if (listener.release) {
+                listener.release(cpu_address, size);
+            }
+        }
+    }
+
+    void AddListener(const void* owner, Listener map, UnmapListener unmap = {},
+                     ReleaseListener release = {}) {
         std::scoped_lock lk{mutex};
         for (const auto& m : mappings) {
-            listener(m.gpu_address, m.cpu_address, m.size);
+            map(m.gpu_address, m.cpu_address, m.size);
         }
-        listeners.insert_or_assign(owner, std::move(listener));
+        listeners.insert_or_assign(
+            owner, Listeners{std::move(map), std::move(unmap), std::move(release)});
     }
 
     void RemoveListener(const void* owner) {
         std::scoped_lock lk{mutex};
         listeners.erase(owner);
+    }
+
+    // Shared SMMU device range across every GPU address space of one process so TextureCache and
+    // PresentClientBuffer resolve to the exact same DAddr.
+    u64 AcquireDeviceRange(size_t asid, u64 cpu_address, u64 size,
+                           const std::function<u64()>& allocate) {
+        std::scoped_lock lk{device_mutex};
+        const SharedRangeKey key{asid, cpu_address, size};
+        if (const auto it = shared_ranges.find(key); it != shared_ranges.end()) {
+            ++it->second.references;
+            return it->second.device_address;
+        }
+        const u64 device_address = allocate();
+        if (device_address != 0) {
+            shared_ranges.emplace(key, SharedRange{device_address, 1});
+        }
+        return device_address;
+    }
+
+    bool ReleaseDeviceRange(size_t asid, u64 cpu_address, u64 size) {
+        std::scoped_lock lk{device_mutex};
+        const auto it = shared_ranges.find(SharedRangeKey{asid, cpu_address, size});
+        if (it == shared_ranges.end() || --it->second.references != 0) {
+            return false;
+        }
+        shared_ranges.erase(it);
+        return true;
+    }
+
+    void ForgetDeviceRanges(size_t asid) {
+        {
+            std::scoped_lock lk{device_mutex};
+            std::erase_if(shared_ranges,
+                          [asid](const auto& entry) { return entry.first.asid == asid; });
+            device_ranges.clear();
+        }
+        std::scoped_lock lk{mutex};
+        mappings.clear();
     }
 
     // Device (SMMU) address of a CPU range an address space mapped; used to present images.
@@ -75,18 +142,21 @@ public:
         device_ranges[cpu_address] = {size, device_address};
     }
 
-    std::optional<u64> DeviceAddressOf(u64 cpu_address) {
+    std::optional<u64> DeviceAddressOf(u64 cpu_address, u64 size = 1) {
         std::scoped_lock lk{device_mutex};
+        if (size == 0) {
+            return std::nullopt;
+        }
         auto it = device_ranges.upper_bound(cpu_address);
-        if (it == device_ranges.begin()) {
-            return std::nullopt;
+        while (it != device_ranges.begin()) {
+            --it;
+            const auto& [start, range] = *it;
+            const u64 offset = cpu_address - start;
+            if (offset < range.first && size <= range.first - offset) {
+                return range.second + offset;
+            }
         }
-        --it;
-        const auto& [start, range] = *it;
-        if (cpu_address - start >= range.first) {
-            return std::nullopt;
-        }
-        return range.second + (cpu_address - start);
+        return std::nullopt;
     }
 
 private:
@@ -94,15 +164,53 @@ private:
     std::mutex device_mutex;
     std::map<u64, std::pair<u64, u64>> device_ranges; // cpu start -> (size, device address)
 
+    struct SharedRangeKey {
+        size_t asid;
+        u64 cpu_address;
+        u64 size;
+        auto operator<=>(const SharedRangeKey&) const = default;
+    };
+    struct SharedRange {
+        u64 device_address;
+        u32 references;
+    };
+    std::map<SharedRangeKey, SharedRange> shared_ranges;
+
     struct Mapping {
         u64 gpu_address;
         u64 cpu_address;
         u64 size;
     };
 
+    struct Listeners {
+        Listener map;
+        UnmapListener unmap;
+        ReleaseListener release;
+    };
+
+    void TrimMappings(u64 gpu_address, u64 size) {
+        const u64 end = gpu_address + size;
+        std::vector<Mapping> kept;
+        kept.reserve(mappings.size() + 1);
+        for (const auto& m : mappings) {
+            const u64 m_end = m.gpu_address + m.size;
+            if (m_end <= gpu_address || m.gpu_address >= end) {
+                kept.push_back(m);
+                continue;
+            }
+            if (m.gpu_address < gpu_address) {
+                kept.push_back({m.gpu_address, m.cpu_address, gpu_address - m.gpu_address});
+            }
+            if (m_end > end) {
+                kept.push_back({end, m.cpu_address + (end - m.gpu_address), m_end - end});
+            }
+        }
+        mappings = std::move(kept);
+    }
+
     std::mutex mutex;
     std::vector<Mapping> mappings;
-    std::map<const void*, Listener> listeners;
+    std::map<const void*, Listeners> listeners;
 };
 
 // Device node that Switch 2 nvgpu drivers open but Switch 1 never had (e.g. /dev/nvhost-tsg-gpu).

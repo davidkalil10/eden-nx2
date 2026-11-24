@@ -58,9 +58,12 @@ NvResult nvhost_as_gpu::Ioctl1(DeviceFD fd, Ioctl command, std::span<const u8> i
             const auto result = WrapFixed(this, &nvhost_as_gpu::AllocAsEx, input, output);
             if (result == NvResult::Success && g_nx2_driver) {
                 Nx2GpuMemoryRegistry::Get().AddListener(
-                    this, [this](u64 gpu_address, u64 cpu_address, u64 size) {
+                    this,
+                    [this](u64 gpu_address, u64 cpu_address, u64 size) {
                         Nx2Map(gpu_address, cpu_address, size);
-                    });
+                    },
+                    [this](u64 gpu_address, u64 size) { Nx2Unmap(gpu_address, size); },
+                    [this](u64 cpu_address, u64 size) { Nx2Release(cpu_address, size); });
             }
             return result;
         }
@@ -121,27 +124,69 @@ void nvhost_as_gpu::Nx2Map(u64 gpu_address, u64 cpu_address, u64 size) {
         return;
     }
     // The same CPU range is often mapped twice (at its own address and in a sparse region), so
-    // reuse its SMMU mapping.
-    DAddr device_address{};
+    // reuse its SMMU mapping across all GPU address spaces of the process.
+    Nx2DeviceRange range{};
     if (const auto it = nx2_device_ranges.find({cpu_address, size}); it != nx2_device_ranges.end()) {
-        device_address = it->second;
+        range = it->second;
     } else if (session->has_preallocated_area && session->mapper->IsInBounds(cpu_address, size)) {
-        device_address = session->mapper->Map(cpu_address, size);
+        range = {session->mapper->Map(cpu_address, size), true, false, 0};
     } else {
-        auto& smmu = system.Host1x().MemoryManager();
-        device_address = smmu.Allocate(Common::AlignUp(size, 0x20000));
-        if (device_address == 0) {
+        const auto allocate = [&]() -> u64 {
+            auto& smmu = system.Host1x().MemoryManager();
+            const DAddr address = smmu.Allocate(Common::AlignUp(size, 0x20000));
+            if (address != 0) {
+                smmu.Map(address, cpu_address, size, session->asid, true);
+            }
+            return address;
+        };
+        range = {Nx2GpuMemoryRegistry::Get().AcquireDeviceRange(session->asid.id, cpu_address, size,
+                                                                allocate),
+                 false, true, session->asid.id};
+        if (range.address == 0) {
             LOG_CRITICAL(Service_NVDRV, "Switch 2 GPU memory {:#x}+{:#x}: out of SMMU space",
                          cpu_address, size);
             return;
         }
-        smmu.Map(device_address, cpu_address, size, session->asid, true);
     }
-    nx2_device_ranges[{cpu_address, size}] = device_address;
+    const DAddr device_address = range.address;
+    nx2_device_ranges[{cpu_address, size}] = range;
     Nx2GpuMemoryRegistry::Get().RecordDeviceRange(cpu_address, size, device_address);
     gmmu->Map(gpu_address, device_address, size, Tegra::PTEKind::PITCH, false);
     LOG_DEBUG(Service_NVDRV, "Switch 2 GPU mapping {:#x}+{:#x} -> CPU {:#x}", gpu_address, size,
               cpu_address);
+}
+
+void nvhost_as_gpu::Nx2Unmap(u64 gpu_address, u64 size) {
+    std::scoped_lock lock(mutex);
+    if (!gmmu) {
+        return;
+    }
+    gmmu->Unmap(gpu_address, size);
+}
+
+void nvhost_as_gpu::Nx2Release(u64 cpu_address, u64 size) {
+    std::scoped_lock lock(mutex);
+    const auto it = nx2_device_ranges.find({cpu_address, size});
+    if (it == nx2_device_ranges.end()) {
+        return;
+    }
+    const Nx2DeviceRange range = it->second;
+    nx2_device_ranges.erase(it);
+    if (range.preallocated) {
+        if (auto* session = container.GetSession(nx2_session);
+            session != nullptr && session->has_preallocated_area) {
+            session->mapper->Unmap(cpu_address, size);
+        }
+        return;
+    }
+    if (range.shared &&
+        !Nx2GpuMemoryRegistry::Get().ReleaseDeviceRange(range.asid, cpu_address, size)) {
+        return;
+    }
+    const u64 allocated = Common::AlignUp(size, 0x20000);
+    auto& smmu = system.Host1x().MemoryManager();
+    smmu.Unmap(range.address, size);
+    smmu.Free(range.address, allocated);
 }
 void nvhost_as_gpu::OnClose(DeviceFD fd) {}
 

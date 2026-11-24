@@ -30,12 +30,19 @@ inline void Nx2AddSemaphoreRegion(u64 start) {
     }
 }
 
+inline void Nx2RemoveSemaphoreRegion(u64 start) {
+    for (auto& region : g_nx2_semaphore_regions) {
+        u64 expected = start;
+        region.compare_exchange_strong(expected, 0);
+    }
+}
+
 /// GPU VA in the first page that mirrors a release at `address`, or 0.
 inline u64 Nx2SemaphoreMirror(u64 address) {
     for (const auto& region : g_nx2_semaphore_regions) {
         const u64 start = region.load(std::memory_order_relaxed);
         if (start == 0) {
-            break;
+            continue;
         }
         if (address >= start + 0x1000 && address < start + 0x2000) {
             return address - 0x1000;

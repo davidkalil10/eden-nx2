@@ -4,6 +4,9 @@
 // SPDX-FileCopyrightText: Copyright 2024 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <mutex>
+#include <unordered_set>
+
 #include "common/settings.h"
 #include "core/hle/kernel/k_transfer_memory.h"
 #include "core/hle/service/am/applet_data_broker.h"
@@ -99,6 +102,19 @@ AppletProgramId AppletIdToProgramId(AppletId applet_id) {
     }
 }
 
+AppletId NormalizeAppletId(AppletId id) {
+    const u32 raw_id = static_cast<u32>(id);
+    if (AppletIdToProgramId(id) == static_cast<AppletProgramId>(0)) {
+        const auto low_byte = static_cast<AppletId>(raw_id & 0xFF);
+        if (AppletIdToProgramId(low_byte) != static_cast<AppletProgramId>(0)) {
+            LOG_WARNING(Service_AM, "Normalizing Switch 2 raw applet_id={:#x} to low byte {:#x}",
+                        raw_id, static_cast<u32>(low_byte));
+            return low_byte;
+        }
+    }
+    return id;
+}
+
 std::shared_ptr<ILibraryAppletAccessor> CreateGuestApplet(Core::System& system,
                                                           WindowSystem& window_system,
                                                           std::shared_ptr<Applet> caller_applet,
@@ -183,6 +199,7 @@ Result ILibraryAppletCreator::CreateLibraryApplet(
     LibraryAppletMode library_applet_mode) {
     LOG_DEBUG(Service_AM, "called with applet_id={} applet_mode={}", applet_id,
               library_applet_mode);
+    applet_id = NormalizeAppletId(applet_id);
 
     std::shared_ptr<ILibraryAppletAccessor> library_applet;
     if (ShouldCreateGuestApplet(applet_id)) {
@@ -209,6 +226,7 @@ Result ILibraryAppletCreator::CreateLibraryAppletEx(
     LibraryAppletMode library_applet_mode, u64 thread_id) {
     LOG_DEBUG(Service_AM, "called with applet_id={} applet_mode={} thread_id={}", applet_id,
               library_applet_mode, thread_id);
+    applet_id = NormalizeAppletId(applet_id);
 
     std::shared_ptr<ILibraryAppletAccessor> library_applet;
     if (ShouldCreateGuestApplet(applet_id)) {

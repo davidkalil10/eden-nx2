@@ -213,6 +213,12 @@ void SoftwareKeyboard::InitializeForeground() {
         std::memcpy(&swkbd_config_new, swkbd_config_data.data() + sizeof(SwkbdConfigCommon),
                     sizeof(SwkbdConfigNew));
         break;
+    case SwkbdAppletVersion::Version1310736:
+        ASSERT(swkbd_config_data.size() >= sizeof(SwkbdConfigCommon) + sizeof(SwkbdConfigNew));
+        std::memcpy(&swkbd_config_new, swkbd_config_data.data() + sizeof(SwkbdConfigCommon),
+                    sizeof(SwkbdConfigNew));
+        swkbd_config_common.use_utf8 = true;
+        break;
     default:
         UNIMPLEMENTED_MSG("Unknown SwkbdConfig revision={} with size={}", swkbd_applet_version,
                           swkbd_config_data.size());
