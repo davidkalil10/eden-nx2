@@ -12,6 +12,7 @@
 #include "core/hle/service/caps/caps_su.h"
 #include "core/hle/service/cmif_serialization.h"
 #include "core/hle/service/nvnflinger/nvnflinger.h"
+#include "core/hle/service/nx2_gsv.h"
 #include "core/hle/service/sm/sm.h"
 #include "core/hle/service/vi/vi_results.h"
 
@@ -73,6 +74,7 @@ ISelfController::ISelfController(Core::System& system_, std::shared_ptr<Applet> 
         {230, D<&ISelfController::Unknown230>, "Unknown230"},
         {240, D<&ISelfController::Unknown240>, "Unknown240"},
         {1000, nullptr, "GetDebugStorageChannel"},
+        {2000, &ISelfController::GetGraphicsSupervisor, "GetGraphicsSupervisor"},
     };
     // clang-format on
 
@@ -94,6 +96,11 @@ Result ISelfController::Exit() {
     m_applet->process->Terminate();
 
     R_SUCCEED();
+}
+
+void ISelfController::GetGraphicsSupervisor(HLERequestContext& ctx) {
+    LOG_WARNING(Service_AM, "(STUBBED) GetGraphicsSupervisor, returning nx2:gsv session");
+    ReturnRawSession(system, ctx, std::make_shared<INx2GraphicsSystemSession>(system));
 }
 
 Result ISelfController::LockExit() {

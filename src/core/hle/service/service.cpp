@@ -66,7 +66,11 @@ void ServiceFrameworkBase::ReportUnimplementedFunction(HLERequestContext& ctx,
                            std::string_view(service_name).starts_with("nx2:");
     auto push_zeroed_stub = [&]() {
         IPC::ResponseBuilder rb{ctx, 2 + StubZeroedWords};
-        rb.Push(ResultSuccess);
+        if (ctx.IsTipc()) {
+            rb.PushRaw<u32>(ResultSuccess.raw);
+        } else {
+            rb.Push(ResultSuccess);
+        }
         for (u32 i = 0; i < StubZeroedWords; ++i) {
             rb.Push<u32>(0);
         }
