@@ -266,63 +266,6 @@ Result ICommonStateGetter::GetDefaultDisplayResolution(Out<s32> out_width, Out<s
 void ICommonStateGetter::SetCpuBoostMode(HLERequestContext& ctx) {
     LOG_DEBUG(Service_AM, "called, forwarding to APM:SYS");
 
-    if (Settings::CurrentProgramIsSwitch2()) {
-        if (auto* process = ctx.GetThread().GetOwnerProcess()) {
-            const auto bt = Core::GetBacktrace(&ctx.GetThread());
-            LOG_WARNING(Service_AM, "Switch2 SetCpuBoostMode backtrace ({} frames):", bt.size());
-            auto& mem = process->GetMemory();
-            auto dump_code = [&](const char* label, u64 start, u64 bytes) {
-                for (u64 off = 0; off < bytes; off += 32) {
-                    u32 w[8]{};
-                    bool ok = true;
-                    for (u64 k = 0; k < 8; ++k) {
-                        const u64 a = start + off + k * 4;
-                        if (!mem.IsValidVirtualAddress(a)) {
-                            ok = false;
-                            break;
-                        }
-                        w[k] = mem.Read32(a);
-                    }
-                    if (!ok) {
-                        break;
-                    }
-                    LOG_WARNING(Service_AM,
-                                "  {}@{:#x}: {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
-                                label, start + off, w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]);
-                }
-            };
-            auto decode_bl_target = [&](u64 pc) -> u64 {
-                if (!mem.IsValidVirtualAddress(pc)) {
-                    return 0;
-                }
-                const u32 insn = mem.Read32(pc);
-                if ((insn >> 26) != 0x25U) {
-                    return 0;
-                }
-                s64 imm = static_cast<s64>(insn & 0x03FFFFFFU);
-                if (imm & 0x02000000LL) {
-                    imm -= 0x04000000LL;
-                }
-                return static_cast<u64>(static_cast<s64>(pc) + imm * 4);
-            };
-            bool dumped_main = false;
-            for (std::size_t i = 0; i < bt.size() && i < 12; ++i) {
-                LOG_WARNING(Service_AM, "  BT[{}]: {} va={:#x}", i, bt[i].module,
-                            bt[i].original_address);
-                const u64 va = bt[i].original_address;
-                if (!dumped_main && va >= 0x80ef0000ULL && va < 0x84d50000ULL && (va & 3ULL) == 0) {
-                    dumped_main = true;
-                    if (const u64 t1 = decode_bl_target(va + 0x4); t1 != 0) {
-                        dump_code("bl1", t1, 96);
-                    }
-                    if (const u64 t2 = decode_bl_target(va + 0x24); t2 != 0) {
-                        dump_code("bl2", t2, 256);
-                    }
-                }
-            }
-        }
-    }
-
     const auto& sm = system.ServiceManager();
     const auto apm_sys = sm.GetService<APM::APM_Sys>("apm:sys");
     ASSERT(apm_sys != nullptr);

@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <format>
 #include <mutex>
@@ -15,8 +16,8 @@
 
 namespace Core::Nx2Trace {
 
-constexpr std::size_t kMaxIpc = 64;
-constexpr std::size_t kMaxSvc = 48;
+constexpr std::size_t kMaxIpc = 128;
+constexpr std::size_t kMaxSvc = 96;
 
 struct IpcEntry {
     u64 seq{};
@@ -158,6 +159,13 @@ inline void Dump(const char* reason) {
 
     LOG_WARNING(Service, "=== Switch2 Trace Dump ({}): last {} IPCs ===", reason ? reason : "?",
                 ipc_count);
+#ifdef __SWITCH2__
+    std::FILE* tf = std::fopen("sdmc:/switch/eden-nx2/nx2_trace.txt", "w");
+    if (tf != nullptr) {
+        std::fprintf(tf, "=== Switch2 Trace Dump (%s): last %zu IPCs ===\n",
+                     reason ? reason : "?", ipc_count);
+    }
+#endif
     for (std::size_t i = 0; i < ipc_count; ++i) {
         const auto& e = ipc_copy[(ipc_start + i) % kMaxIpc];
         const std::string tag = FormatAsciiTag(e.in0, e.in1);
@@ -165,15 +173,45 @@ inline void Dump(const char* reason) {
                     "  [#{:05d}] {} {}::{}({}) in=({:#x},{:#x}){} -> res={:#x} out=({:#x},{:#x}){}",
                     e.seq, e.is_tipc ? "TIPC" : "CMIF", e.svc, e.fn, e.cmd, e.in0, e.in1, tag,
                     e.res, e.out0, e.out1, e.unimpl ? " [UNIMPL]" : "");
+#ifdef __SWITCH2__
+        if (tf != nullptr) {
+            std::fprintf(tf,
+                         "  [#%05llu] %s %s::%s(%u) in=(0x%x,0x%x)%s -> res=0x%x out=(0x%x,0x%x)%s\n",
+                         static_cast<unsigned long long>(e.seq),
+                         e.is_tipc ? "TIPC" : "CMIF", e.svc, e.fn, e.cmd, e.in0, e.in1,
+                         tag.c_str(), e.res, e.out0, e.out1, e.unimpl ? " [UNIMPL]" : "");
+        }
+#endif
     }
 
     LOG_WARNING(Service, "=== Switch2 Trace Dump ({}): last {} SVCs ===", reason ? reason : "?",
                 svc_count);
+#ifdef __SWITCH2__
+    if (tf != nullptr) {
+        std::fprintf(tf, "=== Switch2 Trace Dump (%s): last %zu SVCs ===\n",
+                     reason ? reason : "?", svc_count);
+    }
+#endif
     for (std::size_t i = 0; i < svc_count; ++i) {
         const auto& e = svc_copy[(svc_start + i) % kMaxSvc];
         LOG_WARNING(Kernel_SVC, "  [#{:05d}] SVC {:#04x} a0={:#x} a1={:#x} a2={:#x} -> {:#x}",
                     e.seq, e.id, e.a0, e.a1, e.a2, e.res);
+#ifdef __SWITCH2__
+        if (tf != nullptr) {
+            std::fprintf(tf, "  [#%05llu] SVC 0x%02x a0=0x%llx a1=0x%llx a2=0x%llx -> 0x%x\n",
+                         static_cast<unsigned long long>(e.seq), e.id,
+                         static_cast<unsigned long long>(e.a0),
+                         static_cast<unsigned long long>(e.a1),
+                         static_cast<unsigned long long>(e.a2), e.res);
+        }
+#endif
     }
+#ifdef __SWITCH2__
+    if (tf != nullptr) {
+        std::fflush(tf);
+        std::fclose(tf);
+    }
+#endif
 }
 
 } // namespace Core::Nx2Trace

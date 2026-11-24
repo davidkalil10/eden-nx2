@@ -38,6 +38,7 @@
 #include "input_common/drivers/virtual_gamepad.h"
 #include "yuzu_cmd/switch2_launcher.h"
 #include "yuzu_cmd/switch2_runtime.h"
+#include "core/hle/service/nx2_trace.h"
 
 extern "C" {
 extern int g_switch2_address_space_mode;
@@ -1111,6 +1112,7 @@ int main(int argc, char** argv) {
         std::filesystem::create_directories("sdmc:/switch/eden-nx2/.local/share/eden/play_time", ec);
         std::filesystem::remove("sdmc:/switch/eden-nx2/last_guest_panic.txt", ec);
         std::filesystem::remove("sdmc:/switch/eden-nx2/last_eden_log_tail.txt", ec);
+        std::filesystem::remove("sdmc:/switch/eden-nx2/nx2_trace.txt", ec);
         std::filesystem::remove("sdmc:/switch/eden-nx2/last_load_error_saved.txt", ec);
         std::string msg = "02: ROM=" + launch_cfg.rom_path;
         Switch2BootTrace(msg.c_str());
@@ -1892,6 +1894,9 @@ int main(int argc, char** argv) {
     Switch2SetCpuBoost(false);
     for (int p = 0; p < 4; ++p) {
         Switch2SetPlayerVibration(p, 0, 160.0f, 0, 320.0f, 0, 160.0f, 0, 320.0f);
+    }
+    if (Settings::CurrentProgramIsSwitch2()) {
+        Core::Nx2Trace::Dump("session_end");
     }
     Common::Log::DumpRecentLogTail("sdmc:/switch/eden-nx2/last_eden_log_tail.txt");
     system->DetachDebugger();

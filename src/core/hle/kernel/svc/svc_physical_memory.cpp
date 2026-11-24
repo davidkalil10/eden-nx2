@@ -30,9 +30,18 @@ Result SetHeapSize(Core::System& system, u64* out_address, u64 size) {
 
     // Set the heap size.
     KProcessAddress address{};
-    R_TRY(GetCurrentProcess(system.Kernel())
-              .GetPageTable()
-              .SetHeapSize(std::addressof(address), size));
+    auto& page_table = GetCurrentProcess(system.Kernel()).GetPageTable();
+    const Result rc = page_table.SetHeapSize(std::addressof(address), size);
+    if (rc.IsError()) {
+        LOG_ERROR(Kernel_SVC,
+                  "SetHeapSize failed: size={:#x}, heap_region_size={:#x}, rc={:#x}", size,
+                  page_table.GetHeapRegionSize(), rc.raw);
+        return rc;
+    }
+    if (Settings::CurrentProgramIsSwitch2()) {
+        LOG_INFO(Kernel_SVC, "Switch2 SetHeapSize(size={:#x}) -> addr={:#x}", size,
+                 GetInteger(address));
+    }
 
     // We succeeded.
     *out_address = GetInteger(address);
