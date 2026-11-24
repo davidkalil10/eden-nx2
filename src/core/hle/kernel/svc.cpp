@@ -2545,9 +2545,16 @@ void Call(Core::System& system, u32 imm) {
                 case 0x04:
                 case 0x05:
                 case 0x06:
+                case 0x08:
+                case 0x09:
+                case 0x0F:
+                case 0x10:
                 case 0x13:
                 case 0x15:
+                case 0x1F:
                 case 0x21:
+                case 0x22:
+                case 0x28:
                 case 0x29:
                 case 0x2C:
                 case 0x2D:

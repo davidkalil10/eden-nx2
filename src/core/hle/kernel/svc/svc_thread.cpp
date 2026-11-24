@@ -20,6 +20,18 @@ constexpr bool IsValidVirtualCoreId(int32_t core_id) {
     return (0 <= core_id && core_id < static_cast<int32_t>(Core::Hardware::NUM_CPU_CORES));
 }
 
+// Switch 2 hardware has eight cores (applications can use 0..5). Fold extra cores onto the
+// emulated cores (0..NUM_CPU_CORES-1) in both core ids and affinity masks.
+constexpr int32_t FoldExtraCoreId(int32_t core_id) {
+    constexpr auto num_cores = static_cast<int32_t>(Core::Hardware::NUM_CPU_CORES);
+    return core_id >= num_cores && core_id < 2 * num_cores ? core_id - num_cores : core_id;
+}
+
+constexpr u64 FoldExtraCoreMask(u64 mask) {
+    constexpr u64 low = (1ULL << Core::Hardware::NUM_CPU_CORES) - 1;
+    return (mask & low) | ((mask >> Core::Hardware::NUM_CPU_CORES) & low);
+}
+
 } // Anonymous namespace
 
 /// Creates a new thread
@@ -37,9 +49,13 @@ Result CreateThread(Core::System& system, Handle* out_handle, u64 entry_point, u
         core_id = process.GetIdealCoreId();
     }
 
+    // Validate against real process core mask before folding Switch 2 cores 4..7 onto 0..3.
+    R_UNLESS(0 <= core_id && core_id < 64, ResultInvalidCoreId);
+    R_UNLESS(((1ull << core_id) & process.GetCoreMask()) != 0, ResultInvalidCoreId);
+    core_id = FoldExtraCoreId(core_id);
+
     // Validate arguments.
     R_UNLESS(IsValidVirtualCoreId(core_id), ResultInvalidCoreId);
-    R_UNLESS(((1ull << core_id) & process.GetCoreMask()) != 0, ResultInvalidCoreId);
 
     R_UNLESS(HighestThreadPriority <= priority && priority <= LowestThreadPriority,
              ResultInvalidPriority);
@@ -253,13 +269,17 @@ Result SetThreadCoreMask(Core::System& system, Handle thread_handle, s32 core_id
                          u64 affinity_mask) {
     // Determine the core id/affinity mask.
     if (core_id == IdealCoreUseProcessValue) {
-        core_id = GetCurrentProcess(system.Kernel()).GetIdealCoreId();
+        core_id = FoldExtraCoreId(GetCurrentProcess(system.Kernel()).GetIdealCoreId());
         affinity_mask = (1ULL << core_id);
     } else {
         // Validate the affinity mask.
         const u64 process_core_mask = GetCurrentProcess(system.Kernel()).GetCoreMask();
         R_UNLESS((affinity_mask | process_core_mask) == process_core_mask, ResultInvalidCoreId);
         R_UNLESS(affinity_mask != 0, ResultInvalidCombination);
+
+        // Validated against the real mask above; fold Switch 2 cores onto emulated cores.
+        affinity_mask = FoldExtraCoreMask(affinity_mask);
+        core_id = FoldExtraCoreId(core_id);
 
         // Validate the core id.
         if (IsValidVirtualCoreId(core_id)) {
