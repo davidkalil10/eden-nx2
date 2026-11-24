@@ -88,7 +88,7 @@ void ServiceFrameworkBase::ReportUnimplementedFunction(HLERequestContext& ctx,
                                          : (off + 2 < IPC::COMMAND_BUFFER_LENGTH ? b[off + 2] : 0);
             const u32 in1 = ctx.IsTipc() ? b[3]
                                          : (off + 3 < IPC::COMMAND_BUFFER_LENGTH ? b[off + 3] : 0);
-            Core::Nx2Trace::RecordIpc(service_name.c_str(), ctx.GetCommand(),
+            Core::Nx2Trace::RecordIpc(service_name, ctx.GetCommand(),
                                       info ? info->name : "<unknown>", ctx.IsTipc(), true, in0, in1,
                                       0, 0, 0);
         }
@@ -158,7 +158,7 @@ void ServiceFrameworkBase::InvokeRequest(HLERequestContext& ctx) {
                             info->name, res);
             }
         }
-        Core::Nx2Trace::RecordIpc(service_name.c_str(), ctx.GetCommand(), info->name, false, false,
+        Core::Nx2Trace::RecordIpc(service_name, ctx.GetCommand(), info->name, false, false,
                                   in0, in1, res, out0, out1);
     }
 }
@@ -194,7 +194,7 @@ void ServiceFrameworkBase::InvokeRequestTipc(HLERequestContext& ctx) {
                             info->name, res);
             }
         }
-        Core::Nx2Trace::RecordIpc(service_name.c_str(), ctx.GetCommand(), info->name, true, false,
+        Core::Nx2Trace::RecordIpc(service_name, ctx.GetCommand(), info->name, true, false,
                                   in0, in1, res, out0, out1);
     }
 }
