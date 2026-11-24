@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eglantine Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -12,13 +15,19 @@
 #include "core/hle/kernel/k_client_port.h"
 #include "core/hle/kernel/k_client_session.h"
 #include "core/hle/kernel/k_port.h"
+#include "core/hle/kernel/k_process.h"
+#include "core/hle/kernel/k_resource_limit.h"
 #include "core/hle/kernel/k_scoped_resource_reservation.h"
 #include "core/hle/kernel/k_server_port.h"
+#include "core/hle/kernel/k_server_session.h"
 #include "core/hle/kernel/k_session.h"
+#include "core/hle/kernel/k_thread.h"
+#include "core/hle/kernel/kernel.h"
 #include "core/hle/result.h"
 #include "core/hle/service/cmif_types.h"
 #include "core/hle/service/hle_ipc.h"
 #include "core/hle/service/ipc_helpers.h"
+#include "core/hle/service/nx2_streamplay.h"
 #include "core/hle/service/nx2_stub_interface.h"
 #include "core/hle/service/server_manager.h"
 #include "core/hle/service/sm/sm.h"
@@ -174,6 +183,34 @@ static std::string PopServiceName(IPC::RequestParser& rp) {
     return result;
 }
 
+namespace {
+
+// A session served by a Switch 2 stub interface named after the missing service (see
+// nx2_stub_interface.h), set up like a session handed out by a service.
+Kernel::KClientSession* CreateStubSession(Core::System& system, HLERequestContext& ctx,
+                                          const std::string& name) {
+    auto& kernel = system.Kernel();
+    ASSERT(Kernel::GetCurrentProcess(kernel).GetResourceLimit()->Reserve(
+        kernel, Kernel::LimitableResource::SessionCountMax, 1));
+
+    auto* session = Kernel::KSession::Create(kernel);
+    session->Initialize(kernel, nullptr, 0);
+    Kernel::KSession::Register(kernel, session);
+
+    auto manager =
+        std::make_shared<SessionRequestManager>(kernel, ctx.GetManager()->GetServerManager());
+    if (name == "stpl:u") {
+        manager->SetSessionHandler(std::make_shared<INx2StreamPlayService>(system));
+    } else {
+        manager->SetSessionHandler(std::make_shared<INx2StubInterface>(
+            system, INx2StubInterface::InternName(fmt::format("{}{}", Nx2StubPrefix, name))));
+    }
+    ctx.GetManager()->GetServerManager().RegisterSession(&session->GetServerSession(), manager);
+    return &session->GetClientSession();
+}
+
+} // namespace
+
 Result SM::GetServiceImpl(Kernel::KClientSession** out_client_session, HLERequestContext& ctx) {
     if (!ctx.GetManager()->GetIsInitializedForSm()) {
         return Service::SM::ResultInvalidClient;
@@ -191,20 +228,14 @@ Result SM::GetServiceImpl(Kernel::KClientSession** out_client_session, HLEReques
     }
 
     if (port_result != ResultSuccess) {
+        // Switch 2 programs also ask for services Eden does not have at all (newer Mario Kart
+        // World updates open chat:u, GameChat, while booting). Nothing ever registers those, so
+        // waiting would hang them for good: hand out a placeholder whose commands are all
+        // auto-stubbed, like their unknown commands on existing services.
         if (Settings::CurrentProgramIsSwitch2()) {
-            LOG_WARNING(Service_SM,
-                        "(STUBBED) Switch 2 service {} does not exist, returning a stub", name);
-            auto* stub_session = Kernel::KSession::Create(kernel);
-            stub_session->Initialize(kernel, nullptr, 0);
-            Kernel::KSession::Register(kernel, stub_session);
-
-            auto manager = std::make_shared<SessionRequestManager>(
-                kernel, ctx.GetManager()->GetServerManager());
-            manager->SetSessionHandler(std::make_shared<INx2StubInterface>(
-                system, INx2StubInterface::InternName(std::format("{}{}", Nx2StubPrefix, name))));
-            ctx.GetManager()->GetServerManager().RegisterSession(&stub_session->GetServerSession(),
-                                                                 manager);
-            *out_client_session = &stub_session->GetClientSession();
+            LOG_WARNING(Service_SM, "(STUBBED) Switch 2 service {} does not exist, returning a stub",
+                        name);
+            *out_client_session = CreateStubSession(system, ctx, name);
             return ResultSuccess;
         }
         LOG_INFO(Service_SM, "Waiting for service {} to become available", name);

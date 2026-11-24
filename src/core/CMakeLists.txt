@@ -529,6 +529,7 @@ add_library(core STATIC
     hle/service/audio/audio_out.h
     hle/service/audio/audio_renderer_manager.cpp
     hle/service/audio/audio_renderer_manager.h
+    hle/service/audio/nx2_audio_user_client.h
     hle/service/audio/audio_renderer.cpp
     hle/service/audio/audio_renderer.h
     hle/service/audio/audio.cpp
@@ -868,6 +869,7 @@ add_library(core STATIC
     hle/service/nvdrv/devices/nvhost_vic.h
     hle/service/nvdrv/devices/nvmap.cpp
     hle/service/nvdrv/devices/nvmap.h
+    hle/service/nvdrv/devices/nx2_stub_device.h
     hle/service/nvdrv/nvdata.h
     hle/service/nvdrv/nvdrv.cpp
     hle/service/nvdrv/nvdrv.h

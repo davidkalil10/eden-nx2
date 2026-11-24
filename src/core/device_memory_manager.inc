@@ -24,6 +24,14 @@
 #include "core/device_memory_manager.h"
 #include "core/memory.h"
 
+#ifdef __SWITCH2__
+extern "C" {
+bool __attribute__((weak)) Switch2IsSparseUnmapped(const void* addr);
+bool __attribute__((weak)) Switch2SparseCommitRange(void* addr, std::size_t size);
+extern thread_local bool g_sw2_skip_sparse_commit_on_lookup;
+}
+#endif
+
 namespace Core {
 
 namespace {
@@ -211,6 +219,12 @@ void DeviceMemoryManager<Traits>::Map(DAddr address, VAddr virtual_address, size
     std::scoped_lock lk(mapping_guard);
 
     tracked_entries.CommitRegion(start_page_d, start_page_d + num_pages);
+#ifdef __SWITCH2__
+    g_sw2_skip_sparse_commit_on_lookup = true;
+    SCOPE_EXIT {
+        g_sw2_skip_sparse_commit_on_lookup = false;
+    };
+#endif
     for (size_t i = 0; i < num_pages; i++) {
         const VAddr new_vaddress = virtual_address + i * Memory::YUZU_PAGESIZE;
         auto* ptr = process_memory->GetPointerSilent(Common::ProcessAddress(new_vaddress));
@@ -280,6 +294,13 @@ void DeviceMemoryManager<Traits>::TrackContinuityImpl(DAddr address, VAddr virtu
     size_t page_count = 1;
 
     tracked_entries.CommitRegion(start_page_d, start_page_d + num_pages);
+#ifdef __SWITCH2__
+    const bool prev_skip = g_sw2_skip_sparse_commit_on_lookup;
+    g_sw2_skip_sparse_commit_on_lookup = true;
+    SCOPE_EXIT {
+        g_sw2_skip_sparse_commit_on_lookup = prev_skip;
+    };
+#endif
     for (size_t i = num_pages; i > 0; i--) {
         size_t index = i - 1;
         const VAddr new_vaddress = virtual_address + index * Memory::YUZU_PAGESIZE;
@@ -299,7 +320,13 @@ u8* DeviceMemoryManager<Traits>::GetSpan(const DAddr src_addr, const std::size_t
     size_t page_index = src_addr >> page_bits;
     size_t subbits = src_addr & page_mask;
     if ((static_cast<size_t>(tracked_entries[page_index].continuity_tracker+1) << page_bits) >= size + subbits) {
-        return GetPointer<u8>(src_addr);
+        u8* const ptr = GetPointer<u8>(src_addr);
+#ifdef __SWITCH2__
+        if (ptr != nullptr && size > 0 && Switch2SparseCommitRange != nullptr) {
+            Switch2SparseCommitRange(ptr, size);
+        }
+#endif
+        return ptr;
     }
     return nullptr;
 }
@@ -309,7 +336,13 @@ const u8* DeviceMemoryManager<Traits>::GetSpan(const DAddr src_addr, const std::
     size_t page_index = src_addr >> page_bits;
     size_t subbits = src_addr & page_mask;
     if ((static_cast<size_t>(tracked_entries[page_index].continuity_tracker+1) << page_bits) >= size + subbits) {
-        return GetPointer<u8>(src_addr);
+        const u8* const ptr = GetPointer<u8>(src_addr);
+#ifdef __SWITCH2__
+        if (ptr != nullptr && size > 0 && Switch2SparseCommitRange != nullptr) {
+            Switch2SparseCommitRange(const_cast<u8*>(ptr), size);
+        }
+#endif
+        return ptr;
     }
     return nullptr;
 }
@@ -336,7 +369,13 @@ T* DeviceMemoryManager<Traits>::GetPointer(DAddr address) {
     auto phys_addr = tracked_entries[index].compressed_physical_ptr;
     if (phys_addr == 0) [[unlikely]]
         return nullptr;
-    return GetPointerFromRaw<T>((PAddr(phys_addr - 1) << Memory::YUZU_PAGEBITS) + offset);
+    T* const ptr = GetPointerFromRaw<T>((PAddr(phys_addr - 1) << Memory::YUZU_PAGEBITS) + offset);
+#ifdef __SWITCH2__
+    if (ptr != nullptr && Switch2SparseCommitRange != nullptr) {
+        Switch2SparseCommitRange(ptr, (std::max)(sizeof(T), std::size_t{4096}));
+    }
+#endif
+    return ptr;
 }
 
 template <typename Traits>
@@ -347,7 +386,13 @@ const T* DeviceMemoryManager<Traits>::GetPointer(DAddr address) const {
     auto phys_addr = tracked_entries[index].compressed_physical_ptr;
     if (phys_addr == 0)
         return nullptr;
-    return GetPointerFromRaw<T>((PAddr(phys_addr - 1) << Memory::YUZU_PAGEBITS) + offset);
+    const T* const ptr = GetPointerFromRaw<T>((PAddr(phys_addr - 1) << Memory::YUZU_PAGEBITS) + offset);
+#ifdef __SWITCH2__
+    if (ptr != nullptr && Switch2SparseCommitRange != nullptr) {
+        Switch2SparseCommitRange(const_cast<T*>(ptr), (std::max)(sizeof(T), std::size_t{4096}));
+    }
+#endif
+    return ptr;
 }
 
 template <typename Traits>
@@ -394,6 +439,11 @@ void DeviceMemoryManager<Traits>::WalkBlock(DAddr addr, std::size_t size, auto o
             continue;
         }
         auto* mem_ptr = GetPointerFromRaw<u8>((PAddr(phys_addr - 1) << Memory::YUZU_PAGEBITS) + page_offset);
+#ifdef __SWITCH2__
+        if (mem_ptr != nullptr && copy_amount > 0 && Switch2SparseCommitRange != nullptr) {
+            Switch2SparseCommitRange(mem_ptr, copy_amount);
+        }
+#endif
         on_memory(copy_amount, mem_ptr);
     }
 }
@@ -406,6 +456,13 @@ void DeviceMemoryManager<Traits>::ReadBlock(DAddr address, void* dest_pointer, s
         const DAddr guest_page = address & ~static_cast<DAddr>(Memory::YUZU_PAGEMASK);
         for (size_t i = 0; i < 4; ++i) {
             if (t_slot[i].guest_page == guest_page && t_slot[i].host_ptr != nullptr) {
+#ifdef __SWITCH2__
+                if (Switch2IsSparseUnmapped != nullptr &&
+                    Switch2IsSparseUnmapped(t_slot[i].host_ptr + page_offset)) {
+                    std::memset(dest_pointer, 0, size);
+                    return;
+                }
+#endif
                 std::memcpy(dest_pointer, t_slot[i].host_ptr + page_offset, size);
                 return;
             }
@@ -415,6 +472,13 @@ void DeviceMemoryManager<Traits>::ReadBlock(DAddr address, void* dest_pointer, s
         const auto phys_addr = tracked_entries[page_index].compressed_physical_ptr;
         if (phys_addr != 0) {
             auto* const mem_ptr = GetPointerFromRaw<u8>((PAddr(phys_addr - 1) << Memory::YUZU_PAGEBITS));
+#ifdef __SWITCH2__
+            if (Switch2IsSparseUnmapped != nullptr &&
+                Switch2IsSparseUnmapped(mem_ptr + page_offset)) {
+                std::memset(dest_pointer, 0, size);
+                return;
+            }
+#endif
             t_slot[cache_cursor % t_slot.size()] = TranslationEntry{.guest_page = guest_page, .host_ptr = mem_ptr};
             cache_cursor = (cache_cursor + 1) & 3U;
             std::memcpy(dest_pointer, mem_ptr + page_offset, size);
@@ -464,6 +528,13 @@ void DeviceMemoryManager<Traits>::ReadBlockUnsafe(DAddr address, void* dest_poin
         const DAddr guest_page = address & ~static_cast<DAddr>(Memory::YUZU_PAGEMASK);
         for (size_t i = 0; i < 4; ++i) {
             if (t_slot[i].guest_page == guest_page && t_slot[i].host_ptr != nullptr) {
+#ifdef __SWITCH2__
+                if (Switch2IsSparseUnmapped != nullptr &&
+                    Switch2IsSparseUnmapped(t_slot[i].host_ptr + page_offset)) {
+                    std::memset(dest_pointer, 0, size);
+                    return;
+                }
+#endif
                 std::memcpy(dest_pointer, t_slot[i].host_ptr + page_offset, size);
                 return;
             }
@@ -473,6 +544,13 @@ void DeviceMemoryManager<Traits>::ReadBlockUnsafe(DAddr address, void* dest_poin
         const auto phys_addr = tracked_entries[page_index].compressed_physical_ptr;
         if (phys_addr != 0) {
             auto* const mem_ptr = GetPointerFromRaw<u8>((PAddr(phys_addr - 1) << Memory::YUZU_PAGEBITS));
+#ifdef __SWITCH2__
+            if (Switch2IsSparseUnmapped != nullptr &&
+                Switch2IsSparseUnmapped(mem_ptr + page_offset)) {
+                std::memset(dest_pointer, 0, size);
+                return;
+            }
+#endif
             t_slot[cache_cursor % t_slot.size()] = TranslationEntry{.guest_page = guest_page, .host_ptr = mem_ptr};
             cache_cursor = (cache_cursor + 1) & 3U;
             std::memcpy(dest_pointer, mem_ptr + page_offset, size);

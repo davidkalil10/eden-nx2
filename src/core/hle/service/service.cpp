@@ -174,6 +174,12 @@ void ServiceFrameworkBase::InvokeRequestTipc(HLERequestContext& ctx) {
     const u32 in1 = is_sw2 ? ctx.CommandBuffer()[3] : 0;
 
     LOG_TRACE(Service, "{}", MakeFunctionString(info->name, GetServiceName(), ctx.CommandBuffer()));
+    static const bool ipc_trace = std::getenv("EDEN_NX2_IPC_TRACE") != nullptr;
+    if (ipc_trace) {
+        const auto* w = ctx.CommandBuffer();
+        LOG_INFO(Service, "tipc {}::{} ({}) [2]={:#x} [3]={:#x} [4]={:#x}", service_name,
+                 ctx.GetCommand(), info->name, w[2], w[3], w[4]);
+    }
     handler_invoker(this, info->handler_callback, ctx);
     if (is_sw2) {
         const u32 off = ctx.GetDataPayloadOffset();

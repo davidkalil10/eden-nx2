@@ -348,8 +348,7 @@ Result KMemoryManager::AllocateAndOpen(KPageGroup* out, size_t num_pages, u32 op
             remaining_pages -= cur_pages;
         }
 #ifdef __SWITCH2__
-        if (Switch2SparseCommitRange != nullptr &&
-            (pool != Pool::Application || num_pages * PageSize <= (256ULL << 20))) {
+        if (Switch2SparseCommitRange != nullptr && num_pages * PageSize <= (64ULL << 20)) {
             Switch2SparseCommitRange(m_system.DeviceMemory().GetPointer<u8>(block.GetAddress()),
                                      block.GetSize());
         }
@@ -386,8 +385,7 @@ Result KMemoryManager::AllocateForProcess(KPageGroup* out, size_t num_pages, u32
     }
 
 #ifdef __SWITCH2__
-    if (Switch2SparseCommitRange != nullptr &&
-        (pool != Pool::Application || num_pages * PageSize <= (256ULL << 20))) {
+    if (Switch2SparseCommitRange != nullptr && num_pages * PageSize <= (64ULL << 20)) {
         for (const auto& block : *out) {
             Switch2SparseCommitRange(m_system.DeviceMemory().GetPointer<u8>(block.GetAddress()),
                                      block.GetSize());

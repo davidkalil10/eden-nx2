@@ -2605,6 +2605,12 @@ public:
             u32 stop_shader_mask;
         };
 
+        // Native C597/C797 use byte counts at 0x600 rather than legacy end addresses.
+        u64 NativeVertexStreamSize(std::size_t index) const {
+            const std::size_t method = 0x600 / sizeof(u32) + index * 2;
+            return (u64{reg_array[method] & 0xffU} << 32) | reg_array[method + 1];
+        }
+
         // clang-format off
         union {
             struct {
@@ -3129,6 +3135,24 @@ public:
     /// Reads a register value located at the input method address
     u32 GetRegisterValue(u32 method) const;
 
+    void TraceFirstMethodWrite(u32 method, u32 argument);
+
+    /// GPU memory, for Turing macros that read memory into their FIFO or data RAM.
+    MemoryManager& GetMemoryManager() {
+        return memory_manager;
+    }
+
+    void SetNativeTuringMacroMode(bool enabled) {
+        GetNativeMacroEngine().native_turing = enabled;
+        upload_state.SetNativePartialTransfers(enabled);
+    }
+    void SetNativeMacroContext(std::shared_ptr<NativeMacroContext> context) {
+        native_macro_context = std::move(context);
+    }
+    MacroEngine& GetNativeMacroEngine() { return native_macro_context ? native_macro_context->engine : macro_engine; }
+    std::span<u32> GetNativeMacroPositions() { return native_macro_context ? std::span<u32>{native_macro_context->positions} : std::span<u32>{macro_positions}; }
+
+
     /// Write the value to the register identified by method.
     void CallMethod(Core::System& system, u32 method, u32 method_argument, bool is_last_call) override;
 
@@ -3264,6 +3288,7 @@ private:
     std::vector<u32> macro_params;
 
     /// Interpreter for the macro codes uploaded to the GPU.
+    std::shared_ptr<NativeMacroContext> native_macro_context;
     MacroEngine macro_engine;
 
     Upload::State upload_state;

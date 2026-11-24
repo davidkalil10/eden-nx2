@@ -38,6 +38,7 @@
 extern "C" {
 bool __attribute__((weak)) Switch2IsSparseUnmapped(const void* addr);
 bool __attribute__((weak)) Switch2SparseCommitRange(void* addr, std::size_t size);
+thread_local bool g_sw2_skip_sparse_commit_on_lookup = false;
 }
 #endif
 
@@ -158,6 +159,9 @@ struct Memory::Impl {
         if (u64 paddr = entry.Pointer(true); paddr) {
             u8* const host_ptr = reinterpret_cast<u8*>(paddr) + vaddr;
 #ifdef __SWITCH2__
+            if (g_sw2_skip_sparse_commit_on_lookup) {
+                return host_ptr;
+            }
             if (Switch2SparseCommitRange != nullptr) {
                 if (!Switch2SparseCommitRange(host_ptr, 64ULL << 10)) {
                     alignas(4096) static u8 s_oom_scratch[65536]{};
@@ -633,7 +637,7 @@ struct Memory::Impl {
             page_table.entries.CommitRegion(base, end);
 #ifdef __SWITCH2__
             const u64 byte_size = size * YUZU_PAGESIZE;
-            if (byte_size <= (256ULL << 20) && Switch2SparseCommitRange != nullptr) {
+            if (byte_size <= (64ULL << 20) && Switch2SparseCommitRange != nullptr) {
                 Switch2SparseCommitRange(system.DeviceMemory().GetPointer<u8>(target), byte_size);
             }
 #endif
@@ -643,7 +647,7 @@ struct Memory::Impl {
                 auto& entry = page_table.entries.GetUnchecked(base);
 
 #ifdef __SWITCH2__
-                if (byte_size > (256ULL << 20) && type == Common::PageType::Memory &&
+                if (byte_size > (64ULL << 20) && type == Common::PageType::Memory &&
                     Switch2IsSparseUnmapped != nullptr && Switch2IsSparseUnmapped(raw_host_ptr)) {
                     entry.MarkDebug(host_ptr, current_block);
                 } else
