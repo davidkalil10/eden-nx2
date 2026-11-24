@@ -17,6 +17,13 @@
 #include <cstdlib>
 #include <malloc.h>
 
+extern "C" {
+void* __attribute__((weak)) Switch2SparseAlloc(std::size_t virtual_size, std::size_t chunk_size,
+                                               std::size_t physical_budget, const char* tag);
+bool __attribute__((weak)) Switch2SparseFree(void* base);
+bool __attribute__((weak)) Switch2SparseClearZero(void* addr, std::size_t size);
+}
+
 #else // ^^^ Switch 2 ^^^ vvv POSIX vvv
 
 #ifndef _GNU_SOURCE
@@ -718,12 +725,25 @@ HostMemory::HostMemory(size_t backing_size_, size_t virtual_size_)
     , virtual_size(virtual_size_)
 {
 #if defined(__SWITCH2__)
-    LOG_WARNING(HW_Memory, "Switch 2 userland: using non-fastmem aligned backing buffer ({} MiB)",
-                backing_size >> 20);
     fallback_buffer = true;
-    backing_base = static_cast<u8*>(memalign(PageAlignment, AlignUp(backing_size, PageAlignment)));
+    const size_t aligned_backing = AlignUp(backing_size, PageAlignment);
+    if (Switch2SparseAlloc != nullptr) {
+        backing_base = static_cast<u8*>(
+            Switch2SparseAlloc(aligned_backing, 2ULL << 20, 4608ULL << 20, "HostMemory"));
+        if (backing_base != nullptr) {
+            LOG_WARNING(HW_Memory,
+                        "Switch 2 userland: demand-paged sparse backing buffer ({} MiB virtual)",
+                        aligned_backing >> 20);
+        }
+    }
     if (backing_base == nullptr) {
-        LOG_CRITICAL(HW_Memory, "Switch 2 memalign failed for {} MiB!", backing_size >> 20);
+        LOG_WARNING(HW_Memory,
+                    "Switch 2 userland: using non-fastmem aligned backing buffer ({} MiB)",
+                    backing_size >> 20);
+        backing_base = static_cast<u8*>(memalign(PageAlignment, aligned_backing));
+        if (backing_base == nullptr) {
+            LOG_CRITICAL(HW_Memory, "Switch 2 memalign failed for {} MiB!", backing_size >> 20);
+        }
     }
     virtual_base = nullptr;
 #elif defined(__OPENORBIS__) || defined(__managarm__)
@@ -758,7 +778,9 @@ HostMemory::~HostMemory() {
     }
 #elif defined(__SWITCH2__)
     if (fallback_buffer && backing_base) {
-        free(backing_base);
+        if (Switch2SparseFree == nullptr || !Switch2SparseFree(backing_base)) {
+            free(backing_base);
+        }
         backing_base = nullptr;
     }
 #else
@@ -814,6 +836,12 @@ void HostMemory::Protect(size_t virtual_offset, size_t length, MemoryPermission 
 }
 
 void HostMemory::ClearBackingRegion(size_t physical_offset, size_t length, u32 fill_value) {
+#ifdef __SWITCH2__
+    if (fill_value == 0 && Switch2SparseClearZero != nullptr &&
+        Switch2SparseClearZero(backing_base + physical_offset, length)) {
+        return;
+    }
+#endif
     std::memset(backing_base + physical_offset, fill_value, length);
 }
 

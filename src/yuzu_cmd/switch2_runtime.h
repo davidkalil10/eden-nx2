@@ -5,6 +5,7 @@
 
 #ifdef __SWITCH2__
 
+#include <cstddef>
 #include <cstdint>
 
 extern "C" {
@@ -75,6 +76,14 @@ void Switch2SetCpuBoost(bool enable);
 void Switch2GetMemoryStats(std::uint64_t* out_used, std::uint64_t* out_total);
 std::uint64_t Switch2GetCoreMask(void);
 std::uint64_t Switch2GetSystemTickFreq(void);
+
+void* Switch2SparseAlloc(std::size_t virtual_size, std::size_t chunk_size,
+                         std::size_t physical_budget, const char* tag);
+bool Switch2SparseFree(void* base);
+bool Switch2SparseClearZero(void* addr, std::size_t size);
+bool Switch2IsSparseUnmapped(const void* addr);
+bool Switch2SparseCanBackSize(std::size_t virtual_size);
+const char* Switch2SparseGetReport(void);
 
 enum Switch2KbdStatus : int {
     SWITCH2_KBD_OK = 0,

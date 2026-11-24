@@ -13,6 +13,10 @@
 #include "core/device_memory.h"
 #include "core/hle/kernel/initial_process.h"
 #include "core/hle/kernel/k_memory_manager.h"
+
+#ifdef __SWITCH2__
+extern "C" bool __attribute__((weak)) Switch2IsSparseUnmapped(const void* addr);
+#endif
 #include "core/hle/kernel/k_page_group.h"
 #include "core/hle/kernel/k_page_table.h"
 #include "core/hle/kernel/kernel.h"
@@ -527,7 +531,14 @@ bool KMemoryManager::Impl::ProcessOptimizedAllocation(KernelCore& kernel, KPhysi
 
             // Fill the page.
             auto* ptr = device_memory.GetPointer<u8>(m_heap.GetAddress());
-            std::memset(ptr + offset * PageSize, fill_pattern, PageSize);
+            u8* const page_ptr = ptr + offset * PageSize;
+#ifdef __SWITCH2__
+            if (fill_pattern != 0 || Switch2IsSparseUnmapped == nullptr ||
+                !Switch2IsSparseUnmapped(page_ptr))
+#endif
+            {
+                std::memset(page_ptr, fill_pattern, PageSize);
+            }
         }
 
         offset++;

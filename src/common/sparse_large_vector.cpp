@@ -117,10 +117,23 @@ bool CommitVectorPage(uintptr_t addr, bool write) noexcept {
 #define MADV_FREE MADV_DONTNEED
 #endif
 
+#ifdef __SWITCH2__
+extern "C" {
+void* __attribute__((weak)) Switch2SparseAlloc(std::size_t virtual_size, std::size_t chunk_size,
+                                               std::size_t physical_budget, const char* tag);
+bool __attribute__((weak)) Switch2SparseFree(void* base);
+bool __attribute__((weak)) Switch2IsSparseUnmapped(const void* addr);
+}
+#endif
+
 void DecommitVectorPage(uintptr_t base) noexcept {
 #if defined(_WIN32)
     VirtualFree(reinterpret_cast<LPVOID>(base), HostPageSize, MEM_DECOMMIT);
 #elif defined(__SWITCH2__)
+    if (Switch2IsSparseUnmapped != nullptr &&
+        Switch2IsSparseUnmapped(reinterpret_cast<const void*>(base))) {
+        return;
+    }
     std::memset(reinterpret_cast<void*>(base), 0, HostPageSize);
 #elif defined(__linux__)
     // Linux's MADV_DONTNEED zeros out pages for us
@@ -154,9 +167,18 @@ void* AllocateMemoryPages(std::size_t size) noexcept {
     }
     ASSERT_MSG(base, "Failed to reserve {:#x} sized region with error {}", size, GetLastError());
 #elif defined(__SWITCH2__)
-    void* base = memalign(HostPageSize, size);
-    if (base != nullptr) {
-        std::memset(base, 0, size);
+    void* base = nullptr;
+    if (size >= (16ULL << 20) && Switch2SparseAlloc != nullptr) {
+        base = Switch2SparseAlloc(size, 64ULL << 10, 128ULL << 20, "SparseLargeVector");
+        if (base != nullptr) {
+            LOG_INFO(HW_Memory, "Switch 2 SparseLargeVector: demand-paged {} MiB", size >> 20);
+        }
+    }
+    if (base == nullptr) {
+        base = memalign(HostPageSize, size);
+        if (base != nullptr) {
+            std::memset(base, 0, size);
+        }
     }
     ASSERT_MSG(base, "Failed to allocate {:#x} sized region on Switch 2", size);
 #else
@@ -179,6 +201,9 @@ void FreeMemoryPages(void* base, [[maybe_unused]] std::size_t size) noexcept {
     std::erase_if(vector_regions, [base](const auto& r) {return r.first == reinterpret_cast<u64>(base); });
     ASSERT(VirtualFree(base, 0, MEM_RELEASE));
 #elif defined(__SWITCH2__)
+    if (Switch2SparseFree != nullptr && Switch2SparseFree(base)) {
+        return;
+    }
     free(base);
 #else
     ASSERT(munmap(base, size) == 0);

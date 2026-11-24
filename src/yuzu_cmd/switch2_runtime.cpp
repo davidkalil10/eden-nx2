@@ -6,10 +6,13 @@
 
 #ifdef __SWITCH2__
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <malloc.h>
 #include <string>
 
 #define u128 libnx_u128
@@ -544,5 +547,764 @@ void Switch2ScheduleReturnToLauncher(const char* argv0) {
 }
 
 } // extern "C"
+
+// ============================================================================
+// Switch 2 Demand-Paged Sparse Virtual Memory Engine
+// ============================================================================
+
+namespace {
+
+enum class SparseMode : std::uint8_t {
+    None = 0,
+    AliasPhys = 1, // AliasRegion (64 GiB) + svcMapPhysicalMemory
+    StackMap = 2,  // StackRegion + svcMapMemory from pre-allocated heap pool
+};
+
+struct SparseRegion {
+    std::atomic<bool> active{false};
+    SparseMode mode{SparseMode::None};
+    std::uintptr_t vbase{0};
+    std::size_t vsize{0};
+    std::size_t chunk_size{0};
+    std::size_t num_chunks{0};
+    std::atomic<std::uint8_t>* mapped{nullptr};
+    std::uint32_t* mapped_slot{nullptr}; // 1-based pool slot for StackMap
+    u8* pool_base{nullptr};
+    std::size_t pool_chunks{0};
+    std::size_t pool_used{0};
+    std::size_t mapped_chunks{0};
+    VirtmemReservation* reservation{nullptr};
+    char tag[32]{};
+};
+
+constexpr std::size_t kMaxSparseRegions = 16;
+SparseRegion g_sparse_regions[kMaxSparseRegions]{};
+std::atomic_flag g_sparse_fault_lock = ATOMIC_FLAG_INIT;
+Mutex g_sparse_mgmt_mutex{};
+bool g_sparse_inited = false;
+bool g_sparse_alias_phys_ok = false;
+bool g_sparse_fault_ok = false;
+u64 g_sparse_total_mem = 0;
+u64 g_sparse_used_mem = 0;
+u64 g_sparse_stack_base = 0;
+u64 g_sparse_stack_size = 0;
+u64 g_sparse_alias_base = 0;
+u64 g_sparse_alias_size = 0;
+u32 g_sparse_phys_rc = 0;
+char g_sparse_report[256] = "uninitialized";
+
+void LockFaultSpin() {
+    while (g_sparse_fault_lock.test_and_set(std::memory_order_acquire)) {
+    }
+}
+
+void UnlockFaultSpin() {
+    g_sparse_fault_lock.clear(std::memory_order_release);
+}
+
+bool OverlapsSparseRegion(std::uintptr_t start, std::size_t size) {
+    const std::uintptr_t end = start + size;
+    for (std::size_t i = 0; i < kMaxSparseRegions; ++i) {
+        if (!g_sparse_regions[i].active.load(std::memory_order_acquire)) {
+            continue;
+        }
+        const std::uintptr_t rs = g_sparse_regions[i].vbase;
+        const std::uintptr_t re = rs + g_sparse_regions[i].vsize;
+        if (start < re && rs < end) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::uintptr_t FindFreeAliasSlice(std::size_t size, std::size_t align) {
+    if (g_sparse_alias_base == 0 || g_sparse_alias_size < size + 2 * align) {
+        return 0;
+    }
+    const std::uintptr_t region_end = g_sparse_alias_base + g_sparse_alias_size;
+    std::uintptr_t cur = (g_sparse_alias_base + align - 1) & ~(align - 1);
+    while (cur + size + align <= region_end) {
+        MemoryInfo info{};
+        u32 page_info = 0;
+        if (R_FAILED(svcQueryMemory(&info, &page_info, cur))) {
+            return 0;
+        }
+        const std::uintptr_t info_end = info.addr + info.size;
+        if (info.type != MemType_Unmapped || info_end < cur + size + align) {
+            cur = (info_end + align - 1) & ~(align - 1);
+            continue;
+        }
+        if (OverlapsSparseRegion(cur, size + align)) {
+            cur += align;
+            continue;
+        }
+        return cur;
+    }
+    return 0;
+}
+
+void Switch2SparseInitUnlocked() {
+    if (g_sparse_inited) {
+        return;
+    }
+    g_sparse_inited = true;
+
+    const bool has_override = envHasHeapOverride();
+    svcGetInfo(&g_sparse_total_mem, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
+    svcGetInfo(&g_sparse_used_mem, InfoType_UsedMemorySize, CUR_PROCESS_HANDLE, 0);
+    svcGetInfo(&g_sparse_stack_base, InfoType_StackRegionAddress, CUR_PROCESS_HANDLE, 0);
+    svcGetInfo(&g_sparse_stack_size, InfoType_StackRegionSize, CUR_PROCESS_HANDLE, 0);
+    svcGetInfo(&g_sparse_alias_base, InfoType_AliasRegionAddress, CUR_PROCESS_HANDLE, 0);
+    svcGetInfo(&g_sparse_alias_size, InfoType_AliasRegionSize, CUR_PROCESS_HANDLE, 0);
+    u64 alias_extra = 0;
+    if (R_SUCCEEDED(svcGetInfo(&alias_extra, InfoType_AliasRegionExtraSize, CUR_PROCESS_HANDLE, 0)) &&
+        alias_extra < g_sparse_alias_size) {
+        g_sparse_alias_size -= alias_extra;
+    }
+
+    // Probe svcMapPhysicalMemory in AliasRegion (64 KiB test).
+    const std::uintptr_t alias_probe = FindFreeAliasSlice(0x10000, 0x200000);
+    if (alias_probe != 0) {
+        const Result rc = svcMapPhysicalMemory(reinterpret_cast<void*>(alias_probe), 0x10000);
+        g_sparse_phys_rc = rc;
+        if (R_SUCCEEDED(rc)) {
+            svcUnmapPhysicalMemory(reinterpret_cast<void*>(alias_probe), 0x10000);
+            g_sparse_alias_phys_ok = true;
+        }
+    }
+
+    // Self-test our per-thread DataAbort demand-pager on a 64 KiB region.
+    {
+        auto& r = g_sparse_regions[kMaxSparseRegions - 1];
+        r.mode = SparseMode::None;
+        r.vbase = 0;
+        r.vsize = 0x10000;
+        r.chunk_size = 0x10000;
+        r.num_chunks = 1;
+        r.mapped = static_cast<std::atomic<std::uint8_t>*>(std::calloc(1, sizeof(std::atomic<std::uint8_t>)));
+        r.mapped_slot = nullptr;
+        r.pool_base = nullptr;
+        r.pool_chunks = 0;
+        r.pool_used = 0;
+        r.mapped_chunks = 0;
+        r.reservation = nullptr;
+
+        if (r.mapped != nullptr) {
+            if (g_sparse_alias_phys_ok && alias_probe != 0) {
+                r.mode = SparseMode::AliasPhys;
+                r.vbase = alias_probe;
+            } else if (g_sparse_stack_size >= 0x400000) {
+                virtmemLock();
+                void* sv = virtmemFindStack(0x10000, 0x10000);
+                VirtmemReservation* rv = sv ? virtmemAddReservation(sv, 0x10000) : nullptr;
+                virtmemUnlock();
+                u8* pool = static_cast<u8*>(memalign(0x1000, 0x10000));
+                if (sv != nullptr && rv != nullptr && pool != nullptr) {
+                    r.mode = SparseMode::StackMap;
+                    r.vbase = reinterpret_cast<std::uintptr_t>(sv);
+                    r.reservation = rv;
+                    r.pool_base = pool;
+                    r.pool_chunks = 1;
+                    r.mapped_slot = static_cast<std::uint32_t*>(std::calloc(1, sizeof(std::uint32_t)));
+                } else {
+                    if (rv) {
+                        virtmemLock();
+                        virtmemRemoveReservation(rv);
+                        virtmemUnlock();
+                    }
+                    std::free(pool);
+                }
+            }
+
+            if (r.mode != SparseMode::None && r.vbase != 0) {
+                r.active.store(true, std::memory_order_release);
+                volatile std::uint64_t* test_ptr = reinterpret_cast<volatile std::uint64_t*>(r.vbase + 0x120);
+                *test_ptr = 0x123456789ABCDEF0ULL;
+                const std::uint64_t readback = *test_ptr;
+                r.active.store(false, std::memory_order_release);
+                if (r.mapped[0].load(std::memory_order_acquire) != 0) {
+                    if (r.mode == SparseMode::AliasPhys) {
+                        svcUnmapPhysicalMemory(reinterpret_cast<void*>(r.vbase), 0x10000);
+                    } else if (r.mode == SparseMode::StackMap && r.mapped_slot && r.mapped_slot[0] != 0) {
+                        svcUnmapMemory(reinterpret_cast<void*>(r.vbase), r.pool_base, 0x10000);
+                    }
+                }
+                if (readback == 0x123456789ABCDEF0ULL) {
+                    g_sparse_fault_ok = true;
+                }
+            }
+
+            if (r.reservation) {
+                virtmemLock();
+                virtmemRemoveReservation(r.reservation);
+                virtmemUnlock();
+                r.reservation = nullptr;
+            }
+            std::free(r.pool_base);
+            r.pool_base = nullptr;
+            std::free(r.mapped_slot);
+            r.mapped_slot = nullptr;
+            std::free(r.mapped);
+            r.mapped = nullptr;
+            r.vbase = 0;
+            r.mode = SparseMode::None;
+        }
+    }
+
+    std::snprintf(g_sparse_report, sizeof(g_sparse_report),
+                  "env_override=%d total=%lluMiB used=%lluMiB heap=%lluMiB free=%lluMiB "
+                  "stack=%lluMiB alias=%lluMiB phys_rc=0x%x phys_ok=%d fault_ok=%d",
+                  has_override ? 1 : 0,
+                  static_cast<unsigned long long>(g_sparse_total_mem >> 20),
+                  static_cast<unsigned long long>(g_sparse_used_mem >> 20),
+                  static_cast<unsigned long long>(heapGetTotalSize() >> 20),
+                  static_cast<unsigned long long>(heapGetFreeSize() >> 20),
+                  static_cast<unsigned long long>(g_sparse_stack_size >> 20),
+                  static_cast<unsigned long long>(g_sparse_alias_size >> 20),
+                  static_cast<unsigned int>(g_sparse_phys_rc),
+                  g_sparse_alias_phys_ok ? 1 : 0,
+                  g_sparse_fault_ok ? 1 : 0);
+}
+
+} // namespace
+
+extern "C" {
+
+void __libnx_initheap(void) {
+    void* addr = nullptr;
+    size_t size = 0;
+
+    if (envHasHeapOverride()) {
+        addr = envGetHeapOverrideAddr();
+        size = envGetHeapOverrideSize();
+    } else {
+        u64 mem_available = 0;
+        u64 mem_used = 0;
+        svcGetInfo(&mem_available, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
+        svcGetInfo(&mem_used, InfoType_UsedMemorySize, CUR_PROCESS_HANDLE, 0);
+        size_t avail = 0;
+        if (mem_available > mem_used + 0x200000ULL) {
+            avail = static_cast<size_t>((mem_available - mem_used - 0x200000ULL) & ~0x1FFFFFULL);
+        }
+        if (avail == 0) {
+            avail = 0x2000000ULL * 16;
+        }
+        // On Switch 2 (title override, ~8.7 GiB available), cap mimalloc's heap at 3.5 GiB
+        // so ~5.2 GiB remains unallocated for svcMapPhysicalMemory demand-paged 12 GiB DRAM.
+        if (avail >= (6ULL << 30)) {
+            size = 3584ULL << 20;
+        } else {
+            size = avail;
+        }
+        Result rc = svcSetHeapSize(&addr, size);
+        if (R_FAILED(rc) && size != avail) {
+            size = avail;
+            rc = svcSetHeapSize(&addr, size);
+        }
+        if (R_FAILED(rc)) {
+            diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_HeapAllocFailed));
+        }
+    }
+
+    extern char* fake_heap_start;
+    extern char* fake_heap_end;
+    fake_heap_start = static_cast<char*>(addr);
+    fake_heap_end = static_cast<char*>(addr) + size;
+}
+
+__attribute__((used, noinline)) int Switch2TryHandlePageFault(std::uint64_t far) {
+    for (std::size_t i = 0; i < kMaxSparseRegions; ++i) {
+        auto& r = g_sparse_regions[i];
+        if (!r.active.load(std::memory_order_acquire)) {
+            continue;
+        }
+        if (far < r.vbase || far >= r.vbase + r.vsize) {
+            continue;
+        }
+        const std::size_t idx = (far - r.vbase) / r.chunk_size;
+        LockFaultSpin();
+        if (!r.active.load(std::memory_order_relaxed)) {
+            UnlockFaultSpin();
+            return 0;
+        }
+        if (r.mapped[idx].load(std::memory_order_relaxed) != 0) {
+            UnlockFaultSpin();
+            return 1;
+        }
+        void* const dst = reinterpret_cast<void*>(r.vbase + idx * r.chunk_size);
+        if (r.mode == SparseMode::AliasPhys) {
+            const Result rc = svcMapPhysicalMemory(dst, r.chunk_size);
+            if (R_FAILED(rc)) {
+                UnlockFaultSpin();
+                return 0;
+            }
+            r.mapped[idx].store(1, std::memory_order_release);
+            ++r.mapped_chunks;
+            UnlockFaultSpin();
+            return 1;
+        }
+        if (r.mode == SparseMode::StackMap) {
+            if (r.pool_used >= r.pool_chunks) {
+                UnlockFaultSpin();
+                return 0;
+            }
+            const std::size_t slot = r.pool_used++;
+            void* const src = r.pool_base + slot * r.chunk_size;
+            std::memset(src, 0, r.chunk_size);
+            const Result rc = svcMapMemory(dst, src, r.chunk_size);
+            if (R_FAILED(rc)) {
+                --r.pool_used;
+                UnlockFaultSpin();
+                return 0;
+            }
+            r.mapped_slot[idx] = static_cast<std::uint32_t>(slot + 1);
+            r.mapped[idx].store(1, std::memory_order_release);
+            ++r.mapped_chunks;
+            UnlockFaultSpin();
+            return 1;
+        }
+        UnlockFaultSpin();
+        return 0;
+    }
+    return 0;
+}
+
+void* Switch2SparseAlloc(std::size_t virtual_size, std::size_t chunk_size,
+                         std::size_t physical_budget, const char* tag) {
+    mutexLock(&g_sparse_mgmt_mutex);
+    Switch2SparseInitUnlocked();
+    if (!g_sparse_fault_ok || virtual_size == 0 || chunk_size < 0x1000) {
+        mutexUnlock(&g_sparse_mgmt_mutex);
+        return nullptr;
+    }
+    virtual_size = (virtual_size + chunk_size - 1) & ~(chunk_size - 1);
+    const std::size_t num_chunks = virtual_size / chunk_size;
+
+    // Find a free region slot.
+    SparseRegion* slot = nullptr;
+    for (std::size_t i = 0; i < kMaxSparseRegions; ++i) {
+        if (!g_sparse_regions[i].active.load(std::memory_order_acquire) &&
+            g_sparse_regions[i].vbase == 0) {
+            slot = &g_sparse_regions[i];
+            break;
+        }
+    }
+    if (slot == nullptr) {
+        mutexUnlock(&g_sparse_mgmt_mutex);
+        return nullptr;
+    }
+
+    auto* mapped = static_cast<std::atomic<std::uint8_t>*>(
+        std::calloc(num_chunks, sizeof(std::atomic<std::uint8_t>)));
+    if (mapped == nullptr) {
+        mutexUnlock(&g_sparse_mgmt_mutex);
+        return nullptr;
+    }
+
+    // Path B (preferred): AliasRegion (64 GiB) + svcMapPhysicalMemory.
+    if (g_sparse_alias_phys_ok && g_sparse_alias_size >= virtual_size + (64ULL << 20)) {
+        const std::uintptr_t vbase = FindFreeAliasSlice(virtual_size, 0x200000);
+        if (vbase != 0) {
+            slot->mode = SparseMode::AliasPhys;
+            slot->vbase = vbase;
+            slot->vsize = virtual_size;
+            slot->chunk_size = chunk_size;
+            slot->num_chunks = num_chunks;
+            slot->mapped = mapped;
+            slot->mapped_slot = nullptr;
+            slot->pool_base = nullptr;
+            slot->pool_chunks = 0;
+            slot->pool_used = 0;
+            slot->mapped_chunks = 0;
+            slot->reservation = nullptr;
+            std::snprintf(slot->tag, sizeof(slot->tag), "%s", tag ? tag : "sparse");
+            slot->active.store(true, std::memory_order_release);
+            mutexUnlock(&g_sparse_mgmt_mutex);
+            return reinterpret_cast<void*>(vbase);
+        }
+    }
+
+    // Path A: StackRegion + svcMapMemory from pre-allocated heap pool.
+    if (g_sparse_stack_size >= virtual_size + (64ULL << 20)) {
+        const u64 free_heap = heapGetFreeSize();
+        constexpr u64 kKeepFree = 1536ULL << 20;
+        const std::size_t max_budget =
+            free_heap > kKeepFree ? static_cast<std::size_t>(free_heap - kKeepFree) : 0;
+        std::size_t budget = physical_budget;
+        if (budget > max_budget) {
+            budget = max_budget;
+        }
+        budget &= ~(chunk_size - 1);
+        if (budget >= chunk_size * 4) {
+            virtmemLock();
+            void* sv = virtmemFindStack(virtual_size, 0x200000);
+            VirtmemReservation* rv = sv ? virtmemAddReservation(sv, virtual_size) : nullptr;
+            virtmemUnlock();
+            u8* pool = (sv && rv) ? static_cast<u8*>(memalign(0x1000, budget)) : nullptr;
+            auto* mslot = (sv && rv && pool)
+                              ? static_cast<std::uint32_t*>(std::calloc(num_chunks, sizeof(std::uint32_t)))
+                              : nullptr;
+            if (sv && rv && pool && mslot) {
+                slot->mode = SparseMode::StackMap;
+                slot->vbase = reinterpret_cast<std::uintptr_t>(sv);
+                slot->vsize = virtual_size;
+                slot->chunk_size = chunk_size;
+                slot->num_chunks = num_chunks;
+                slot->mapped = mapped;
+                slot->mapped_slot = mslot;
+                slot->pool_base = pool;
+                slot->pool_chunks = budget / chunk_size;
+                slot->pool_used = 0;
+                slot->mapped_chunks = 0;
+                slot->reservation = rv;
+                std::snprintf(slot->tag, sizeof(slot->tag), "%s", tag ? tag : "sparse");
+                slot->active.store(true, std::memory_order_release);
+                mutexUnlock(&g_sparse_mgmt_mutex);
+                return sv;
+            }
+            if (rv) {
+                virtmemLock();
+                virtmemRemoveReservation(rv);
+                virtmemUnlock();
+            }
+            std::free(pool);
+            std::free(mslot);
+        }
+    }
+
+    std::free(mapped);
+    mutexUnlock(&g_sparse_mgmt_mutex);
+    return nullptr;
+}
+
+bool Switch2SparseFree(void* base) {
+    if (base == nullptr) {
+        return false;
+    }
+    const std::uintptr_t addr = reinterpret_cast<std::uintptr_t>(base);
+    mutexLock(&g_sparse_mgmt_mutex);
+    for (std::size_t i = 0; i < kMaxSparseRegions; ++i) {
+        auto& r = g_sparse_regions[i];
+        if (!r.active.load(std::memory_order_acquire) || r.vbase != addr) {
+            continue;
+        }
+        LockFaultSpin();
+        r.active.store(false, std::memory_order_release);
+        UnlockFaultSpin();
+
+        for (std::size_t c = 0; c < r.num_chunks; ++c) {
+            if (r.mapped[c].load(std::memory_order_acquire) == 0) {
+                continue;
+            }
+            void* const dst = reinterpret_cast<void*>(r.vbase + c * r.chunk_size);
+            if (r.mode == SparseMode::AliasPhys) {
+                svcUnmapPhysicalMemory(dst, r.chunk_size);
+            } else if (r.mode == SparseMode::StackMap && r.mapped_slot != nullptr &&
+                       r.mapped_slot[c] != 0) {
+                void* const src = r.pool_base + static_cast<std::size_t>(r.mapped_slot[c] - 1) * r.chunk_size;
+                svcUnmapMemory(dst, src, r.chunk_size);
+            }
+        }
+        if (r.reservation != nullptr) {
+            virtmemLock();
+            virtmemRemoveReservation(r.reservation);
+            virtmemUnlock();
+            r.reservation = nullptr;
+        }
+        std::free(r.pool_base);
+        r.pool_base = nullptr;
+        std::free(r.mapped_slot);
+        r.mapped_slot = nullptr;
+        std::free(r.mapped);
+        r.mapped = nullptr;
+        r.vbase = 0;
+        r.vsize = 0;
+        r.mode = SparseMode::None;
+        mutexUnlock(&g_sparse_mgmt_mutex);
+        return true;
+    }
+    mutexUnlock(&g_sparse_mgmt_mutex);
+    return false;
+}
+
+bool Switch2SparseClearZero(void* addr, std::size_t size) {
+    if (addr == nullptr || size == 0) {
+        return false;
+    }
+    const std::uintptr_t start = reinterpret_cast<std::uintptr_t>(addr);
+    const std::uintptr_t end = start + size;
+    for (std::size_t i = 0; i < kMaxSparseRegions; ++i) {
+        auto& r = g_sparse_regions[i];
+        if (!r.active.load(std::memory_order_acquire)) {
+            continue;
+        }
+        if (start < r.vbase || end > r.vbase + r.vsize) {
+            continue;
+        }
+        const std::size_t first_chunk = (start - r.vbase) / r.chunk_size;
+        const std::size_t last_chunk = (end - 1 - r.vbase) / r.chunk_size;
+        for (std::size_t c = first_chunk; c <= last_chunk; ++c) {
+            if (r.mapped[c].load(std::memory_order_acquire) == 0) {
+                continue;
+            }
+            const std::uintptr_t cs = r.vbase + c * r.chunk_size;
+            const std::uintptr_t ce = cs + r.chunk_size;
+            const std::uintptr_t zs = start > cs ? start : cs;
+            const std::uintptr_t ze = end < ce ? end : ce;
+            if (ze > zs) {
+                std::memset(reinterpret_cast<void*>(zs), 0, ze - zs);
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool Switch2IsSparseUnmapped(const void* addr) {
+    if (addr == nullptr) {
+        return false;
+    }
+    const std::uintptr_t a = reinterpret_cast<std::uintptr_t>(addr);
+    for (std::size_t i = 0; i < kMaxSparseRegions; ++i) {
+        const auto& r = g_sparse_regions[i];
+        if (!r.active.load(std::memory_order_acquire)) {
+            continue;
+        }
+        if (a < r.vbase || a >= r.vbase + r.vsize) {
+            continue;
+        }
+        const std::size_t idx = (a - r.vbase) / r.chunk_size;
+        return r.mapped[idx].load(std::memory_order_acquire) == 0;
+    }
+    return false;
+}
+
+bool Switch2SparseCanBackSize(std::size_t virtual_size) {
+    mutexLock(&g_sparse_mgmt_mutex);
+    Switch2SparseInitUnlocked();
+    const bool ok = g_sparse_fault_ok &&
+                    ((g_sparse_alias_phys_ok && g_sparse_alias_size >= virtual_size + (256ULL << 20)) ||
+                     (g_sparse_stack_size >= virtual_size + (256ULL << 20)));
+    mutexUnlock(&g_sparse_mgmt_mutex);
+    return ok;
+}
+
+const char* Switch2SparseGetReport(void) {
+    mutexLock(&g_sparse_mgmt_mutex);
+    Switch2SparseInitUnlocked();
+    mutexUnlock(&g_sparse_mgmt_mutex);
+    return g_sparse_report;
+}
+
+} // extern "C"
+
+// Per-thread DataAbort fast-path override for libounce's weak __libnx_exception_entry.
+// If the fault address belongs to a registered Switch2Sparse region, maps the chunk
+// and resumes execution via svcReturnFromException(0) with all registers intact.
+// Otherwise falls through verbatim to the standard libounce crash handler.
+asm(
+    ".section .text.__libnx_exception_entry, \"ax\", %progbits\n"
+    ".global __libnx_exception_entry\n"
+    ".type __libnx_exception_entry, %function\n"
+    ".align 2\n"
+    "__libnx_exception_entry:\n"
+    "    cmp x0, #0x101\n"
+    "    b.ne .Lsw2_exc_fallback\n"
+    "    cbz x1, .Lsw2_exc_fallback\n"
+    "    sub sp, sp, #720\n"
+    "    stp x0,  x1,  [sp, #0]\n"
+    "    stp x9,  x10, [sp, #16]\n"
+    "    stp x11, x12, [sp, #32]\n"
+    "    stp x13, x14, [sp, #48]\n"
+    "    stp x15, x16, [sp, #64]\n"
+    "    stp x17, x18, [sp, #80]\n"
+    "    stp x19, x20, [sp, #96]\n"
+    "    stp x21, x22, [sp, #112]\n"
+    "    stp x23, x24, [sp, #128]\n"
+    "    stp x25, x26, [sp, #144]\n"
+    "    stp x27, x28, [sp, #160]\n"
+    "    stp x29, x30, [sp, #176]\n"
+    "    mrs x9, fpcr\n"
+    "    mrs x10, fpsr\n"
+    "    stp x9,  x10, [sp, #192]\n"
+    "    stp q0,  q1,  [sp, #208]\n"
+    "    stp q2,  q3,  [sp, #240]\n"
+    "    stp q4,  q5,  [sp, #272]\n"
+    "    stp q6,  q7,  [sp, #304]\n"
+    "    stp q8,  q9,  [sp, #336]\n"
+    "    stp q10, q11, [sp, #368]\n"
+    "    stp q12, q13, [sp, #400]\n"
+    "    stp q14, q15, [sp, #432]\n"
+    "    stp q16, q17, [sp, #464]\n"
+    "    stp q18, q19, [sp, #496]\n"
+    "    stp q20, q21, [sp, #528]\n"
+    "    stp q22, q23, [sp, #560]\n"
+    "    stp q24, q25, [sp, #592]\n"
+    "    stp q26, q27, [sp, #624]\n"
+    "    stp q28, q29, [sp, #656]\n"
+    "    stp q30, q31, [sp, #688]\n"
+    "    ldr x0, [x1, #0x70]\n"
+    "    bl Switch2TryHandlePageFault\n"
+    "    mov w2, w0\n"
+    "    ldp q0,  q1,  [sp, #208]\n"
+    "    ldp q2,  q3,  [sp, #240]\n"
+    "    ldp q4,  q5,  [sp, #272]\n"
+    "    ldp q6,  q7,  [sp, #304]\n"
+    "    ldp q8,  q9,  [sp, #336]\n"
+    "    ldp q10, q11, [sp, #368]\n"
+    "    ldp q12, q13, [sp, #400]\n"
+    "    ldp q14, q15, [sp, #432]\n"
+    "    ldp q16, q17, [sp, #464]\n"
+    "    ldp q18, q19, [sp, #496]\n"
+    "    ldp q20, q21, [sp, #528]\n"
+    "    ldp q22, q23, [sp, #560]\n"
+    "    ldp q24, q25, [sp, #592]\n"
+    "    ldp q26, q27, [sp, #624]\n"
+    "    ldp q28, q29, [sp, #656]\n"
+    "    ldp q30, q31, [sp, #688]\n"
+    "    ldp x9,  x10, [sp, #192]\n"
+    "    msr fpcr, x9\n"
+    "    msr fpsr, x10\n"
+    "    ldp x9,  x10, [sp, #16]\n"
+    "    ldp x11, x12, [sp, #32]\n"
+    "    ldp x13, x14, [sp, #48]\n"
+    "    ldp x15, x16, [sp, #64]\n"
+    "    ldp x17, x18, [sp, #80]\n"
+    "    ldp x19, x20, [sp, #96]\n"
+    "    ldp x21, x22, [sp, #112]\n"
+    "    ldp x23, x24, [sp, #128]\n"
+    "    ldp x25, x26, [sp, #144]\n"
+    "    ldp x27, x28, [sp, #160]\n"
+    "    ldp x29, x30, [sp, #176]\n"
+    "    ldp x0,  x1,  [sp, #0]\n"
+    "    add sp, sp, #720\n"
+    "    cbz w2, .Lsw2_exc_fallback\n"
+    "    mov w0, wzr\n"
+    "    svc #0x28\n"
+    "    b .\n"
+    ".Lsw2_exc_fallback:\n"
+    "    cmp x1, #0\n"
+    "    beq .Lsw2_exc_abort\n"
+    "    adrp x5, :got:__libnx_exception_handler\n"
+    "    ldr x5, [x5, #:got_lo12:__libnx_exception_handler]\n"
+    "    cmp x5, #0\n"
+    "    beq .Lsw2_exc_abort\n"
+    "    stp x9, x10, [sp, #-16]!\n"
+    "    stp x11, x12, [sp, #-16]!\n"
+    "    stp x13, x14, [sp, #-16]!\n"
+    "    stp x15, x16, [sp, #-16]!\n"
+    "    stp x17, x18, [sp, #-16]!\n"
+    "    stp x19, x20, [sp, #-16]!\n"
+    "    str x21, [sp, #-16]!\n"
+    "    stp x0, x1, [sp, #-16]!\n"
+    "    sub sp, sp, #16\n"
+    "    mov x0, sp\n"
+    "    mov x1, #8\n"
+    "    mov w2, wzr\n"
+    "    mov x3, #0\n"
+    "    bl svcGetInfo\n"
+    "    mov w6, w0\n"
+    "    ldr x7, [sp], #16\n"
+    "    ldp x0, x1, [sp], #16\n"
+    "    ldr x21, [sp], #16\n"
+    "    ldp x19, x20, [sp], #16\n"
+    "    ldp x17, x18, [sp], #16\n"
+    "    ldp x15, x16, [sp], #16\n"
+    "    ldp x13, x14, [sp], #16\n"
+    "    ldp x11, x12, [sp], #16\n"
+    "    ldp x9, x10, [sp], #16\n"
+    "    cbnz w6, .Lsw2_exc_abort\n"
+    "    adrp x6, __nx_exception_ignoredebug\n"
+    "    ldr  w5, [x6, #:lo12:__nx_exception_ignoredebug]\n"
+    "    cbnz w5, .Lsw2_exc_start\n"
+    "    cbnz x7, .Lsw2_exc_abort\n"
+    ".Lsw2_exc_start:\n"
+    "    adrp x2, __nx_exceptiondump\n"
+    "    add  x2, x2, #:lo12:__nx_exceptiondump\n"
+    "    mov x5, x2\n"
+    "    str w0, [x2], #4\n"
+    "    str wzr, [x2], #4\n"
+    "    str wzr, [x2], #4\n"
+    "    str wzr, [x2], #4\n"
+    "    ldp x3, x4, [x1]\n"
+    "    str x5, [x1], #16\n"
+    "    stp x3, x4, [x2], #16\n"
+    "    ldp x3, x4, [x1], #16\n"
+    "    stp x3, x4, [x2], #16\n"
+    "    ldp x3, x4, [x1], #16\n"
+    "    stp x3, x4, [x2], #16\n"
+    "    ldp x3, x4, [x1], #16\n"
+    "    stp x3, x4, [x2], #16\n"
+    "    ldr x3, [x1], #8\n"
+    "    str x3, [x2], #8\n"
+    "    str x9, [x2], #8\n"
+    "    stp x10, x11, [x2], #16\n"
+    "    stp x12, x13, [x2], #16\n"
+    "    stp x14, x15, [x2], #16\n"
+    "    stp x16, x17, [x2], #16\n"
+    "    stp x18, x19, [x2], #16\n"
+    "    stp x20, x21, [x2], #16\n"
+    "    stp x22, x23, [x2], #16\n"
+    "    stp x24, x25, [x2], #16\n"
+    "    stp x26, x27, [x2], #16\n"
+    "    str x28, [x2], #8\n"
+    "    str x29, [x2], #8\n"
+    "    ldr x3, [x1], #8\n"
+    "    str x3, [x2], #8\n"
+    "    adrp x4, __nx_exception_stack\n"
+    "    add  x4, x4, #:lo12:__nx_exception_stack\n"
+    "    adrp x5, __nx_exception_stack_size\n"
+    "    ldr  x5, [x5, #:lo12:__nx_exception_stack_size]\n"
+    "    add x4, x4, x5\n"
+    "    ldr x3, [x1]\n"
+    "    str x4, [x1], #8\n"
+    "    str x3, [x2], #8\n"
+    "    adrp x4, .Lsw2_exc_returnentry\n"
+    "    add  x4, x4, #:lo12:.Lsw2_exc_returnentry\n"
+    "    ldr x3, [x1]\n"
+    "    str x4, [x1], #8\n"
+    "    str x3, [x2], #8\n"
+    "    str xzr, [x2], #8\n"
+    "    stp q0, q1, [x2], #32\n"
+    "    stp q2, q3, [x2], #32\n"
+    "    stp q4, q5, [x2], #32\n"
+    "    stp q6, q7, [x2], #32\n"
+    "    stp q8, q9, [x2], #32\n"
+    "    stp q10, q11, [x2], #32\n"
+    "    stp q12, q13, [x2], #32\n"
+    "    stp q14, q15, [x2], #32\n"
+    "    stp q16, q17, [x2], #32\n"
+    "    stp q18, q19, [x2], #32\n"
+    "    stp q20, q21, [x2], #32\n"
+    "    stp q22, q23, [x2], #32\n"
+    "    stp q24, q25, [x2], #32\n"
+    "    stp q26, q27, [x2], #32\n"
+    "    stp q28, q29, [x2], #32\n"
+    "    stp q30, q31, [x2], #32\n"
+    "    ldr w3, [x1], #4\n"
+    "    str w3, [x2], #4\n"
+    "    ldr w3, [x1], #4\n"
+    "    str w3, [x2], #4\n"
+    "    ldr w3, [x1], #4\n"
+    "    str w3, [x2], #4\n"
+    "    ldr w3, [x1], #4\n"
+    "    str w3, [x2], #4\n"
+    "    ldr x3, [x1], #8\n"
+    "    str x3, [x2], #8\n"
+    "    mov w0, wzr\n"
+    "    b .Lsw2_exc_end\n"
+    ".Lsw2_exc_abort:\n"
+    "    mov w0, #0xf801\n"
+    ".Lsw2_exc_end:\n"
+    "    bl svcReturnFromException\n"
+    "    b .\n"
+    ".Lsw2_exc_returnentry:\n"
+    "    bl __libnx_exception_handler\n"
+    "    mov w0, wzr\n"
+    "    mov x1, #0\n"
+    "    mov x2, #0\n"
+    "    bl svcBreak\n"
+    "    b .\n"
+);
 
 #endif

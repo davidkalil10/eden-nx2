@@ -78,8 +78,12 @@
 #undef CreateEvent
 
 #ifdef __SWITCH2__
-extern "C" void __attribute__((weak)) Switch2GetMemoryStats(std::uint64_t* out_used,
-                                                             std::uint64_t* out_total);
+extern "C" {
+void __attribute__((weak)) Switch2GetMemoryStats(std::uint64_t* out_used,
+                                                 std::uint64_t* out_total);
+bool __attribute__((weak)) Switch2SparseCanBackSize(std::size_t virtual_size);
+const char* __attribute__((weak)) Switch2SparseGetReport(void);
+}
 #endif
 
 namespace Core {
@@ -148,6 +152,13 @@ bool IsSwitch2Program(const FileSys::VirtualFile& file, u64 program_id, std::siz
 
 Settings::MemoryLayout SelectSwitch2MemoryLayout() {
 #ifdef __SWITCH2__
+    if (Switch2SparseGetReport != nullptr) {
+        LOG_INFO(Core, "Switch 2 sparse memory status: {}", Switch2SparseGetReport());
+    }
+    if (Switch2SparseCanBackSize != nullptr && Switch2SparseCanBackSize(12ULL << 30)) {
+        LOG_INFO(Core, "Switch 2 sparse demand-paging active: selecting Memory_12Gb");
+        return Settings::MemoryLayout::Memory_12Gb;
+    }
     if (Switch2GetMemoryStats != nullptr) {
         std::uint64_t used = 0;
         std::uint64_t total = 0;
