@@ -87,6 +87,16 @@ void ServiceFrameworkBase::InvokeRequest(HLERequestContext& ctx) {
 
     LOG_TRACE(Service, "{}", MakeFunctionString(info->name, GetServiceName(), ctx.CommandBuffer()));
     handler_invoker(this, info->handler_callback, ctx);
+    if (Settings::CurrentProgramIsSwitch2()) {
+        const u32 off = ctx.GetDataPayloadOffset();
+        if (off < IPC::COMMAND_BUFFER_LENGTH) {
+            const u32 res = ctx.CommandBuffer()[off];
+            if (res != 0) {
+                LOG_WARNING(Service, "Switch2 {}::{} returned Result={:#x}", service_name,
+                            info->name, res);
+            }
+        }
+    }
 }
 
 void ServiceFrameworkBase::InvokeRequestTipc(HLERequestContext& ctx) {
@@ -97,6 +107,16 @@ void ServiceFrameworkBase::InvokeRequestTipc(HLERequestContext& ctx) {
 
     LOG_TRACE(Service, "{}", MakeFunctionString(info->name, GetServiceName(), ctx.CommandBuffer()));
     handler_invoker(this, info->handler_callback, ctx);
+    if (Settings::CurrentProgramIsSwitch2()) {
+        const u32 off = ctx.GetDataPayloadOffset();
+        if (off < IPC::COMMAND_BUFFER_LENGTH) {
+            const u32 res = ctx.CommandBuffer()[off];
+            if (res != 0) {
+                LOG_WARNING(Service, "Switch2 {}::{} returned Result={:#x}", service_name,
+                            info->name, res);
+            }
+        }
+    }
 }
 
 Result ServiceFrameworkBase::HandleSyncRequest(Kernel::KServerSession& session,

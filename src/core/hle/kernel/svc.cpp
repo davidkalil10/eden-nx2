@@ -2534,6 +2534,31 @@ void Call(Core::System& system, u32 imm) {
         } else {
             Call64(system, imm, args);
         }
+        if (process.IsSwitch2()) {
+            const u32 svc_res = static_cast<u32>(GetArg64(args, 0));
+            if (svc_res != 0) {
+                switch (imm) {
+                case 0x01:
+                case 0x02:
+                case 0x03:
+                case 0x04:
+                case 0x05:
+                case 0x06:
+                case 0x13:
+                case 0x15:
+                case 0x21:
+                case 0x29:
+                case 0x2C:
+                case 0x2D:
+                case 0x33:
+                case 0x80:
+                    LOG_WARNING(Kernel_SVC, "Switch2 SVC {:#x} returned {:#x}", imm, svc_res);
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
     } else {
         Call32(system, imm, args);
     }
