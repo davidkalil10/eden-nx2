@@ -5,8 +5,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
-#include <fmt/ranges.h>
 #include <array>
+#include <format>
+#include <string>
 #include <vector>
 #include <boost/container/small_vector.hpp>
 
@@ -104,8 +105,15 @@ bool ShaderCache::RefreshStages(std::array<u64, 6>& unique_hashes) try {
             if (!buffer.enabled) continue;
             std::array<u32, 24> words{};
             gpu_memory->ReadBlockUnsafe(buffer.address, words.data(), sizeof(words));
-            LOG_INFO(HW_GPU, "VS cbuf {} at {:#x} size {:#x}: {:08x}", slot, buffer.address, buffer.size,
-                     fmt::join(words, " "));
+            std::string words_str;
+            for (size_t i = 0; i < words.size(); ++i) {
+                if (i > 0) {
+                    words_str += ' ';
+                }
+                words_str += std::format("{:08x}", words[i]);
+            }
+            LOG_INFO(HW_GPU, "VS cbuf {} at {:#x} size {:#x}: {}", slot, buffer.address, buffer.size,
+                     words_str);
         }
     }
     return false;

@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <thread>
 #include <filesystem>
+#include <format>
 #include <cstring>
 #include <fstream>
 #include <memory>
@@ -340,7 +341,7 @@ void GenericEnvironment::InitializeNativeCode(u32 source_header_size) {
         const auto status = capture.Observe(instruction, index);
         if (status == Shader::Ampere::ProgramCaptureState::Result::InvalidTarget) {
             if (const char* dir = std::getenv("EDEN_NX2_SHADER_DUMP")) {
-                const auto path = fmt::format("{}/rejected-{:x}.bin", dir, program_base + native_header_size);
+                const auto path = std::format("{}/rejected-{:x}.bin", dir, program_base + native_header_size);
                 if (std::FILE* file = std::fopen(path.c_str(), "wb")) {
                     std::fwrite(native.data(), sizeof(Instruction), std::min<size_t>(native.size(), 4096), file);
                     std::fclose(file);
@@ -359,7 +360,7 @@ void GenericEnvironment::InitializeNativeCode(u32 source_header_size) {
     if (static const char* const dump_directory = std::getenv("EDEN_NX2_SHADER_DUMP");
         dump_directory != nullptr) {
         const auto folder = std::filesystem::path{dump_directory};
-        const auto path = folder / fmt::format("{:016x}-{}-{:x}.bin", Shader::Ampere::NativeProgramKey(native),
+        const auto path = folder / std::format("{:016x}-{}-{:x}.bin", Shader::Ampere::NativeProgramKey(native),
                                                source_header_size == 0 ? "cs" : "gfx", program_base);
         if (!std::filesystem::exists(path)) {
             std::filesystem::create_directories(folder);
@@ -370,7 +371,7 @@ void GenericEnvironment::InitializeNativeCode(u32 source_header_size) {
     }
     if (!lowered) {
         if (const char* directory = std::getenv("EDEN_NATIVE_SHADER_OVERRIDE_DIR")) {
-            const auto key = fmt::format("{:016x}", Shader::Ampere::NativeProgramKey(native));
+            const auto key = std::format("{:016x}", Shader::Ampere::NativeProgramKey(native));
             const auto folder = std::filesystem::path{directory};
             std::filesystem::create_directories(folder);
             const auto source_path = folder / (key + ".source.bin");
@@ -469,7 +470,7 @@ GraphicsEnvironment::GraphicsEnvironment(Tegra::Engines::Maxwell3D& maxwell3d_,
             if (table.enabled && table.size && table.size <= Tegra::Engines::Maxwell3D::Regs::MaxConstBufferSize) {
                 std::vector<u8> bytes(table.size);
                 gpu_memory->ReadBlock(table.address, bytes.data(), bytes.size());
-                std::ofstream dump(fmt::format("native-graphics-cbuf-{}-1.bin", static_cast<u32>(program)), std::ios::binary);
+                std::ofstream dump(std::format("native-graphics-cbuf-{}-1.bin", static_cast<u32>(program)), std::ios::binary);
                 dump.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
             }
         }

@@ -10,7 +10,9 @@
 #include <string>
 #include <cstdlib>
 #include <cstdio>
+#include <format>
 #include <initializer_list>
+#include <span>
 #include <atomic>
 #include <map>
 #include <optional>
@@ -161,7 +163,7 @@ private:
         LOG_WARNING(Service, "(STUBBED) nx2:syncpt TIPC 22 slot={:#x}, returning an event", slot);
         auto*& event = m_events[slot];
         if (event == nullptr) {
-            event = m_context.CreateEvent(fmt::format("nx2:syncpt:Slot{:x}", slot));
+            event = m_context.CreateEvent(std::format("nx2:syncpt:Slot{:x}", slot));
         }
         IPC::ResponseBuilder rb{ctx, 2, 1, 0};
         rb.Push(ResultSuccess);
@@ -185,7 +187,7 @@ private:
                   syncpoint, value, mode);
         auto*& event = m_events[slot];
         if (event == nullptr) {
-            event = m_context.CreateEvent(fmt::format("nx2:syncpt:Slot{:x}", slot));
+            event = m_context.CreateEvent(std::format("nx2:syncpt:Slot{:x}", slot));
         }
         if (syncpoint >= HostSyncpoints) {
             LOG_WARNING(Service, "nx2:syncpt TIPC 201 syncpoint {} out of range, signalling",
@@ -275,7 +277,7 @@ private:
     Kernel::KEvent* EventFor(u32 id) {
         id %= NumIds;
         if (m_events[id] == nullptr) {
-            m_events[id] = m_context.CreateEvent(fmt::format("nx2:gpu:Event{}", id));
+            m_events[id] = m_context.CreateEvent(std::format("nx2:gpu:Event{}", id));
         }
         return m_events[id];
     }
@@ -370,8 +372,15 @@ private:
     template <size_t Slot>
     void SubSlotJob(HLERequestContext& ctx) {
         const auto* w = ctx.CommandBuffer();
-        LOG_INFO(Service, "(STUBBED) nx2:gpu {} words {:08x} slot={}", ctx.GetCommand(),
-                 fmt::join(std::span<const u32>{w + 2, 18}, " "), w[Slot]);
+        std::string words_str;
+        for (size_t i = 0; i < 18; ++i) {
+            if (i > 0) {
+                words_str += ' ';
+            }
+            words_str += std::format("{:08x}", w[2 + i]);
+        }
+        LOG_INFO(Service, "(STUBBED) nx2:gpu {} words {} slot={}", ctx.GetCommand(), words_str,
+                 w[Slot]);
         EventFor(w[Slot])->Signal(system.Kernel());
         IPC::ResponseBuilder rb{ctx, 2};
         rb.Push(ResultSuccess);
@@ -676,7 +685,7 @@ private:
         const auto layout = Layout::DefaultFrameLayout(1280, 720);
         auto pixels = std::make_shared<std::vector<u8>>(layout.width * layout.height * 4);
         const std::string path =
-            fmt::format("{}/nx2-frame-{:05}.tga", directory, m_presents);
+            std::format("{}/nx2-frame-{:05}.tga", directory, m_presents);
         auto* pending = &m_capture_pending;
         system.GPU().Renderer().RequestScreenshot(
             pixels->data(),
@@ -721,7 +730,7 @@ private:
     void ReturnEvent(HLERequestContext& ctx) {
         LOG_WARNING(Service, "(STUBBED) nx2:vi2 TIPC {} [2]={:#x} [3]={:#x}, returning an event",
                     ctx.GetCommand(), ctx.CommandBuffer()[2], ctx.CommandBuffer()[3]);
-        auto* event = m_context.CreateEvent(fmt::format("nx2:vi2:Event{}", m_events.size()));
+        auto* event = m_context.CreateEvent(std::format("nx2:vi2:Event{}", m_events.size()));
         m_events.push_back(event);
         IPC::ResponseBuilder rb{ctx, 2, 1, 0};
         rb.Push(ResultSuccess);

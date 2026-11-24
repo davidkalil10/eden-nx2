@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstdio>
+#include <format>
 
 #include "common/settings.h"
 #include "core/core.h"
@@ -421,9 +422,9 @@ void DmaPusher::DumpCurrentEntry(const char* reason) {
                 const GPUVAddr address = header.addr + j * sizeof(u32);
                 const u32 gpu_value = memory_manager.Read<u32>(address);
                 const u32 cpu_value = system.ApplicationMemory().Read32(address);
-                gpu_line += fmt::format(" {:08x}", gpu_value);
+                gpu_line += std::format(" {:08x}", gpu_value);
                 cpu_line += gpu_value == cpu_value ? std::string(" ........")
-                                                   : fmt::format(" {:08x}", cpu_value);
+                                                   : std::format(" {:08x}", cpu_value);
             }
             LOG_WARNING(HW_GPU, "    +{:03x}:{}", word * 4, gpu_line);
             LOG_WARNING(HW_GPU, "    cpu :{}", cpu_line);

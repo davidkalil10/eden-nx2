@@ -16,10 +16,9 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
-
-#include <fmt/ranges.h>
 
 #include "audio_core/audio_core.h"
 #include "common/string_util.h"
@@ -605,8 +604,14 @@ private:
                 }
             }
         }
-        LOG_INFO(Service_Audio, "{} streams {}", engaged ? "engage" : "disengage",
-                 fmt::join(ids, ","));
+        std::string ids_str;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) {
+                ids_str += ',';
+            }
+            ids_str += std::to_string(ids[i]);
+        }
+        LOG_INFO(Service_Audio, "{} streams {}", engaged ? "engage" : "disengage", ids_str);
         IPC::ResponseBuilder rb{ctx, 2};
         rb.Push(ResultSuccess);
     }

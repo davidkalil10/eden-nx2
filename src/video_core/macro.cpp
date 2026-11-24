@@ -7,9 +7,12 @@
 #include <cstdlib>
 #include <unordered_set>
 #include <cstring>
+#include <format>
 #include <fstream>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 
 #include <fstream>
 #include <variant>
@@ -1350,8 +1353,15 @@ void MacroEngine::Execute(Core::System& system, Engines::Maxwell3D& maxwell3d, u
             std::ofstream dump("native-graphics-mme-" + std::to_string(context) + ".bin", std::ios::binary);
             dump.write(reinterpret_cast<const char*>(native_code.data()), sizeof(native_code));
         }
-        LOG_DEBUG(HW_GPU, "Native MME context={:#x}", context);
-        LOG_DEBUG(HW_GPU, "Native MME start={:#x}, parameters={}, data={:08x}", method, parameters.size(), fmt::join(parameters, ","));
+        if (static const bool trace = std::getenv("EDEN_NX2_METHOD_TRACE") != nullptr; trace) {
+            std::string params_str;
+            for (size_t i = 0; i < parameters.size(); ++i) {
+                if (i > 0) params_str += ',';
+                params_str += std::format("{:08x}", parameters[i]);
+            }
+            LOG_DEBUG(HW_GPU, "Native MME context={:#x}", context);
+            LOG_DEBUG(HW_GPU, "Native MME start={:#x}, parameters={}, data={}", method, parameters.size(), params_str);
+        }
         std::vector<u32> fifo(parameters.begin(), parameters.end());
         const auto result = native_interpreter.Execute(native_code, method, fifo,
             [&](u32 address) { return address < Maxwell3D::Regs::NUM_REGS ? maxwell3d.GetRegisterValue(address) : 0U; },
@@ -1376,9 +1386,14 @@ void MacroEngine::Execute(Core::System& system, Engines::Maxwell3D& maxwell3d, u
                     if (dma_logs < 400) {
                         ++dma_logs;
                         std::array<u32, 8> words{};
+                        std::string words_str;
                         for (u32 i = 0; i < std::min<u32>(value, 8); ++i) words[i] = memory.Read<u32>(source + u64{i} * 4);
-                        LOG_INFO(HW_GPU, "Native MME DMA read{} start={:#x} source={:#x} count={} words={:08x}",
-                                 address == DmaReadFifoed ? " fifoed" : "", method, source, value, fmt::join(words, ","));
+                        for (size_t i = 0; i < words.size(); ++i) {
+                            if (i > 0) words_str += ',';
+                            words_str += std::format("{:08x}", words[i]);
+                        }
+                        LOG_INFO(HW_GPU, "Native MME DMA read{} start={:#x} source={:#x} count={} words={}",
+                                 address == DmaReadFifoed ? " fifoed" : "", method, source, value, words_str);
                     }
                     for (u32 i = 0; i < std::min<u32>(value, 0x1000); ++i) {
                         const u32 word = memory.Read<u32>(source + u64{i} * 4);

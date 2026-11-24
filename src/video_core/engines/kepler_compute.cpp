@@ -8,8 +8,12 @@
 #include <atomic>
 #include <bitset>
 #include <cstdlib>
+#include <format>
 #include <fstream>
 #include <optional>
+#include <span>
+#include <string>
+#include <string_view>
 #include "common/assert.h"
 #include "common/logging.h"
 #include "shader_recompiler/exception.h"
@@ -23,6 +27,19 @@
 #include "video_core/textures/decoders.h"
 
 namespace Tegra::Engines {
+namespace {
+std::string JoinHex32(std::span<const u32> vals, std::string_view sep) {
+    std::string out;
+    out.reserve(vals.size() * (8 + sep.size()));
+    for (size_t i = 0; i < vals.size(); ++i) {
+        if (i > 0) {
+            out += sep;
+        }
+        out += std::format("{:08x}", vals[i]);
+    }
+    return out;
+}
+} // namespace
 
 KeplerCompute::KeplerCompute(MemoryManager& memory_manager_)
     : memory_manager{memory_manager_}
@@ -116,8 +133,8 @@ bool KeplerCompute::ProcessNativeMethod(Core::System& system, u32 method, u32 ar
         const bool watched = watch != 0 && std::ranges::any_of(native_parameters,
             [](u32 parameter) { return (parameter & ~0xfU) == watch; });
         if (watched) {
-            LOG_INFO(HW_GPU, "Semaphore watch: compute macro start={:#x} parameters={:08x}",
-                     native_macro_positions[entry], fmt::join(native_parameters, ","));
+            LOG_INFO(HW_GPU, "Semaphore watch: compute macro start={:#x} parameters={}",
+                     native_macro_positions[entry], JoinHex32(native_parameters, ","));
         }
         const auto result = native_macro->native_interpreter.Execute(native_macro->native_code,
             native_macro_positions[entry], native_parameters,
@@ -137,9 +154,9 @@ bool KeplerCompute::ProcessNativeMethod(Core::System& system, u32 method, u32 ar
                 std::ofstream dump("native-compute-mme.bin", std::ios::binary);
                 dump.write(reinterpret_cast<const char*>(native_macro->native_code.data()), sizeof(native_macro->native_code));
             }
-            LOG_ERROR(HW_GPU, "Native MME failed: compute start={:#x}, pc={:#x}, consumed={}/{}, error={}, parameters={:08x}",
+            LOG_ERROR(HW_GPU, "Native MME failed: compute start={:#x}, pc={:#x}, consumed={}/{}, error={}, parameters={}",
                 native_macro_positions[entry], result.pc, result.consumed, native_parameters.size(), result.error,
-                fmt::join(native_parameters, ","));
+                JoinHex32(native_parameters, ","));
         }
         native_parameters.clear();
         return true;
@@ -209,8 +226,8 @@ bool KeplerCompute::ProcessNativeMethod(Core::System& system, u32 method, u32 ar
                 memory_manager.ReadBlockUnsafe(qmd_address, descriptor.data(), sizeof(descriptor));
                 std::ofstream dump("native-increment-qmd.bin", std::ios::binary);
                 dump.write(reinterpret_cast<const char*>(descriptor.data()), sizeof(descriptor));
-                LOG_WARNING(HW_GPU, "Native increment dependency descriptor: address={:#x}, words={:08x}",
-                    qmd_address, fmt::join(descriptor, ","));
+                LOG_WARNING(HW_GPU, "Native increment dependency descriptor: address={:#x}, words={}",
+                    qmd_address, JoinHex32(descriptor, ","));
             }
         }
         const auto error = native_qmd.Signal(qmd_address, argument,
@@ -219,10 +236,10 @@ bool KeplerCompute::ProcessNativeMethod(Core::System& system, u32 method, u32 ar
                 memory_manager.ReadBlockUnsafe(address, descriptor.data(), sizeof(descriptor));
                 if (static u32 logged{}; (descriptor[53] & (1U << 23)) && logged < 8) {
                     ++logged;
-                    LOG_INFO(HW_GPU, "Native QMD {:#x} releases: {:08x} | {:08x} | {:08x}", address,
-                             fmt::join(std::span{descriptor}.subspan(24, 4), ","),
-                             fmt::join(std::span{descriptor}.subspan(28, 4), ","),
-                             fmt::join(std::span{descriptor}.subspan(52, 4), ","));
+                    LOG_INFO(HW_GPU, "Native QMD {:#x} releases: {} | {} | {}", address,
+                             JoinHex32(std::span<const u32>{descriptor}.subspan(24, 4), ","),
+                             JoinHex32(std::span<const u32>{descriptor}.subspan(28, 4), ","),
+                             JoinHex32(std::span<const u32>{descriptor}.subspan(52, 4), ","));
                 }
                 for (u32 slot = 0; slot < 2; ++slot) {
                     const u32 flags = descriptor[25 + slot * 4];
@@ -289,8 +306,8 @@ bool KeplerCompute::ProcessNativeMethod(Core::System& system, u32 method, u32 ar
             std::ofstream registers("native-dispatch-registers.bin", std::ios::binary);
             registers.write(reinterpret_cast<const char*>(native_registers.data()), sizeof(native_registers));
         }
-        LOG_ERROR(HW_GPU, "Native compute dispatch unsupported: method={:#x}, value={:#x}, QMD={:#x}, words={:08x}", method, argument,
-                  qmd_address, fmt::join(qmd, ","));
+        LOG_ERROR(HW_GPU, "Native compute dispatch unsupported: method={:#x}, value={:#x}, QMD={:#x}, words={}", method, argument,
+                  qmd_address, JoinHex32(qmd, ","));
         return true;
     }
     default:
