@@ -86,6 +86,9 @@ void ServiceFrameworkBase::InvokeRequest(HLERequestContext& ctx) {
         return ReportUnimplementedFunction(ctx, info);
 
     LOG_TRACE(Service, "{}", MakeFunctionString(info->name, GetServiceName(), ctx.CommandBuffer()));
+    if (Settings::CurrentProgramIsSwitch2()) {
+        LOG_INFO(Service, "IPC: {}::{} (cmd={})", service_name, info->name, ctx.GetCommand());
+    }
     handler_invoker(this, info->handler_callback, ctx);
     if (Settings::CurrentProgramIsSwitch2()) {
         const u32 off = ctx.GetDataPayloadOffset();
@@ -106,6 +109,9 @@ void ServiceFrameworkBase::InvokeRequestTipc(HLERequestContext& ctx) {
         return ReportUnimplementedFunction(ctx, info);
 
     LOG_TRACE(Service, "{}", MakeFunctionString(info->name, GetServiceName(), ctx.CommandBuffer()));
+    if (Settings::CurrentProgramIsSwitch2()) {
+        LOG_INFO(Service, "IPC: {}::{} (cmd={})", service_name, info->name, ctx.GetCommand());
+    }
     handler_invoker(this, info->handler_callback, ctx);
     if (Settings::CurrentProgramIsSwitch2()) {
         const u32 off = ctx.GetDataPayloadOffset();
