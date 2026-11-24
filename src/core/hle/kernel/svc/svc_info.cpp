@@ -4,6 +4,7 @@
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "common/settings.h"
 #include "core/core.h"
 #include "core/core_timing.h"
 #include "core/hle/kernel/k_memory_manager.h"
@@ -56,6 +57,9 @@ Result GetInfo(Core::System& system, u64* result, InfoType info_id_type, Handle 
         switch (info_id_type) {
         case InfoType::CoreMask:
             *result = process->GetCoreMask();
+            if (Settings::CurrentProgramIsSwitch2()) {
+                LOG_WARNING(Kernel_SVC, "Switch2 GetInfo CoreMask -> {:#x}", *result);
+            }
             R_SUCCEED();
         case InfoType::PriorityMask:
             *result = process->GetPriorityMask();
@@ -111,9 +115,17 @@ Result GetInfo(Core::System& system, u64* result, InfoType info_id_type, Handle 
             R_SUCCEED();
         case InfoType::TotalMemorySize:
             *result = process->GetTotalUserPhysicalMemorySize(system.Kernel());
+            if (Settings::CurrentProgramIsSwitch2()) {
+                LOG_WARNING(Kernel_SVC, "Switch2 GetInfo TotalMemorySize -> {:#x} ({} MiB)",
+                            *result, *result >> 20);
+            }
             R_SUCCEED();
         case InfoType::UsedMemorySize:
             *result = process->GetUsedUserPhysicalMemorySize(system.Kernel());
+            if (Settings::CurrentProgramIsSwitch2()) {
+                LOG_WARNING(Kernel_SVC, "Switch2 GetInfo UsedMemorySize -> {:#x} ({} MiB)",
+                            *result, *result >> 20);
+            }
             R_SUCCEED();
         case InfoType::SystemResourceSizeTotal:
             *result = process->GetTotalSystemResourceSize();

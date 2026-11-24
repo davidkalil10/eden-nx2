@@ -144,7 +144,7 @@ inline void Dump(const char* reason) {
     {
         auto& s = GetState();
         std::scoped_lock lk{s.mtx};
-        if (s.seq == s.last_dumped_seq) {
+        if (s.last_dumped_seq != 0 && s.seq <= s.last_dumped_seq + 8) {
             return;
         }
         s.last_dumped_seq = s.seq;

@@ -5,7 +5,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "common/settings.h"
+#include "core/arm/debug.h"
+#include "core/hle/kernel/k_process.h"
 #include "core/hle/service/am/am_results.h"
+#include "core/memory.h"
 #include "core/hle/service/am/applet.h"
 #include "core/hle/service/am/service/common_state_getter.h"
 #include "core/hle/service/am/service/lock_accessor.h"
@@ -262,6 +265,42 @@ Result ICommonStateGetter::GetDefaultDisplayResolution(Out<s32> out_width, Out<s
 
 void ICommonStateGetter::SetCpuBoostMode(HLERequestContext& ctx) {
     LOG_DEBUG(Service_AM, "called, forwarding to APM:SYS");
+
+    if (Settings::CurrentProgramIsSwitch2()) {
+        if (auto* process = ctx.GetThread().GetOwnerProcess()) {
+            const auto bt = Core::GetBacktrace(&ctx.GetThread());
+            LOG_WARNING(Service_AM, "Switch2 SetCpuBoostMode backtrace ({} frames):", bt.size());
+            int dumped = 0;
+            auto& mem = process->GetMemory();
+            for (std::size_t i = 0; i < bt.size() && i < 12; ++i) {
+                LOG_WARNING(Service_AM, "  BT[{}]: {} va={:#x}", i, bt[i].module,
+                            bt[i].original_address);
+                const u64 va = bt[i].original_address;
+                if (dumped < 2 && va >= 0x80ef0000ULL && va < 0x84d50000ULL && (va & 3ULL) == 0) {
+                    const u64 start = va >= 16 ? va - 16 : va;
+                    for (u64 off = 0; off < 192; off += 32) {
+                        u32 w[8]{};
+                        bool ok = true;
+                        for (u64 k = 0; k < 8; ++k) {
+                            const u64 a = start + off + k * 4;
+                            if (!mem.IsValidVirtualAddress(a)) {
+                                ok = false;
+                                break;
+                            }
+                            w[k] = mem.Read32(a);
+                        }
+                        if (!ok) {
+                            break;
+                        }
+                        LOG_WARNING(Service_AM,
+                                    "  code@{:#x}: {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
+                                    start + off, w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]);
+                    }
+                    ++dumped;
+                }
+            }
+        }
+    }
 
     const auto& sm = system.ServiceManager();
     const auto apm_sys = sm.GetService<APM::APM_Sys>("apm:sys");
