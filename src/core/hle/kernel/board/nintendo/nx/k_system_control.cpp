@@ -88,6 +88,11 @@ size_t KSystemControl::Init::GetIntendedMemorySize() {
     default: // All invalid modes should go to 4GB.
         return 4_GiB;
     case Smc::MemorySize_6GB:
+#ifdef __SWITCH2__
+        if (Settings::CurrentProgramIsSwitch2()) {
+            return 7_GiB;
+        }
+#endif
         return 6_GiB;
     case Smc::MemorySize_8GB:
         return 8_GiB;
@@ -124,6 +129,11 @@ std::size_t KSystemControl::Init::GetApplicationPoolSize() {
         case Smc::MemoryArrangement_4GBForSystemDev:
             return 3285_MiB;
         case Smc::MemoryArrangement_6GB:
+#ifdef __SWITCH2__
+            if (Settings::CurrentProgramIsSwitch2()) {
+                return 6340_MiB;
+            }
+#endif
             return 4916_MiB;
         case Smc::MemoryArrangement_6GBForAppletDev:
             return 3285_MiB;
@@ -153,6 +163,11 @@ size_t KSystemControl::Init::GetAppletPoolSize() {
         case Smc::MemoryArrangement_4GBForSystemDev:
             return 448_MiB;
         case Smc::MemoryArrangement_6GB:
+#ifdef __SWITCH2__
+            if (Settings::CurrentProgramIsSwitch2()) {
+                return 161_MiB;
+            }
+#endif
             return 562_MiB;
         case Smc::MemoryArrangement_6GBForAppletDev:
             return 2193_MiB;

@@ -41,7 +41,7 @@ std::deque<std::string> g_sw2_recent_log_lines;
 void RecordRecentSwitch2LogLine(const std::string& line) {
     std::scoped_lock lk{g_sw2_recent_log_mutex};
     g_sw2_recent_log_lines.push_back(line);
-    if (g_sw2_recent_log_lines.size() > 260) {
+    if (g_sw2_recent_log_lines.size() > 280) {
         g_sw2_recent_log_lines.pop_front();
     }
 }

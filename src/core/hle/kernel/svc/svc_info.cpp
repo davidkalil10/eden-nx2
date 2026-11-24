@@ -141,9 +141,17 @@ Result GetInfo(Core::System& system, u64* result, InfoType info_id_type, Handle 
             R_SUCCEED();
         case InfoType::TotalNonSystemMemorySize:
             *result = process->GetTotalNonSystemUserPhysicalMemorySize(system.Kernel());
+            if (Settings::CurrentProgramIsSwitch2()) {
+                LOG_WARNING(Kernel_SVC, "Switch2 GetInfo TotalNonSystemMemorySize -> {:#x} ({} MiB)",
+                            *result, *result >> 20);
+            }
             R_SUCCEED();
         case InfoType::UsedNonSystemMemorySize:
             *result = process->GetUsedNonSystemUserPhysicalMemorySize(system.Kernel());
+            if (Settings::CurrentProgramIsSwitch2()) {
+                LOG_WARNING(Kernel_SVC, "Switch2 GetInfo UsedNonSystemMemorySize -> {:#x} ({} MiB)",
+                            *result, *result >> 20);
+            }
             R_SUCCEED();
         case InfoType::IsApplication:
             *result = process->IsApplication();
