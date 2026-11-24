@@ -570,7 +570,9 @@ public:
 // everything else falls through to the nx2 auto stub.
 class IChatSession final : public ServiceFramework<IChatSession> {
 public:
-    explicit IChatSession(Core::System& system_) : ServiceFramework{system_, "nx2:chat:u::0"} {
+    explicit IChatSession(Core::System& system_)
+        : ServiceFramework{system_, "nx2:chat:u::0"}, service_context{system_, "nx2:chat:u::0"},
+          stub_event{service_context.CreateEvent("nx2:chat:u::0:Event")} {
         static const FunctionInfo functions[] = {
             {1, &IChatSession::StubReplyEvent, "GetEvent (guessed)"},
             {2, &IChatSession::StubReplyEvent, "AttachToRoomInfoChangedEvent"},
@@ -591,6 +593,28 @@ public:
         };
         RegisterHandlers(functions);
     }
+
+    ~IChatSession() override {
+        service_context.CloseEvent(stub_event);
+    }
+
+private:
+    void StubReplyEvent(HLERequestContext& ctx) {
+        IPC::ResponseBuilder rb{ctx, 2, 1};
+        rb.Push(ResultSuccess);
+        rb.PushCopyObjects(ctx, stub_event->GetReadableEvent());
+    }
+
+    void StubReplyZeroed(HLERequestContext& ctx) {
+        IPC::ResponseBuilder rb{ctx, 18};
+        rb.Push(ResultSuccess);
+        for (int i = 0; i < 16; ++i) {
+            rb.Push<u32>(0);
+        }
+    }
+
+    KernelHelpers::ServiceContext service_context;
+    Kernel::KEvent* stub_event{};
 };
 
 // nn::chat::IUserLayoutCustomizationShimScopedObject, returned by chat:u 2. Per Switchbrew:
@@ -602,7 +626,9 @@ class IUserLayoutCustomizationShimScopedObject final
     : public ServiceFramework<IUserLayoutCustomizationShimScopedObject> {
 public:
     explicit IUserLayoutCustomizationShimScopedObject(Core::System& system_)
-        : ServiceFramework{system_, "nx2:chat:IUserLayoutCustomizationShimScopedObject"} {
+        : ServiceFramework{system_, "nx2:chat:IUserLayoutCustomizationShimScopedObject"},
+          service_context{system_, "nx2:chat:layout"},
+          stub_event{service_context.CreateEvent("nx2:chat:layout:Event")} {
         static const FunctionInfo functions[] = {
             {0, &IUserLayoutCustomizationShimScopedObject::StubReplyZeroed, "Initialize"},
             {1, &IUserLayoutCustomizationShimScopedObject::StubReplyEvent, "GetEvent (guessed)"},
@@ -610,6 +636,28 @@ public:
         };
         RegisterHandlers(functions);
     }
+
+    ~IUserLayoutCustomizationShimScopedObject() override {
+        service_context.CloseEvent(stub_event);
+    }
+
+private:
+    void StubReplyEvent(HLERequestContext& ctx) {
+        IPC::ResponseBuilder rb{ctx, 2, 1};
+        rb.Push(ResultSuccess);
+        rb.PushCopyObjects(ctx, stub_event->GetReadableEvent());
+    }
+
+    void StubReplyZeroed(HLERequestContext& ctx) {
+        IPC::ResponseBuilder rb{ctx, 18};
+        rb.Push(ResultSuccess);
+        for (int i = 0; i < 16; ++i) {
+            rb.Push<u32>(0);
+        }
+    }
+
+    KernelHelpers::ServiceContext service_context;
+    Kernel::KEvent* stub_event{};
 };
 
 // Switch 2 GameChat (chat:u, nn::chat::IUserService). 0 and 1 open the session the title keeps
@@ -678,6 +726,14 @@ private:
         IPC::ResponseBuilder rb{ctx, 2, 0, 1};
         rb.Push(ResultSuccess);
         rb.PushIpcInterface<INx2StubInterface>(ctx, system, name);
+    }
+
+    void StubReplyZeroed(HLERequestContext& ctx) {
+        IPC::ResponseBuilder rb{ctx, 18};
+        rb.Push(ResultSuccess);
+        for (int i = 0; i < 16; ++i) {
+            rb.Push<u32>(0);
+        }
     }
 };
 
