@@ -21,7 +21,26 @@
 #include "common/assert.h"
 #include "common/sparse_large_vector.h"
 
+#ifdef __SWITCH2__
+extern "C" {
+void* __attribute__((weak)) Switch2SparseAlloc(std::size_t virtual_size, std::size_t chunk_size,
+                                               std::size_t physical_budget, const char* tag);
+bool __attribute__((weak)) Switch2SparseCommitRange(void* addr, std::size_t size);
+bool __attribute__((weak)) Switch2SparseFree(void* base);
+bool __attribute__((weak)) Switch2SparseClearZero(void* addr, std::size_t size);
+}
+#endif
+
 namespace Common {
+
+#ifdef __SWITCH2__
+bool CommitSwitch2VectorPage(uintptr_t addr) noexcept {
+    if (Switch2SparseCommitRange != nullptr) {
+        return Switch2SparseCommitRange(reinterpret_cast<void*>(addr), HostPageSize);
+    }
+    return true;
+}
+#endif
 
 #ifdef _WIN32
 static std::vector<std::pair<u64, u64>> vector_regions {};
@@ -121,7 +140,10 @@ void DecommitVectorPage(uintptr_t base) noexcept {
 #if defined(_WIN32)
     VirtualFree(reinterpret_cast<LPVOID>(base), HostPageSize, MEM_DECOMMIT);
 #elif defined(__SWITCH2__)
-    std::memset(reinterpret_cast<void*>(base), 0, HostPageSize);
+    if (Switch2SparseClearZero == nullptr ||
+        !Switch2SparseClearZero(reinterpret_cast<void*>(base), HostPageSize)) {
+        std::memset(reinterpret_cast<void*>(base), 0, HostPageSize);
+    }
 #elif defined(__linux__)
     // Linux's MADV_DONTNEED zeros out pages for us
     madvise(reinterpret_cast<void*>(base), HostPageSize, MADV_DONTNEED);
@@ -131,7 +153,10 @@ void DecommitVectorPage(uintptr_t base) noexcept {
 #endif
 }
 
-void* AllocateMemoryPages(std::size_t size) noexcept {
+void* AllocateMemoryPages(std::size_t size, [[maybe_unused]] bool eager_commit) noexcept {
+    if (size == 0) {
+        return nullptr;
+    }
     if (auto page = HostPageSize; size % page != 0) {
         LOG_WARNING(HW_Memory, "Allocating unaligned large vector with size {:#x}; aligning to {} page size", size, page);
         size = AlignUp(size, page);
@@ -154,9 +179,23 @@ void* AllocateMemoryPages(std::size_t size) noexcept {
     }
     ASSERT_MSG(base, "Failed to reserve {:#x} sized region with error {}", size, GetLastError());
 #elif defined(__SWITCH2__)
-    void* base = memalign(HostPageSize, size);
-    if (base != nullptr) {
-        std::memset(base, 0, size);
+    void* base = nullptr;
+    if (Switch2SparseAlloc != nullptr && size >= (1ULL << 20)) {
+        const std::size_t chunk = eager_commit ? 0x200000ULL : 0x10000ULL;
+        const std::size_t aligned = AlignUp(size, chunk);
+        base = Switch2SparseAlloc(aligned, chunk, aligned, eager_commit ? "slv_eager" : "slv_lazy");
+        if (base != nullptr && eager_commit) {
+            if (!Switch2SparseCommitRange(base, aligned)) {
+                Switch2SparseFree(base);
+                base = nullptr;
+            }
+        }
+    }
+    if (base == nullptr) {
+        base = memalign(HostPageSize, size);
+        if (base != nullptr) {
+            std::memset(base, 0, size);
+        }
     }
     ASSERT_MSG(base, "Failed to allocate {:#x} sized region on Switch 2", size);
 #else
@@ -179,7 +218,9 @@ void FreeMemoryPages(void* base, [[maybe_unused]] std::size_t size) noexcept {
     std::erase_if(vector_regions, [base](const auto& r) {return r.first == reinterpret_cast<u64>(base); });
     ASSERT(VirtualFree(base, 0, MEM_RELEASE));
 #elif defined(__SWITCH2__)
-    free(base);
+    if (Switch2SparseFree == nullptr || !Switch2SparseFree(base)) {
+        free(base);
+    }
 #else
     ASSERT(munmap(base, size) == 0);
 #endif

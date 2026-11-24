@@ -7,8 +7,10 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <bit>
+#include <cstring>
 #include <utility>
 #include <vector>
 
@@ -28,6 +30,8 @@ constexpr u64 HostPageBits = 12;
 constexpr u64 HostPageMask = ~(HostPageSize - 1);
 #ifdef _WIN32
 bool CommitVectorPage(uintptr_t addr, bool write) noexcept;
+#elif defined(__SWITCH2__)
+bool CommitSwitch2VectorPage(uintptr_t addr) noexcept;
 #endif
 #else
 inline const u64 HostPageSize = sysconf(_SC_PAGESIZE);
@@ -35,12 +39,12 @@ inline const u64 HostPageBits = std::countr_zero(HostPageSize);
 inline const u64 HostPageMask = ~(HostPageSize - 1);
 #endif
 
-void* AllocateMemoryPages(std::size_t size) noexcept;
+void* AllocateMemoryPages(std::size_t size, bool eager_commit = false) noexcept;
 void FreeMemoryPages(void* base, std::size_t size) noexcept;
 void DecommitVectorPage(uintptr_t base) noexcept;
 
 /// A large page-aligned buffer that has optimized memory usage for zero-writes.
-template <typename T>
+template <typename T, bool EagerCommit = false>
     // MSVC doesn't regard structs with atomics as trivially copyable
     // requires std::is_trivially_copyable_v<T>
 class SparseLargeVector final {
@@ -50,7 +54,7 @@ public:
     explicit SparseLargeVector(std::size_t count) noexcept
         : alloc_size{count * sizeof(T)}
     {
-        base_ptr = static_cast<T*>(AllocateMemoryPages(alloc_size));
+        base_ptr = static_cast<T*>(AllocateMemoryPages(alloc_size, EagerCommit));
 
         // each item in vector holds information for 64 pages
         auto denom = HostPageSize * 64;
@@ -70,10 +74,12 @@ public:
         if (auto const new_size = count * sizeof(T); new_size != alloc_size) {
             FreeMemoryPages(base_ptr, alloc_size);
             alloc_size = new_size;
-            base_ptr = static_cast<T*>(AllocateMemoryPages(alloc_size));
+            base_ptr = static_cast<T*>(AllocateMemoryPages(alloc_size, EagerCommit));
 
             auto denom = HostPageSize * 64;
             committed_pages = std::vector<std::atomic<u64>>((alloc_size + denom - 1) / denom);
+        } else if (alloc_size > 0) {
+            ZeroRegion(0, count);
         }
     }
 
@@ -91,9 +97,15 @@ public:
 
     /// Returns a reference to the value of the requested index if initialized, or will otherwise return a zero-initialized object.
     const T& GetOrDefault(std::size_t index) const {
-#ifdef _WIN32
+#if defined(_WIN32)
         if (!IsCommittedPage(index)) {
             return *reinterpret_cast<const T*>(&default_val);
+        }
+#elif defined(__SWITCH2__)
+        if constexpr (!EagerCommit) {
+            if (!IsCommittedPage(index)) {
+                return *reinterpret_cast<const T*>(&default_val);
+            }
         }
 #endif
         // On non-Windows, OS page table should optimize this by pointing to a zero page if unallocated.
@@ -110,6 +122,14 @@ public:
     }
 
     void ZeroRegion(std::size_t start, std::size_t end_) noexcept {
+#ifdef __SWITCH2__
+        if constexpr (EagerCommit) {
+            if (end_ > start && base_ptr != nullptr) {
+                std::memset(&base_ptr[start], 0, (end_ - start) * sizeof(T));
+            }
+            return;
+        }
+#endif
         u64 base = reinterpret_cast<u64>(&base_ptr[start]);
         const u64 end = reinterpret_cast<u64>(&base_ptr[end_]);
 
@@ -151,6 +171,13 @@ public:
     }
 
     constexpr T& GetUnchecked(size_t index) {
+#ifdef __SWITCH2__
+        if constexpr (!EagerCommit) {
+            if (!IsCommittedPage(index)) [[unlikely]] {
+                CommitPage(index);
+            }
+        }
+#endif
         return base_ptr[index];
     }
 
@@ -186,7 +213,13 @@ private:
             return false;
         }
 #elif defined(__SWITCH2__)
-        (void)page;
+        if constexpr (!EagerCommit) {
+            if (!CommitSwitch2VectorPage(page)) {
+                return false;
+            }
+        } else {
+            (void)page;
+        }
 #else
         if (mprotect(reinterpret_cast<void*>(page), HostPageSize, PROT_READ | PROT_WRITE) != 0) {
             LOG_ERROR(Common_Memory, "Failed to commit large buffer region at index {}, error {}", index, strerror(errno));
@@ -210,7 +243,7 @@ private:
     T* base_ptr{};
 
     std::vector<std::atomic<u64>> committed_pages{};
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__SWITCH2__)
     const std::array<u8, sizeof(T)> default_val{};
 #endif
 };

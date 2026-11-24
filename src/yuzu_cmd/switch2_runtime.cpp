@@ -578,7 +578,7 @@ struct SparseRegion {
     char tag[32]{};
 };
 
-constexpr std::size_t kMaxSparseRegions = 16;
+constexpr std::size_t kMaxSparseRegions = 64;
 SparseRegion g_sparse_regions[kMaxSparseRegions]{};
 Mutex g_sparse_mgmt_mutex{};
 bool g_sparse_inited = false;
@@ -788,7 +788,10 @@ void __libnx_initheap(void) {
                 const std::uintptr_t override_end = override_start + size;
                 const std::size_t orig_total = override_end - heap_region_base;
                 const std::size_t nro_prefix = override_start - heap_region_base;
-                const std::size_t target_mimalloc = 2176ULL << 20;
+                // Note: OunceVK (Mesa NVK on Switch 2) allocates VkDeviceMemory out of mimalloc,
+                // requiring ~2.1+ GiB of free mimalloc space during vkCreateDevice + gameplay,
+                // while SparseLargeVector (PageTable/SMMU/GMMU) and 12 GiB HostMemory live in AliasRegion.
+                const std::size_t target_mimalloc = 3456ULL << 20;
                 const std::size_t target_total = (nro_prefix + target_mimalloc + 0x1FFFFFULL) & ~0x1FFFFFULL;
                 if (target_total < orig_total) {
                     void* new_base = nullptr;
@@ -994,6 +997,7 @@ bool Switch2SparseCommitRange(void* addr, std::size_t size) {
                     ok = false;
                     break;
                 }
+                std::memset(dst, 0, r.chunk_size);
                 r.mapped[c].store(1, std::memory_order_release);
                 ++r.mapped_chunks;
             } else if (r.mode == SparseMode::StackMap) {
@@ -1135,6 +1139,10 @@ const char* Switch2SparseGetReport(void) {
     Switch2SparseInitUnlocked();
     mutexUnlock(&g_sparse_mgmt_mutex);
     return g_sparse_report;
+}
+
+std::uint64_t Switch2GetFreeHeapBytes(void) {
+    return heapGetFreeSize();
 }
 
 } // extern "C"

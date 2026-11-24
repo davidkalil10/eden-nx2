@@ -206,7 +206,15 @@ try
 
     Report();
 } catch (const vk::Exception& exception) {
+#ifdef __SWITCH2__
+    extern "C" std::uint64_t __attribute__((weak)) Switch2GetFreeHeapBytes(void);
+    const std::uint64_t free_mib =
+        Switch2GetFreeHeapBytes ? (Switch2GetFreeHeapBytes() >> 20) : 0ULL;
+    LOG_ERROR(Render_Vulkan, "Vulkan initialization failed with error: {} (mimalloc_free={} MiB)",
+              exception.what(), free_mib);
+#else
     LOG_ERROR(Render_Vulkan, "Vulkan initialization failed with error: {}", exception.what());
+#endif
     throw std::runtime_error{std::format("Vulkan initialization error {}", exception.what())};
 }
 
