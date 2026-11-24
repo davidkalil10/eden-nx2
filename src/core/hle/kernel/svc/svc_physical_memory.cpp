@@ -6,6 +6,7 @@
 
 #include <algorithm>
 
+#include "common/settings.h"
 #include "core/core.h"
 #include "core/hle/kernel/k_process.h"
 #include "core/hle/kernel/k_system_control.h"
@@ -35,7 +36,7 @@ Result SetHeapSize(Core::System& system, u64* out_address, u64 size) {
     if (rc.IsError()) {
         LOG_ERROR(Kernel_SVC,
                   "SetHeapSize failed: size={:#x}, heap_region_size={:#x}, rc={:#x}", size,
-                  page_table.GetHeapRegionSize(), rc.raw);
+                  page_table.GetHeapRegionSize(), rc.GetInnerValue());
         return rc;
     }
     if (Settings::CurrentProgramIsSwitch2()) {
