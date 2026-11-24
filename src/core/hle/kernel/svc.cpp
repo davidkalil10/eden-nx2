@@ -8,6 +8,7 @@
 
 #include <type_traits>
 
+#include "common/settings.h"
 #include "core/arm/arm_interface.h"
 #include "core/core.h"
 #include "core/hle/kernel/k_process.h"
@@ -2534,7 +2535,7 @@ void Call(Core::System& system, u32 imm) {
         } else {
             Call64(system, imm, args);
         }
-        if (process.IsSwitch2()) {
+        if (Settings::CurrentProgramIsSwitch2()) {
             const u32 svc_res = static_cast<u32>(GetArg64(args, 0));
             if (svc_res != 0) {
                 switch (imm) {
