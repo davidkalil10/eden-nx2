@@ -3,6 +3,9 @@
 // SPDX-FileCopyrightText: Copyright 2021 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#ifdef __SWITCH2__
+#include <cstdio>
+#endif
 #include "common/assert.h"
 #include "common/common_funcs.h"
 #include "common/logging.h"
@@ -15,6 +18,14 @@ __declspec(dllimport) void __stdcall DebugBreak(void);
 #endif
 void AssertFailSoftImpl() {
     if (Settings::values.use_debug_asserts) {
+#ifdef __SWITCH2__
+        Common::Log::DumpRecentLogTail("sdmc:/switch/eden-nx2/last_eden_log_tail.txt");
+        if (std::FILE* f = std::fopen("sdmc:/switch/eden-nx2/crash.txt", "a")) {
+            std::fprintf(f, "AssertFailSoftImpl triggered\n");
+            std::fflush(f);
+            std::fclose(f);
+        }
+#endif
         Common::Log::Stop();
 #ifndef _MSC_VER
 #   if defined(ARCHITECTURE_x86_64)
@@ -30,6 +41,14 @@ void AssertFailSoftImpl() {
     }
 }
 void AssertFatalImpl() {
+#ifdef __SWITCH2__
+    Common::Log::DumpRecentLogTail("sdmc:/switch/eden-nx2/last_eden_log_tail.txt");
+    if (std::FILE* f = std::fopen("sdmc:/switch/eden-nx2/crash.txt", "a")) {
+        std::fprintf(f, "AssertFatalImpl (UNREACHABLE/ASSERT) triggered\n");
+        std::fflush(f);
+        std::fclose(f);
+    }
+#endif
     Common::Log::Stop();
     std::abort();
 }

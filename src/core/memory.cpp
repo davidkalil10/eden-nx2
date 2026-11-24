@@ -137,13 +137,35 @@ struct Memory::Impl {
         return {};
     }
 
+    [[nodiscard]] bool IsUncommittedSparseDebugPage(u64 vaddr) const noexcept {
+#ifdef __SWITCH2__
+        if (Switch2IsSparseUnmapped == nullptr || !AddressSpaceContains(*current_page_table, vaddr, 1)) {
+            return false;
+        }
+        const auto& entry = current_page_table->entries.GetUnchecked(vaddr >> YUZU_PAGEBITS);
+        if (entry.Type() != Common::PageType::DebugMemory) {
+            return false;
+        }
+        if (const u64 paddr = entry.Pointer(true); paddr != 0) {
+            return Switch2IsSparseUnmapped(reinterpret_cast<const u8*>(paddr) + vaddr);
+        }
+#endif
+        return false;
+    }
+
     [[nodiscard]] u8* GetPointerFromDebugMemory(u64 vaddr) const {
         auto& entry = current_page_table->entries.GetUnchecked(vaddr >> YUZU_PAGEBITS);
         if (u64 paddr = entry.Pointer(true); paddr) {
             u8* const host_ptr = reinterpret_cast<u8*>(paddr) + vaddr;
 #ifdef __SWITCH2__
             if (Switch2SparseCommitRange != nullptr) {
-                Switch2SparseCommitRange(host_ptr, 64ULL << 10);
+                if (!Switch2SparseCommitRange(host_ptr, 64ULL << 10)) {
+                    alignas(4096) static u8 s_oom_scratch[65536]{};
+                    LOG_CRITICAL(HW_Memory,
+                                 "Switch 2 sparse commit OOM @ guest {:#x} (host {:#x}); using emergency scratch",
+                                 vaddr, reinterpret_cast<u64>(host_ptr));
+                    return s_oom_scratch + (vaddr & 0xFFFULL);
+                }
             }
             if (!system.DebuggerEnabled() && entry.Type() == Common::PageType::DebugMemory) {
                 entry.Store(false, Common::PageType::Memory, entry.Block(), paddr);
@@ -251,7 +273,7 @@ struct Memory::Impl {
     }
 
     template<typename F1, typename F2, typename F3>
-    inline bool WalkBlock(const Common::ProcessAddress addr, const std::size_t size, F1&& on_unmapped, F2&& on_memory, F3&& on_rasterizer) {
+    inline bool WalkBlock(const Common::ProcessAddress addr, const std::size_t size, F1&& on_unmapped, F2&& on_memory, F3&& on_rasterizer, bool skip_uncommitted_debug = false) {
         std::size_t offset = 0;
         if (!AddressSpaceContains(*current_page_table, addr, size)) {
             on_unmapped(offset, size, addr);
@@ -279,6 +301,12 @@ struct Memory::Impl {
                 break;
             }
             case Common::PageType::DebugMemory: {
+#ifdef __SWITCH2__
+                if (skip_uncommitted_debug && IsUncommittedSparseDebugPage(current_vaddr)) {
+                    on_memory(offset, copy_amount, nullptr);
+                    break;
+                }
+#endif
                 u8* const mem_ptr = GetPointerFromDebugMemory(current_vaddr);
                 on_memory(offset, copy_amount, mem_ptr);
                 break;
@@ -306,14 +334,18 @@ struct Memory::Impl {
             std::memset(reinterpret_cast<u8*>(buffer) + offset, 0, copy_amount);
         },
         [&](const std::size_t offset, const std::size_t copy_amount, const u8* const ptr) {
-            std::memcpy(reinterpret_cast<u8*>(buffer) + offset, ptr, copy_amount);
+            if (ptr == nullptr) {
+                std::memset(reinterpret_cast<u8*>(buffer) + offset, 0, copy_amount);
+            } else {
+                std::memcpy(reinterpret_cast<u8*>(buffer) + offset, ptr, copy_amount);
+            }
         },
         [&](const Common::ProcessAddress current_vaddr, const std::size_t offset, const std::size_t copy_amount, const u8* const ptr) {
             if (!unsafe) {
                 HandleRasterizerDownload(GetInteger(current_vaddr), copy_amount);
             }
             std::memcpy(reinterpret_cast<u8*>(buffer) + offset, ptr, copy_amount);
-        });
+        }, true);
     }
 
     [[nodiscard]] inline const u8* GetSpan(const VAddr addr, const std::size_t size) const noexcept {
@@ -365,12 +397,14 @@ struct Memory::Impl {
             LOG_ERROR(HW_Memory, "Unmapped @ {:#016x} (start address = {:#016x}, size = {})", GetInteger(current_vaddr), GetInteger(addr), size);
         },
         [=](const std::size_t offset, const std::size_t copy_amount, u8* const ptr) {
-            std::memset(ptr, 0, copy_amount);
+            if (ptr != nullptr) {
+                std::memset(ptr, 0, copy_amount);
+            }
         },
         [&](const Common::ProcessAddress current_vaddr, const std::size_t offset, const std::size_t copy_amount, u8* const ptr) {
             HandleRasterizerWrite(GetInteger(current_vaddr), copy_amount);
             std::memset(ptr, 0, copy_amount);
-        });
+        }, true);
     }
 
     bool CopyBlock(Common::ProcessAddress dest_addr, Common::ProcessAddress src_addr, const std::size_t size) {
@@ -683,6 +717,12 @@ struct Memory::Impl {
     template <typename T>
     inline T Read(Common::ProcessAddress vaddr) noexcept requires(std::is_trivially_copyable_v<T>) {
         const u64 addr = GetInteger(vaddr);
+#ifdef __SWITCH2__
+        if (((addr & YUZU_PAGEMASK) + sizeof(T) <= YUZU_PAGESIZE) &&
+            IsUncommittedSparseDebugPage(addr & 0xffffffffffffULL)) [[unlikely]] {
+            return T{};
+        }
+#endif
         if (auto const ptr = GetPointerImpl(addr, [addr]() {
             LOG_ERROR(HW_Memory, "Unmapped Read{} @ {:#016x}", sizeof(T) * 8, addr);
         }, [&]() {
@@ -704,6 +744,12 @@ struct Memory::Impl {
     template <typename T>
     inline void Write(Common::ProcessAddress vaddr, const T data) noexcept requires(std::is_trivially_copyable_v<T>) {
         const u64 addr = GetInteger(vaddr);
+#ifdef __SWITCH2__
+        if (u64(data) == 0 && ((addr & YUZU_PAGEMASK) + sizeof(T) <= YUZU_PAGESIZE) &&
+            IsUncommittedSparseDebugPage(addr & 0xffffffffffffULL)) [[unlikely]] {
+            return;
+        }
+#endif
         if (auto const ptr = GetPointerImpl(addr, [addr, data]() {
             LOG_ERROR(HW_Memory, "Unmapped Write{} @ {:#016x} = {:#016x}", sizeof(T) * 8, addr, u64(data));
         }, [&]() { HandleRasterizerWrite(addr, sizeof(T)); }); ptr) [[likely]]

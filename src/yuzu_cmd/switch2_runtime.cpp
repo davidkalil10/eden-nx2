@@ -788,7 +788,7 @@ void __libnx_initheap(void) {
                 const std::uintptr_t override_end = override_start + size;
                 const std::size_t orig_total = override_end - heap_region_base;
                 const std::size_t nro_prefix = override_start - heap_region_base;
-                const std::size_t target_mimalloc = 3328ULL << 20;
+                const std::size_t target_mimalloc = 2176ULL << 20;
                 const std::size_t target_total = (nro_prefix + target_mimalloc + 0x1FFFFFULL) & ~0x1FFFFFULL;
                 if (target_total < orig_total) {
                     void* new_base = nullptr;
@@ -980,7 +980,17 @@ bool Switch2SparseCommitRange(void* addr, std::size_t size) {
             }
             void* const dst = reinterpret_cast<void*>(r.vbase + c * r.chunk_size);
             if (r.mode == SparseMode::AliasPhys) {
-                if (R_FAILED(svcMapPhysicalMemory(dst, r.chunk_size))) {
+                const Result rc = svcMapPhysicalMemory(dst, r.chunk_size);
+                if (R_FAILED(rc)) {
+                    if (std::FILE* f = std::fopen("sdmc:/switch/eden-nx2/sparse_oom.txt", "a")) {
+                        std::fprintf(f,
+                                     "OOM tag=%s chunk=%zu/%zu mapped=%zu (%zu MiB) rc=0x%x\n",
+                                     r.tag, c, r.num_chunks, r.mapped_chunks,
+                                     (r.mapped_chunks * r.chunk_size) >> 20,
+                                     static_cast<unsigned int>(rc));
+                        std::fflush(f);
+                        std::fclose(f);
+                    }
                     ok = false;
                     break;
                 }

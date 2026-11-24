@@ -316,17 +316,23 @@ struct FileBackend final : public Backend {
         // Prevent logs from exceeding a set maximum size in the event that log entries are spammed.
         const auto write_limit = Settings::values.extended_logging.GetValue() ? 1_GiB : 100_MiB;
         const bool write_limit_exceeded = bytes_written > write_limit;
+#ifdef __SWITCH2__
+        const bool flush_now = entry.log_level >= Level::Error || write_limit_exceeded ||
+                               (entry.log_level >= Level::Warning && bytes_written < 512_KiB);
+        if (flush_now) {
+            if (write_limit_exceeded)
+                enabled = false;
+            file->Commit();
+        }
+#else
         if (entry.log_level >= Level::Error || write_limit_exceeded) {
             // Stop writing after the write limit is exceeded.
             // Don't close the file so we can print a stacktrace if necessary
             if (write_limit_exceeded)
                 enabled = false;
-#ifdef __SWITCH2__
-            file->Commit();
-#else
             file->Flush();
-#endif
         }
+#endif
     }
 
     void Flush() noexcept override {
