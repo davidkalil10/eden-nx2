@@ -47,6 +47,9 @@
 #ifdef __ANDROID__
 #include <jni.h>
 #endif
+#ifdef __SWITCH2__
+extern "C" std::uint64_t __attribute__((weak)) Switch2GetFreeHeapBytes(void);
+#endif
 namespace Vulkan {
 namespace {
 
@@ -207,7 +210,6 @@ try
     Report();
 } catch (const vk::Exception& exception) {
 #ifdef __SWITCH2__
-    extern "C" std::uint64_t __attribute__((weak)) Switch2GetFreeHeapBytes(void);
     const std::uint64_t free_mib =
         Switch2GetFreeHeapBytes ? (Switch2GetFreeHeapBytes() >> 20) : 0ULL;
     LOG_ERROR(Render_Vulkan, "Vulkan initialization failed with error: {} (mimalloc_free={} MiB)",
