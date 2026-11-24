@@ -13,6 +13,7 @@
 #include "core/core.h"
 #include "core/hle/kernel/k_process.h"
 #include "core/hle/kernel/svc.h"
+#include "core/hle/service/nx2_trace.h"
 
 namespace Kernel::Svc {
 
@@ -2507,6 +2508,10 @@ void Call(Core::System& system, u32 imm) {
         imm, GetArg64(args, 0), GetArg64(args, 1), GetArg64(args, 2),
         GetArg64(args, 3), GetArg64(args, 4), GetArg64(args, 5), GetArg64(args, 6));
     if (process.Is64Bit()) {
+        const bool is_sw2 = Settings::CurrentProgramIsSwitch2();
+        const u64 in_a0 = is_sw2 ? GetArg64(args, 0) : 0;
+        const u64 in_a1 = is_sw2 ? GetArg64(args, 1) : 0;
+        const u64 in_a2 = is_sw2 ? GetArg64(args, 2) : 0;
         if (imm == 0x80) {
             // Switch 2 only: svcSetGpuMemoryAttribute(address, size, mask, attr).
             const u64 address = GetArg64(args, 0);
@@ -2535,8 +2540,15 @@ void Call(Core::System& system, u32 imm) {
         } else {
             Call64(system, imm, args);
         }
-        if (Settings::CurrentProgramIsSwitch2()) {
+        if (is_sw2) {
             const u32 svc_res = static_cast<u32>(GetArg64(args, 0));
+            const bool is_noisy_sync =
+                (imm == 0x0B || imm == 0x17 || imm == 0x18 || imm == 0x1A || imm == 0x1B ||
+                 imm == 0x1C || imm == 0x1D || imm == 0x1E || imm == 0x21 || imm == 0x22);
+            const bool is_timeout = (imm == 0x18 || imm == 0x1C) && svc_res == 0xea01;
+            if (!is_noisy_sync || (svc_res != 0 && !is_timeout)) {
+                Core::Nx2Trace::RecordSvc(imm, in_a0, in_a1, in_a2, svc_res);
+            }
             if (svc_res != 0) {
                 switch (imm) {
                 case 0x01:

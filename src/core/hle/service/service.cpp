@@ -15,6 +15,7 @@
 #include "core/hle/ipc.h"
 #include "core/hle/kernel/kernel.h"
 #include "core/hle/service/ipc_helpers.h"
+#include "core/hle/service/nx2_trace.h"
 #include "core/hle/service/service.h"
 #include "core/hle/service/sm/sm.h"
 #include "core/reporter.h"
@@ -80,6 +81,17 @@ void ServiceFrameworkBase::ReportUnimplementedFunction(HLERequestContext& ctx,
         static std::mutex reported_mutex;
         static std::set<std::pair<std::string, u32>> reported;
         std::scoped_lock lk{reported_mutex};
+        if (Settings::CurrentProgramIsSwitch2()) {
+            const auto* b = ctx.CommandBuffer();
+            const u32 off = ctx.GetDataPayloadOffset();
+            const u32 in0 = ctx.IsTipc() ? b[2]
+                                         : (off + 2 < IPC::COMMAND_BUFFER_LENGTH ? b[off + 2] : 0);
+            const u32 in1 = ctx.IsTipc() ? b[3]
+                                         : (off + 3 < IPC::COMMAND_BUFFER_LENGTH ? b[off + 3] : 0);
+            Core::Nx2Trace::RecordIpc(service_name.c_str(), ctx.GetCommand(),
+                                      info ? info->name : "<unknown>", ctx.IsTipc(), true, in0, in1,
+                                      0, 0, 0);
+        }
         if (!reported.emplace(service_name, ctx.GetCommand()).second) {
             push_zeroed_stub();
             return;
@@ -111,17 +123,43 @@ void ServiceFrameworkBase::InvokeRequest(HLERequestContext& ctx) {
     if (info == nullptr || info->handler_callback == nullptr)
         return ReportUnimplementedFunction(ctx, info);
 
+    const bool is_sw2 = Settings::CurrentProgramIsSwitch2();
+    u32 in0 = 0;
+    u32 in1 = 0;
+    if (is_sw2) {
+        const u32 in_off = ctx.GetDataPayloadOffset();
+        const auto* b = ctx.CommandBuffer();
+        if (in_off + 2 < IPC::COMMAND_BUFFER_LENGTH) {
+            in0 = b[in_off + 2];
+        }
+        if (in_off + 3 < IPC::COMMAND_BUFFER_LENGTH) {
+            in1 = b[in_off + 3];
+        }
+    }
+
     LOG_TRACE(Service, "{}", MakeFunctionString(info->name, GetServiceName(), ctx.CommandBuffer()));
     handler_invoker(this, info->handler_callback, ctx);
-    if (Settings::CurrentProgramIsSwitch2()) {
+    if (is_sw2) {
         const u32 off = ctx.GetDataPayloadOffset();
+        u32 res = 0;
+        u32 out0 = 0;
+        u32 out1 = 0;
         if (off < IPC::COMMAND_BUFFER_LENGTH) {
-            const u32 res = ctx.CommandBuffer()[off];
+            const auto* b = ctx.CommandBuffer();
+            res = b[off];
+            if (off + 2 < IPC::COMMAND_BUFFER_LENGTH) {
+                out0 = b[off + 2];
+            }
+            if (off + 3 < IPC::COMMAND_BUFFER_LENGTH) {
+                out1 = b[off + 3];
+            }
             if (res != 0) {
                 LOG_WARNING(Service, "Switch2 {}::{} returned Result={:#x}", service_name,
                             info->name, res);
             }
         }
+        Core::Nx2Trace::RecordIpc(service_name.c_str(), ctx.GetCommand(), info->name, false, false,
+                                  in0, in1, res, out0, out1);
     }
 }
 
@@ -131,17 +169,33 @@ void ServiceFrameworkBase::InvokeRequestTipc(HLERequestContext& ctx) {
     if (info == nullptr || info->handler_callback == nullptr)
         return ReportUnimplementedFunction(ctx, info);
 
+    const bool is_sw2 = Settings::CurrentProgramIsSwitch2();
+    const u32 in0 = is_sw2 ? ctx.CommandBuffer()[2] : 0;
+    const u32 in1 = is_sw2 ? ctx.CommandBuffer()[3] : 0;
+
     LOG_TRACE(Service, "{}", MakeFunctionString(info->name, GetServiceName(), ctx.CommandBuffer()));
     handler_invoker(this, info->handler_callback, ctx);
-    if (Settings::CurrentProgramIsSwitch2()) {
+    if (is_sw2) {
         const u32 off = ctx.GetDataPayloadOffset();
+        u32 res = 0;
+        u32 out0 = 0;
+        u32 out1 = 0;
         if (off < IPC::COMMAND_BUFFER_LENGTH) {
-            const u32 res = ctx.CommandBuffer()[off];
+            const auto* b = ctx.CommandBuffer();
+            res = b[off];
+            if (off + 1 < IPC::COMMAND_BUFFER_LENGTH) {
+                out0 = b[off + 1];
+            }
+            if (off + 2 < IPC::COMMAND_BUFFER_LENGTH) {
+                out1 = b[off + 2];
+            }
             if (res != 0) {
                 LOG_WARNING(Service, "Switch2 {}::{} returned Result={:#x}", service_name,
                             info->name, res);
             }
         }
+        Core::Nx2Trace::RecordIpc(service_name.c_str(), ctx.GetCommand(), info->name, true, false,
+                                  in0, in1, res, out0, out1);
     }
 }
 

@@ -4,11 +4,14 @@
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "common/logging.h"
+#include "common/settings.h"
 #include "core/arm/arm_interface.h"
 #include "core/core.h"
 #include "core/hle/kernel/k_process.h"
 #include "core/hle/kernel/physical_core.h"
 #include "core/hle/kernel/svc.h"
+#include "core/hle/service/nx2_trace.h"
 
 namespace Kernel::Svc {
 
@@ -21,6 +24,13 @@ void ExitProcess(Core::System& system) {
         ThreadContext ctx{};
         arm->GetContext(ctx);
         LOG_WARNING(Kernel_SVC, "ExitProcess caller PC={:#x} LR={:#x}", ctx.pc, ctx.lr);
+    }
+    if (Settings::CurrentProgramIsSwitch2()) {
+        Core::Nx2Trace::Dump("ExitProcess");
+        system.CurrentPhysicalCore().LogBacktrace(system.Kernel());
+#ifdef __SWITCH2__
+        Common::Log::DumpRecentLogTail("sdmc:/switch/eden-nx2/last_eden_log_tail.txt");
+#endif
     }
     ASSERT_MSG(current_process->GetState() == KProcess::State::Running,
                "Process has already exited");

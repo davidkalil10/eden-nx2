@@ -14,12 +14,14 @@
 #include "core/arm/debug.h"
 #include "core/hle/kernel/physical_core.h"
 #endif
+#include "common/settings.h"
 #include "core/core.h"
 #include "core/debugger/debugger.h"
 #include "core/hle/kernel/k_process.h"
 #include "core/hle/kernel/k_thread.h"
 #include "core/hle/kernel/svc.h"
 #include "core/hle/kernel/svc_types.h"
+#include "core/hle/service/nx2_trace.h"
 #include "core/memory.h"
 #include "core/reporter.h"
 
@@ -119,6 +121,9 @@ void Break(Core::System& system, BreakReason reason, u64 info1, u64 info2) {
 
         handle_debug_buffer(info1, info2);
 
+        if (Settings::CurrentProgramIsSwitch2()) {
+            Core::Nx2Trace::Dump("Break");
+        }
         system.CurrentPhysicalCore().LogBacktrace(system.Kernel());
 #ifdef __SWITCH2__
         if (std::FILE* ef = std::fopen("sdmc:/switch/eden-nx2/last_load_error.txt", "w")) {

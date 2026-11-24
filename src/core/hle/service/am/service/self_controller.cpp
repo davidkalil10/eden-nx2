@@ -75,6 +75,12 @@ ISelfController::ISelfController(Core::System& system_, std::shared_ptr<Applet> 
         {240, D<&ISelfController::Unknown240>, "Unknown240"},
         {1000, nullptr, "GetDebugStorageChannel"},
         {2000, &ISelfController::GetGraphicsSupervisor, "GetGraphicsSupervisor"},
+        {2100, &ISelfController::StubZeroed, "SetRecordingLayerEnabled"},
+        {2200, &ISelfController::StubZeroed, "SetSharingLayerEnabled"},
+        {2300, &ISelfController::StubZeroed, "SetCopyrightLayerEnabled"},
+        {2400, &ISelfController::StubZeroed, "SetRtcScreenSharingAudioEnabled"},
+        {2401, &ISelfController::StubZeroed, "SetStreamPlayMirroringAudioEnabled"},
+        {2402, &ISelfController::StubZeroed, "Unknown2402"},
     };
     // clang-format on
 
@@ -101,6 +107,15 @@ Result ISelfController::Exit() {
 void ISelfController::GetGraphicsSupervisor(HLERequestContext& ctx) {
     LOG_WARNING(Service_AM, "(STUBBED) GetGraphicsSupervisor, returning nx2:gsv session");
     ReturnRawSession(system, ctx, std::make_shared<INx2GraphicsSystemSession>(system));
+}
+
+void ISelfController::StubZeroed(HLERequestContext& ctx) {
+    LOG_DEBUG(Service_AM, "(STUBBED) ISelfController::{}", ctx.GetCommand());
+    IPC::ResponseBuilder rb{ctx, 2 + 8};
+    rb.Push(ResultSuccess);
+    for (u32 i = 0; i < 8; ++i) {
+        rb.Push<u32>(0);
+    }
 }
 
 Result ISelfController::LockExit() {
