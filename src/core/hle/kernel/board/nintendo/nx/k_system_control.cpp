@@ -88,11 +88,6 @@ size_t KSystemControl::Init::GetIntendedMemorySize() {
     default: // All invalid modes should go to 4GB.
         return 4_GiB;
     case Smc::MemorySize_6GB:
-#ifdef __SWITCH2__
-        if (Settings::CurrentProgramIsSwitch2()) {
-            return 7_GiB;
-        }
-#endif
         return 6_GiB;
     case Smc::MemorySize_8GB:
         return 8_GiB;
@@ -131,7 +126,7 @@ std::size_t KSystemControl::Init::GetApplicationPoolSize() {
         case Smc::MemoryArrangement_6GB:
 #ifdef __SWITCH2__
             if (Settings::CurrentProgramIsSwitch2()) {
-                return 6340_MiB;
+                return 5316_MiB;
             }
 #endif
             return 4916_MiB;
