@@ -848,6 +848,7 @@ private:
         LOG_WARNING(Service, "(STUBBED) nx2:gsv TIPC 1402, returning nvdrv-backed nx2:nvsrv session");
         if (auto nvdrv = system.ServiceManager().GetService<Nvidia::NVDRV>("nvdrv", true)) {
             auto nvsrv = std::make_shared<Nvidia::NVDRV>(system, nvdrv->GetModule(), "nx2:nvsrv");
+            nvsrv->InitializeForProcess(ctx.GetThread().GetOwnerProcess());
             ReturnRawSession(system, ctx, std::move(nvsrv));
         } else {
             ReturnRawSession(system, ctx,

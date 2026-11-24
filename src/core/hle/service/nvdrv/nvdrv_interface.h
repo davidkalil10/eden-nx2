@@ -23,6 +23,8 @@ public:
         return nvdrv;
     }
 
+    void InitializeForProcess(Kernel::KProcess* process);
+
 private:
     void Open(HLERequestContext& ctx);
     void Ioctl1(HLERequestContext& ctx);

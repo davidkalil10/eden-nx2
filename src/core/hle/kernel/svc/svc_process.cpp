@@ -4,8 +4,10 @@
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "core/arm/arm_interface.h"
 #include "core/core.h"
 #include "core/hle/kernel/k_process.h"
+#include "core/hle/kernel/physical_core.h"
 #include "core/hle/kernel/svc.h"
 
 namespace Kernel::Svc {
@@ -15,6 +17,11 @@ void ExitProcess(Core::System& system) {
     auto* current_process = GetCurrentProcessPointer(system.Kernel());
 
     LOG_INFO(Kernel_SVC, "Process {} exiting", current_process->GetProcessId());
+    if (auto* arm = current_process->GetArmInterface(system.CurrentPhysicalCore().CoreIndex())) {
+        ThreadContext ctx{};
+        arm->GetContext(ctx);
+        LOG_WARNING(Kernel_SVC, "ExitProcess caller PC={:#x} LR={:#x}", ctx.pc, ctx.lr);
+    }
     ASSERT_MSG(current_process->GetState() == KProcess::State::Running,
                "Process has already exited");
 

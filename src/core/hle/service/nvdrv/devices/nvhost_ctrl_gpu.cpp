@@ -4,16 +4,59 @@
 // SPDX-FileCopyrightText: Copyright 2018 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
+#include <array>
 #include <cstring>
 #include "common/assert.h"
 #include "common/logging.h"
+#include "common/settings.h"
 #include "core/core.h"
 #include "core/core_timing.h"
 #include "core/hle/service/nvdrv/devices/ioctl_serialization.h"
 #include "core/hle/service/nvdrv/devices/nvhost_ctrl_gpu.h"
+#include "core/hle/service/nvdrv/devices/nx2_stub_device.h"
 #include "core/hle/service/nvdrv/nvdrv.h"
 
 namespace Service::Nvidia::Devices {
+namespace {
+
+constexpr u64 Nx2CharacteristicsSize = 0xD0;
+
+template <typename GC>
+void ApplyNx2Characteristics(GC& gc) {
+    gc.arch = 0x170;               // Ampere
+    gc.impl = 0xE;                 // chip id 0x17E
+    gc.num_tpc_per_gpc = 0x6;
+    gc.sm_arch_sm_version = 0x808;
+    gc.sm_arch_spa_version = 0x808;
+    gc.threed_class = 0xC797;      // AMPERE_B
+    gc.compute_class = 0xC7C0;     // AMPERE_COMPUTE_B
+    gc.gpfifo_class = 0xC56F;      // AMPERE_CHANNEL_GPFIFO_A
+    gc.dma_copy_class = 0xC7B5;    // AMPERE_DMA_COPY_B
+    gc.chipname = 0x6631306167;    // "ga10f"
+    gc.flags |= 0x100;             // NVGPU_GPU_FLAGS_SUPPORT_TSG
+    gc.flags |= 1ULL << 22;        // NVGPU_GPU_FLAGS_SUPPORT_TSG_SUBCONTEXTS
+    gc.flags |= 1ULL << 26;        // NVGPU_GPU_FLAGS_SUPPORT_SYNCPOINT_ADDRESS
+    gc.flags |= 1ULL << 34;        // NVGPU_GPU_FLAGS_SUPPORT_MAPPING_MODIFY
+    gc.flags |= 1ULL << 35;        // NVGPU_GPU_FLAGS_SUPPORT_REMAP
+    gc.flags |= 0x1FULL << 40;     // Engine support bits 40-44
+
+    auto* const raw = reinterpret_cast<u8*>(&gc);
+    for (size_t off = 0x70; off <= 0x80; off += 2) {
+        const s16 version = 0x40;
+        std::memcpy(raw + off, &version, sizeof(version));
+    }
+}
+
+void ApplyNx2CharacteristicsTail(std::span<u8> block) {
+    constexpr size_t MaxSubcontextsOffset = 0xb4;
+    constexpr u32 MaxSubcontexts = 64;
+    if (block.size() >= MaxSubcontextsOffset + sizeof(MaxSubcontexts)) {
+        std::memcpy(block.data() + MaxSubcontextsOffset, &MaxSubcontexts, sizeof(MaxSubcontexts));
+    }
+}
+
+} // namespace
 
 nvhost_ctrl_gpu::nvhost_ctrl_gpu(Core::System& system_, EventInterface& events_interface_)
     : nvdevice{system_}, events_interface{events_interface_} {
@@ -78,12 +121,24 @@ NvResult nvhost_ctrl_gpu::Ioctl1(DeviceFD fd, Ioctl command, std::span<const u8>
             default: return "UNKNOWN";
         }
     }();
+    if (nx2_caller || Settings::CurrentProgramIsSwitch2()) {
+        LOG_WARNING(Service_NVDRV, "(STUBBED) Switch 2 ctrl-gpu ioctl1={:08X} group={:01X} cmd={:02X}",
+                    command.raw, command.group, command.cmd);
+        std::fill(output.begin(), output.end(), u8{0});
+        std::copy_n(input.begin(), std::min(input.size(), output.size()), output.begin());
+        return NvResult::Success;
+    }
     UNIMPLEMENTED_MSG("Unimplemented ioctl={:08X} {}", command.raw, friendly_name);
     return NvResult::NotImplemented;
 }
 
 NvResult nvhost_ctrl_gpu::Ioctl2(DeviceFD fd, Ioctl command, std::span<const u8> input,
                                  std::span<const u8> inline_input, std::span<u8> output) {
+    if (nx2_caller || Settings::CurrentProgramIsSwitch2()) {
+        LOG_WARNING(Service_NVDRV, "(STUBBED) Switch 2 ctrl-gpu ioctl2={:08X}", command.raw);
+        std::fill(output.begin(), output.end(), u8{0});
+        return NvResult::Success;
+    }
     UNIMPLEMENTED_MSG("Unimplemented ioctl={:08X}", command.raw);
     return NvResult::NotImplemented;
 }
@@ -93,18 +148,29 @@ NvResult nvhost_ctrl_gpu::Ioctl3(DeviceFD fd, Ioctl command, std::span<const u8>
     switch (command.group) {
     case 'G':
         switch (command.cmd) {
-        case 0x5:
-            return WrapFixedInlOut(this, &nvhost_ctrl_gpu::GetCharacteristics3, input, output,
-                                   inline_output);
+        case 0x5: {
+            const auto result = WrapFixedInlOut(this, &nvhost_ctrl_gpu::GetCharacteristics3,
+                                                input, output, inline_output);
+            if (nx2_caller) {
+                ApplyNx2CharacteristicsTail(inline_output);
+            }
+            return result;
+        }
         case 0x6:
             return WrapFixedInlOut(this, &nvhost_ctrl_gpu::GetTPCMasks3, input, output,
                                    inline_output);
-        case 0x13:
-            LOG_DEBUG(Service_NVDRV, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return NvResult::NotImplemented;
+        case 0x13: {
+            if (command.raw != 0xc0084713 || input.size() != 8 || output.size() != 8 ||
+                inline_output.size() < 2) {
+                return NvResult::BadParameter;
+            }
+            std::memcpy(output.data(), input.data(), output.size());
+            for (size_t i = 0; i + 1 < inline_output.size(); i += 2) {
+                inline_output[i] = 0;
+                inline_output[i + 1] = static_cast<u8>(i / 4);
+            }
+            return NvResult::Success;
+        }
         default:
             break;
         }
@@ -112,9 +178,48 @@ NvResult nvhost_ctrl_gpu::Ioctl3(DeviceFD fd, Ioctl command, std::span<const u8>
     default:
         break;
     }
+    if ((nx2_caller || Settings::CurrentProgramIsSwitch2()) && command.group == 'G' &&
+        command.cmd == 0x1F) {
+        return Nx2GetEngineInfo(input, output, inline_output);
+    }
+    if (nx2_caller || Settings::CurrentProgramIsSwitch2()) {
+        LOG_WARNING(Service_NVDRV, "(STUBBED) Switch 2 ctrl-gpu ioctl3={:08X} group={:01X} cmd={:02X}",
+                    command.raw, command.group, command.cmd);
+        std::fill(output.begin(), output.end(), u8{0});
+        std::fill(inline_output.begin(), inline_output.end(), u8{0});
+        return NvResult::Success;
+    }
     UNIMPLEMENTED_MSG("Unimplemented ioctl={:08X}, group={:01X}, command={:01X}", command.raw,
                       command.group, command.cmd);
     return NvResult::NotImplemented;
+}
+
+NvResult nvhost_ctrl_gpu::Nx2GetEngineInfo(std::span<const u8> input, std::span<u8> output,
+                                           std::span<u8> inline_output) {
+    struct Item {
+        u32 engine_id;
+        u32 engine_instance;
+        s32 runlist_id;
+        u32 reserved;
+    };
+    static constexpr std::array<Item, 2> items{{
+        {0, 0, 0, 0},
+        {2, 0, 1, 0},
+    }};
+    constexpr u32 needed = static_cast<u32>(items.size() * sizeof(Item));
+    u32 buf_size{};
+    if (input.size() >= sizeof(buf_size)) {
+        std::memcpy(&buf_size, input.data(), sizeof(buf_size));
+    }
+    if (buf_size >= needed && inline_output.size() >= needed) {
+        std::memcpy(inline_output.data(), items.data(), needed);
+    }
+    std::fill(output.begin(), output.end(), u8{0});
+    std::copy_n(input.begin(), std::min(input.size(), output.size()), output.begin());
+    if (output.size() >= sizeof(needed)) {
+        std::memcpy(output.data(), &needed, sizeof(needed));
+    }
+    return NvResult::Success;
 }
 
 void nvhost_ctrl_gpu::OnOpen(NvCore::SessionId session_id, DeviceFD fd) {}
@@ -165,6 +270,8 @@ NvResult nvhost_ctrl_gpu::GetCharacteristics1(IoctlCharacteristics& params) {
 NvResult nvhost_ctrl_gpu::GetCharacteristics3(
     IoctlCharacteristics& params, std::span<IoctlGpuCharacteristics> gpu_characteristics) {
     LOG_DEBUG(Service_NVDRV, "called");
+    const bool nx2 = params.gpu_characteristics_buf_size >= Nx2CharacteristicsSize ||
+                     Settings::CurrentProgramIsSwitch2();
 
     params.gc.arch = 0x120;
     params.gc.impl = 0xb;
@@ -203,6 +310,13 @@ NvResult nvhost_ctrl_gpu::GetCharacteristics3(
     params.gc.gr_compbit_store_base_hw = 0x0;
     params.gpu_characteristics_buf_size = 0xA0;
     params.gpu_characteristics_buf_addr = 0xdeadbeef; // Cannot be 0 (UNUSED)
+    if (nx2) {
+        nx2_caller = true;
+        g_nx2_driver = true;
+        ApplyNx2Characteristics(params.gc);
+        params.gpu_characteristics_buf_size = Nx2CharacteristicsSize;
+        LOG_WARNING(Service_NVDRV, "Switch 2 caller, reporting Ampere chip 0x17E");
+    }
     if (!gpu_characteristics.empty()) {
         gpu_characteristics.front() = params.gc;
     }

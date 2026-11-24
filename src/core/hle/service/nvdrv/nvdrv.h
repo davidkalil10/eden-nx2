@@ -112,6 +112,7 @@ private:
     EventInterface events_interface;
 
     ::Common::unordered_map<std::string, std::function<FilesContainerType::iterator(DeviceFD)>> builders;
+    std::function<FilesContainerType::iterator(DeviceFD, const std::string&)> nx2_stub_builder;
 };
 
 void LoopProcess(Core::System& system);

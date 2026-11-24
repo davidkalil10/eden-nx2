@@ -204,8 +204,11 @@ private:
     NvResult ZBCQueryTable(IoctlZbcQueryTable& params);
     NvResult FlushL2(IoctlFlushL2& params);
     NvResult GetGpuTime(IoctlGetGpuTime& params);
+    NvResult Nx2GetEngineInfo(std::span<const u8> input, std::span<u8> output,
+                              std::span<u8> inline_output);
 
     EventInterface& events_interface;
+    bool nx2_caller{false};
 
     // Events
     Kernel::KEvent* error_notifier_event;
