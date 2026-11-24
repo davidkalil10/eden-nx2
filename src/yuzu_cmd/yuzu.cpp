@@ -1110,6 +1110,8 @@ int main(int argc, char** argv) {
         std::error_code ec;
         std::filesystem::create_directories("sdmc:/switch/eden-nx2/.local/share/eden/play_time", ec);
         std::filesystem::remove("sdmc:/switch/eden-nx2/last_guest_panic.txt", ec);
+        std::filesystem::remove("sdmc:/switch/eden-nx2/last_eden_log_tail.txt", ec);
+        std::filesystem::remove("sdmc:/switch/eden-nx2/last_load_error_saved.txt", ec);
         std::string msg = "02: ROM=" + launch_cfg.rom_path;
         Switch2BootTrace(msg.c_str());
     }

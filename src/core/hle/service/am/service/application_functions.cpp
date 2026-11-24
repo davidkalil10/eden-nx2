@@ -116,9 +116,11 @@ IApplicationFunctions::IApplicationFunctions(Core::System& system_, std::shared_
         {200, nullptr, "GetLastApplicationExitReason"},
         {210, D<&IApplicationFunctions::GetUnknownEvent210>, "Unknown210"},
         {220, nullptr, "Unknown220"}, // [20.0.0+]
+        {230, D<&IApplicationFunctions::IsTensorRtSupported>, "IsTensorRtSupported"}, // Switch 2
         {300, nullptr, "CreateMovieWriter"}, // [19.0.0+]
         {310, nullptr, "Unknown310"}, // [20.0.0+]
-        {320, nullptr, "Unknown320"}, // [20.0.0+]
+        {320, D<&IApplicationFunctions::Unknown320>, "Unknown320"}, // [20.0.0+]
+        {321, D<&IApplicationFunctions::Unknown321>, "Unknown321"}, // Switch 2
         {330, D<&IApplicationFunctions::Unknown330>, "Unknown330"}, // [20.0.0+]
         {500, nullptr, "StartContinuousRecordingFlushForDebug"},
         {1000, nullptr, "CreateMovieMaker"},
@@ -545,6 +547,24 @@ Result IApplicationFunctions::GetUnknownEvent210(
     OutCopyHandle<Kernel::KReadableEvent> out_event) {
     LOG_DEBUG(Service_AM, "called");
     *out_event = m_applet->unknown_event.GetHandle();
+    R_SUCCEED();
+}
+
+Result IApplicationFunctions::IsTensorRtSupported(Out<bool> out_is_supported) {
+    LOG_DEBUG(Service_AM, "IsTensorRtSupported called");
+    *out_is_supported = true;
+    R_SUCCEED();
+}
+
+Result IApplicationFunctions::Unknown320(Out<u16> out) {
+    LOG_WARNING(Service_AM, "(STUBBED) Unknown320 called");
+    *out = 0;
+    R_SUCCEED();
+}
+
+Result IApplicationFunctions::Unknown321(Out<u8> out) {
+    LOG_WARNING(Service_AM, "(STUBBED) Unknown321 called");
+    *out = 0;
     R_SUCCEED();
 }
 

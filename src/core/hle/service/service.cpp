@@ -5,6 +5,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <format>
+#include <mutex>
+#include <set>
+#include <utility>
 #include "common/assert.h"
 #include "common/logging.h"
 #include "common/settings.h"
@@ -58,6 +61,27 @@ void ServiceFrameworkBase::RegisterHandlersBaseTipc(const FunctionInfoBase* func
 
 void ServiceFrameworkBase::ReportUnimplementedFunction(HLERequestContext& ctx,
                                                        const FunctionInfoBase* info) {
+    constexpr u32 StubZeroedWords = 32;
+    const bool auto_stub = Settings::values.use_auto_stub || Settings::CurrentProgramIsSwitch2() ||
+                           std::string_view(service_name).starts_with("nx2:");
+    auto push_zeroed_stub = [&]() {
+        IPC::ResponseBuilder rb{ctx, 2 + StubZeroedWords};
+        rb.Push(ResultSuccess);
+        for (u32 i = 0; i < StubZeroedWords; ++i) {
+            rb.Push<u32>(0);
+        }
+    };
+
+    if (auto_stub) {
+        static std::mutex reported_mutex;
+        static std::set<std::pair<std::string, u32>> reported;
+        std::scoped_lock lk{reported_mutex};
+        if (!reported.emplace(service_name, ctx.GetCommand()).second) {
+            push_zeroed_stub();
+            return;
+        }
+    }
+
     auto cmd_buf = ctx.CommandBuffer();
     std::string function_name = info == nullptr ? "<unknown>" : info->name;
 
@@ -71,11 +95,9 @@ void ServiceFrameworkBase::ReportUnimplementedFunction(HLERequestContext& ctx,
 
     system.GetReporter().SaveUnimplementedFunctionReport(ctx, ctx.GetCommand(), function_name, service_name);
     UNIMPLEMENTED_MSG("Unknown / unimplemented {}", buf);
-    if (Settings::values.use_auto_stub || Settings::CurrentProgramIsSwitch2() ||
-        std::string_view(service_name).starts_with("nx2:")) {
-        LOG_WARNING(Service, "Using auto stub fallback!");
-        IPC::ResponseBuilder rb{ctx, 2};
-        rb.Push(ResultSuccess);
+    if (auto_stub) {
+        LOG_WARNING(Service, "Using auto stub fallback (32 zeroed words)!");
+        push_zeroed_stub();
     }
 }
 
@@ -86,9 +108,6 @@ void ServiceFrameworkBase::InvokeRequest(HLERequestContext& ctx) {
         return ReportUnimplementedFunction(ctx, info);
 
     LOG_TRACE(Service, "{}", MakeFunctionString(info->name, GetServiceName(), ctx.CommandBuffer()));
-    if (Settings::CurrentProgramIsSwitch2()) {
-        LOG_INFO(Service, "IPC: {}::{} (cmd={})", service_name, info->name, ctx.GetCommand());
-    }
     handler_invoker(this, info->handler_callback, ctx);
     if (Settings::CurrentProgramIsSwitch2()) {
         const u32 off = ctx.GetDataPayloadOffset();
@@ -109,9 +128,6 @@ void ServiceFrameworkBase::InvokeRequestTipc(HLERequestContext& ctx) {
         return ReportUnimplementedFunction(ctx, info);
 
     LOG_TRACE(Service, "{}", MakeFunctionString(info->name, GetServiceName(), ctx.CommandBuffer()));
-    if (Settings::CurrentProgramIsSwitch2()) {
-        LOG_INFO(Service, "IPC: {}::{} (cmd={})", service_name, info->name, ctx.GetCommand());
-    }
     handler_invoker(this, info->handler_callback, ctx);
     if (Settings::CurrentProgramIsSwitch2()) {
         const u32 off = ctx.GetDataPayloadOffset();

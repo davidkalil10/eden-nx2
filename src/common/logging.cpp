@@ -504,6 +504,7 @@ void DumpRecentLogTail(const char* path) {
         copy = g_sw2_recent_log_lines;
     }
     if (std::FILE* f = std::fopen(path, "w")) {
+        std::fprintf(f, "=== Eden-NX2 Log Tail (built %s %s) ===\n", __DATE__, __TIME__);
         for (const auto& line : copy) {
             std::fwrite(line.data(), 1, line.size(), f);
         }
