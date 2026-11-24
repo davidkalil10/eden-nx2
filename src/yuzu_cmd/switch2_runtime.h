@@ -80,6 +80,7 @@ std::uint64_t Switch2GetSystemTickFreq(void);
 void* Switch2SparseAlloc(std::size_t virtual_size, std::size_t chunk_size,
                          std::size_t physical_budget, const char* tag);
 bool Switch2SparseFree(void* base);
+bool Switch2SparseCommitRange(void* addr, std::size_t size);
 bool Switch2SparseClearZero(void* addr, std::size_t size);
 bool Switch2IsSparseUnmapped(const void* addr);
 bool Switch2SparseCanBackSize(std::size_t virtual_size);

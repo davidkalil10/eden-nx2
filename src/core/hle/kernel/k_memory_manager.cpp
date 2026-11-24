@@ -15,7 +15,10 @@
 #include "core/hle/kernel/k_memory_manager.h"
 
 #ifdef __SWITCH2__
-extern "C" bool __attribute__((weak)) Switch2IsSparseUnmapped(const void* addr);
+extern "C" {
+bool __attribute__((weak)) Switch2IsSparseUnmapped(const void* addr);
+bool __attribute__((weak)) Switch2SparseCommitRange(void* addr, std::size_t size);
+}
 #endif
 #include "core/hle/kernel/k_page_group.h"
 #include "core/hle/kernel/k_page_table.h"
@@ -247,6 +250,13 @@ KPhysicalAddress KMemoryManager::AllocateAndOpenContinuous(size_t num_pages, siz
     // Open the first reference to the pages.
     chosen_manager->OpenFirst(allocated_block, num_pages);
 
+#ifdef __SWITCH2__
+    if (Switch2SparseCommitRange != nullptr) {
+        Switch2SparseCommitRange(m_system.DeviceMemory().GetPointer<u8>(allocated_block),
+                                 num_pages * PageSize);
+    }
+#endif
+
     return allocated_block;
 }
 
@@ -337,6 +347,13 @@ Result KMemoryManager::AllocateAndOpen(KPageGroup* out, size_t num_pages, u32 op
             cur_address += cur_pages * PageSize;
             remaining_pages -= cur_pages;
         }
+#ifdef __SWITCH2__
+        if (Switch2SparseCommitRange != nullptr &&
+            (pool != Pool::Application || num_pages * PageSize <= (256ULL << 20))) {
+            Switch2SparseCommitRange(m_system.DeviceMemory().GetPointer<u8>(block.GetAddress()),
+                                     block.GetSize());
+        }
+#endif
     }
 
     R_SUCCEED();
@@ -367,6 +384,16 @@ Result KMemoryManager::AllocateForProcess(KPageGroup* out, size_t num_pages, u32
         // Set whether we should optimize.
         optimized = has_optimized && is_optimized;
     }
+
+#ifdef __SWITCH2__
+    if (Switch2SparseCommitRange != nullptr &&
+        (pool != Pool::Application || num_pages * PageSize <= (256ULL << 20))) {
+        for (const auto& block : *out) {
+            Switch2SparseCommitRange(m_system.DeviceMemory().GetPointer<u8>(block.GetAddress()),
+                                     block.GetSize());
+        }
+    }
+#endif
 
     // Perform optimized memory tracking, if we should.
     if (optimized) {

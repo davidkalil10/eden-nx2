@@ -34,6 +34,13 @@
 #include "video_core/host1x/host1x.h"
 #include "video_core/rasterizer_download_area.h"
 
+#ifdef __SWITCH2__
+extern "C" {
+bool __attribute__((weak)) Switch2IsSparseUnmapped(const void* addr);
+bool __attribute__((weak)) Switch2SparseCommitRange(void* addr, std::size_t size);
+}
+#endif
+
 namespace Core::Memory {
 
 static inline bool AddressSpaceContains(const Common::PageTable& table, const Common::ProcessAddress addr, const std::size_t size) {
@@ -131,8 +138,19 @@ struct Memory::Impl {
     }
 
     [[nodiscard]] u8* GetPointerFromDebugMemory(u64 vaddr) const {
-        if (u64 paddr = current_page_table->entries[vaddr >> YUZU_PAGEBITS].Pointer(true); paddr)
-            return reinterpret_cast<u8*>(paddr) + vaddr;
+        auto& entry = current_page_table->entries.GetUnchecked(vaddr >> YUZU_PAGEBITS);
+        if (u64 paddr = entry.Pointer(true); paddr) {
+            u8* const host_ptr = reinterpret_cast<u8*>(paddr) + vaddr;
+#ifdef __SWITCH2__
+            if (Switch2SparseCommitRange != nullptr) {
+                Switch2SparseCommitRange(host_ptr, 64ULL << 10);
+            }
+            if (!system.DebuggerEnabled() && entry.Type() == Common::PageType::DebugMemory) {
+                entry.Store(false, Common::PageType::Memory, entry.Block(), paddr);
+            }
+#endif
+            return host_ptr;
+        }
         return {};
     }
 
@@ -299,10 +317,30 @@ struct Memory::Impl {
     }
 
     [[nodiscard]] inline const u8* GetSpan(const VAddr addr, const std::size_t size) const noexcept {
-        return (current_page_table->entries[addr >> YUZU_PAGEBITS].Block() == current_page_table->entries[(addr + size) >> YUZU_PAGEBITS].Block()) ? GetPointerSilent(addr) : nullptr;
+        const u8* const ptr =
+            (current_page_table->entries[addr >> YUZU_PAGEBITS].Block() ==
+             current_page_table->entries[(addr + size) >> YUZU_PAGEBITS].Block())
+                ? GetPointerSilent(addr)
+                : nullptr;
+#ifdef __SWITCH2__
+        if (ptr != nullptr && size > 0 && Switch2SparseCommitRange != nullptr) {
+            Switch2SparseCommitRange(const_cast<u8*>(ptr), size);
+        }
+#endif
+        return ptr;
     }
     [[nodiscard]] inline u8* GetSpan(const VAddr addr, const std::size_t size) noexcept {
-        return (current_page_table->entries[addr >> YUZU_PAGEBITS].Block() == current_page_table->entries[(addr + size) >> YUZU_PAGEBITS].Block()) ? GetPointerSilent(addr) : nullptr;
+        u8* const ptr =
+            (current_page_table->entries[addr >> YUZU_PAGEBITS].Block() ==
+             current_page_table->entries[(addr + size) >> YUZU_PAGEBITS].Block())
+                ? GetPointerSilent(addr)
+                : nullptr;
+#ifdef __SWITCH2__
+        if (ptr != nullptr && size > 0 && Switch2SparseCommitRange != nullptr) {
+            Switch2SparseCommitRange(ptr, size);
+        }
+#endif
+        return ptr;
     }
 
     bool WriteBlockImpl(const Common::ProcessAddress addr, const void* buffer, const std::size_t size, bool unsafe) {
@@ -482,6 +520,14 @@ struct Memory::Impl {
                     // space, for example, a system module need not have a VRAM mapping.
                     break;
                 case Common::PageType::DebugMemory:
+#ifdef __SWITCH2__
+                    if (u64 paddr = entry.Pointer(true);
+                        paddr && Switch2SparseCommitRange != nullptr) {
+                        Switch2SparseCommitRange(reinterpret_cast<u8*>(paddr) + vaddr,
+                                                 YUZU_PAGESIZE);
+                    }
+#endif
+                    [[fallthrough]];
                 case Common::PageType::Memory:
                     entry.MarkRasterizerCached();
                     break;
@@ -551,12 +597,27 @@ struct Memory::Impl {
             ASSERT(current_block != 65535);
 
             page_table.entries.CommitRegion(base, end);
+#ifdef __SWITCH2__
+            const u64 byte_size = size * YUZU_PAGESIZE;
+            if (byte_size <= (256ULL << 20) && Switch2SparseCommitRange != nullptr) {
+                Switch2SparseCommitRange(system.DeviceMemory().GetPointer<u8>(target), byte_size);
+            }
+#endif
             while (base != end) {
-                auto host_ptr = reinterpret_cast<u64>(system.DeviceMemory().GetPointer<u8>(target)) - (base << YUZU_PAGEBITS);;
+                u8* const raw_host_ptr = system.DeviceMemory().GetPointer<u8>(target);
+                auto host_ptr = reinterpret_cast<u64>(raw_host_ptr) - (base << YUZU_PAGEBITS);
                 auto& entry = page_table.entries.GetUnchecked(base);
 
-                entry.Store(false, type, current_block, host_ptr);
-                ASSERT_MSG(page_table.entries[base].Pointer(),
+#ifdef __SWITCH2__
+                if (byte_size > (256ULL << 20) && type == Common::PageType::Memory &&
+                    Switch2IsSparseUnmapped != nullptr && Switch2IsSparseUnmapped(raw_host_ptr)) {
+                    entry.MarkDebug(host_ptr, current_block);
+                } else
+#endif
+                {
+                    entry.Store(false, type, current_block, host_ptr);
+                }
+                ASSERT_MSG(page_table.entries[base].Pointer(true),
                            "memory mapping base yield a nullptr within the table");
 
                 base += 1;

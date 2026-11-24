@@ -20,6 +20,7 @@
 extern "C" {
 void* __attribute__((weak)) Switch2SparseAlloc(std::size_t virtual_size, std::size_t chunk_size,
                                                std::size_t physical_budget, const char* tag);
+bool __attribute__((weak)) Switch2SparseCommitRange(void* addr, std::size_t size);
 bool __attribute__((weak)) Switch2SparseFree(void* base);
 bool __attribute__((weak)) Switch2SparseClearZero(void* addr, std::size_t size);
 }
@@ -731,8 +732,17 @@ HostMemory::HostMemory(size_t backing_size_, size_t virtual_size_)
         backing_base = static_cast<u8*>(
             Switch2SparseAlloc(aligned_backing, 2ULL << 20, 4608ULL << 20, "HostMemory"));
         if (backing_base != nullptr) {
+            if (Switch2SparseCommitRange != nullptr) {
+                const size_t initial_commit =
+                    (std::min)(aligned_backing, static_cast<size_t>(544ULL << 20));
+                if (!Switch2SparseCommitRange(backing_base, initial_commit)) {
+                    LOG_CRITICAL(HW_Memory,
+                                 "Switch 2 failed to pre-commit initial {} MiB of HostMemory!",
+                                 initial_commit >> 20);
+                }
+            }
             LOG_WARNING(HW_Memory,
-                        "Switch 2 userland: demand-paged sparse backing buffer ({} MiB virtual)",
+                        "Switch 2 userland: demand-committing sparse backing buffer ({} MiB virtual)",
                         aligned_backing >> 20);
         }
     }
