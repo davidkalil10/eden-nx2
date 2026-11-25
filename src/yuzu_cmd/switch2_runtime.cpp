@@ -791,7 +791,7 @@ void __libnx_initheap(void) {
                 // Note: OunceVK (Mesa NVK on Switch 2) allocates VkDeviceMemory out of mimalloc,
                 // while SparseLargeVector (PageTable/SMMU/GMMU) and 12 GiB HostMemory live in AliasRegion.
                 // 2816 MiB leaves ~2.35 GiB free in mimalloc for OunceVK and returns ~6.2 GiB to Horizon
-                // for HostMemory (256 KiB demand chunks) + PageTable.
+                // for HostMemory (256 KiB demand chunks) + PageTable (OOM-safe budget).
                 const std::size_t target_mimalloc = 2816ULL << 20;
                 const std::size_t target_total = (nro_prefix + target_mimalloc + 0x1FFFFFULL) & ~0x1FFFFFULL;
                 if (target_total < orig_total) {
