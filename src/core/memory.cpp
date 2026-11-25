@@ -143,7 +143,7 @@ struct Memory::Impl {
         if (Switch2IsSparseUnmapped == nullptr || !AddressSpaceContains(*current_page_table, vaddr, 1)) {
             return false;
         }
-        const auto& entry = current_page_table->entries.GetUnchecked(vaddr >> YUZU_PAGEBITS);
+        const auto& entry = current_page_table->entries[vaddr >> YUZU_PAGEBITS];
         if (entry.Type() != Common::PageType::DebugMemory) {
             return false;
         }
@@ -155,7 +155,7 @@ struct Memory::Impl {
     }
 
     [[nodiscard]] u8* GetPointerFromDebugMemory(u64 vaddr) const {
-        auto& entry = current_page_table->entries.GetUnchecked(vaddr >> YUZU_PAGEBITS);
+        auto& entry = current_page_table->entries.GetAndFault(vaddr >> YUZU_PAGEBITS);
         if (u64 paddr = entry.Pointer(true); paddr) {
             u8* const host_ptr = reinterpret_cast<u8*>(paddr) + vaddr;
 #ifdef __SWITCH2__

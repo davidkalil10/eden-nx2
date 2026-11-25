@@ -870,29 +870,54 @@ private:
 
     void CaptureFrame() {
         static const char* const directory = std::getenv("EDEN_NX2_FRAME_CAPTURE");
-        if (directory == nullptr || (m_presents % 120) != 1 || m_capture_pending->exchange(true)) {
+        const bool probe_pixels = (m_presents == 60 || m_presents == 300 || m_presents == 600);
+        if ((directory == nullptr || (m_presents % 120) != 1) && !probe_pixels) {
             return;
         }
-        const auto layout = Layout::DefaultFrameLayout(1280, 720);
+        if (m_capture_pending->exchange(true)) {
+            return;
+        }
+        const u32 present_id = m_presents;
+        const bool write_tga = (directory != nullptr && (present_id % 120) == 1);
+        const auto layout = Layout::DefaultFrameLayout(write_tga ? 1280 : 320, write_tga ? 720 : 180);
         auto pixels = std::make_shared<std::vector<u8>>(layout.width * layout.height * 4);
         const std::string path =
-            std::format("{}/nx2-frame-{:05}.tga", directory, m_presents);
+            write_tga ? std::format("{}/nx2-frame-{:05}.tga", directory, present_id) : std::string{};
         auto pending = m_capture_pending;
         system.GPU().Renderer().RequestScreenshot(
             pixels->data(),
-            [pixels, layout, path, pending](bool invert_y) {
-                std::array<u8, 18> header{};
-                header[2] = 2; // uncompressed true colour
-                header[12] = static_cast<u8>(layout.width);
-                header[13] = static_cast<u8>(layout.width >> 8);
-                header[14] = static_cast<u8>(layout.height);
-                header[15] = static_cast<u8>(layout.height >> 8);
-                header[16] = 32;
-                header[17] = invert_y ? 0x08 : 0x28;
-                if (std::FILE* file = std::fopen(path.c_str(), "wb")) {
-                    std::fwrite(header.data(), 1, header.size(), file);
-                    std::fwrite(pixels->data(), 1, pixels->size(), file);
-                    std::fclose(file);
+            [pixels, layout, path, pending, present_id, write_tga](bool invert_y) {
+                std::size_t non_black = 0;
+                u32 max_rgb = 0;
+                const std::size_t total = static_cast<std::size_t>(layout.width) * layout.height;
+                for (std::size_t i = 0; i < total; ++i) {
+                    const u8 r = (*pixels)[i * 4 + 0];
+                    const u8 g = (*pixels)[i * 4 + 1];
+                    const u8 b = (*pixels)[i * 4 + 2];
+                    const u32 m = (std::max)({static_cast<u32>(r), static_cast<u32>(g), static_cast<u32>(b)});
+                    if (m > max_rgb) {
+                        max_rgb = m;
+                    }
+                    if (m > 2) {
+                        ++non_black;
+                    }
+                }
+                LOG_WARNING(Service, "nx2:vi2 frame #{} pixel probe: non_black={}/{} max_rgb={}",
+                            present_id, non_black, total, max_rgb);
+                if (write_tga) {
+                    std::array<u8, 18> header{};
+                    header[2] = 2; // uncompressed true colour
+                    header[12] = static_cast<u8>(layout.width);
+                    header[13] = static_cast<u8>(layout.width >> 8);
+                    header[14] = static_cast<u8>(layout.height);
+                    header[15] = static_cast<u8>(layout.height >> 8);
+                    header[16] = 32;
+                    header[17] = invert_y ? 0x08 : 0x28;
+                    if (std::FILE* file = std::fopen(path.c_str(), "wb")) {
+                        std::fwrite(header.data(), 1, header.size(), file);
+                        std::fwrite(pixels->data(), 1, pixels->size(), file);
+                        std::fclose(file);
+                    }
                 }
                 pending->store(false);
             },

@@ -148,7 +148,7 @@ struct PageTable {
 
     /// Vector of memory pointers backing each page. An entry can only be non-null if the
     /// corresponding attribute element is of type `Memory`.
-    SparseLargeVector<PageEntryData, true> entries;
+    SparseLargeVector<PageEntryData, false> entries;
     static_assert(sizeof(PageEntryData) == 8);
 
     u8* fastmem_arena{};
