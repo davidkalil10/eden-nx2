@@ -165,9 +165,13 @@ struct Memory::Impl {
             if (Switch2SparseCommitRange != nullptr) {
                 if (!Switch2SparseCommitRange(host_ptr, 64ULL << 10)) {
                     alignas(4096) static u8 s_oom_scratch[65536]{};
-                    LOG_CRITICAL(HW_Memory,
-                                 "Switch 2 sparse commit OOM @ guest {:#x} (host {:#x}); using emergency scratch",
-                                 vaddr, reinterpret_cast<u64>(host_ptr));
+                    static std::atomic<u64> s_oom_logs{0};
+                    if (const u64 n = s_oom_logs.fetch_add(1, std::memory_order_relaxed);
+                        n < 16 || (n & 1023) == 0) {
+                        LOG_CRITICAL(HW_Memory,
+                                     "Switch 2 sparse commit OOM #{} @ guest {:#x} (host {:#x}); using emergency scratch",
+                                     n + 1, vaddr, reinterpret_cast<u64>(host_ptr));
+                    }
                     return s_oom_scratch + (vaddr & 0xFFFULL);
                 }
             }

@@ -789,9 +789,10 @@ void __libnx_initheap(void) {
                 const std::size_t orig_total = override_end - heap_region_base;
                 const std::size_t nro_prefix = override_start - heap_region_base;
                 // Note: OunceVK (Mesa NVK on Switch 2) allocates VkDeviceMemory out of mimalloc,
-                // requiring ~2.1+ GiB of free mimalloc space during vkCreateDevice + gameplay,
                 // while SparseLargeVector (PageTable/SMMU/GMMU) and 12 GiB HostMemory live in AliasRegion.
-                const std::size_t target_mimalloc = 3456ULL << 20;
+                // 2816 MiB leaves ~2.35 GiB free in mimalloc for OunceVK and returns ~6.2 GiB to Horizon
+                // for HostMemory (256 KiB demand chunks) + PageTable.
+                const std::size_t target_mimalloc = 2816ULL << 20;
                 const std::size_t target_total = (nro_prefix + target_mimalloc + 0x1FFFFFULL) & ~0x1FFFFFULL;
                 if (target_total < orig_total) {
                     void* new_base = nullptr;
@@ -985,14 +986,18 @@ bool Switch2SparseCommitRange(void* addr, std::size_t size) {
             if (r.mode == SparseMode::AliasPhys) {
                 const Result rc = svcMapPhysicalMemory(dst, r.chunk_size);
                 if (R_FAILED(rc)) {
-                    if (std::FILE* f = std::fopen("sdmc:/switch/eden-nx2/sparse_oom.txt", "a")) {
-                        std::fprintf(f,
-                                     "OOM tag=%s chunk=%zu/%zu mapped=%zu (%zu MiB) rc=0x%x\n",
-                                     r.tag, c, r.num_chunks, r.mapped_chunks,
-                                     (r.mapped_chunks * r.chunk_size) >> 20,
-                                     static_cast<unsigned int>(rc));
-                        std::fflush(f);
-                        std::fclose(f);
+                    static std::uint32_t s_oom_file_logs = 0;
+                    if (s_oom_file_logs < 16) {
+                        ++s_oom_file_logs;
+                        if (std::FILE* f = std::fopen("sdmc:/switch/eden-nx2/sparse_oom.txt", "a")) {
+                            std::fprintf(f,
+                                         "OOM tag=%s chunk=%zu/%zu mapped=%zu (%zu MiB) rc=0x%x\n",
+                                         r.tag, c, r.num_chunks, r.mapped_chunks,
+                                         (r.mapped_chunks * r.chunk_size) >> 20,
+                                         static_cast<unsigned int>(rc));
+                            std::fflush(f);
+                            std::fclose(f);
+                        }
                     }
                     ok = false;
                     break;

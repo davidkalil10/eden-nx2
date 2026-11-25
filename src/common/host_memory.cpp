@@ -730,7 +730,7 @@ HostMemory::HostMemory(size_t backing_size_, size_t virtual_size_)
     const size_t aligned_backing = AlignUp(backing_size, PageAlignment);
     if (Switch2SparseAlloc != nullptr) {
         backing_base = static_cast<u8*>(
-            Switch2SparseAlloc(aligned_backing, 2ULL << 20, 4608ULL << 20, "HostMemory"));
+            Switch2SparseAlloc(aligned_backing, 256ULL << 10, 6144ULL << 20, "HostMemory"));
         if (backing_base != nullptr) {
             if (Switch2SparseCommitRange != nullptr) {
                 const size_t initial_commit =

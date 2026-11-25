@@ -8,6 +8,7 @@
 #include <array>
 #include <format>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include <boost/container/small_vector.hpp>
 
@@ -92,7 +93,10 @@ bool ShaderCache::RefreshStages(std::array<u64, 6>& unique_hashes) try {
     if (!native.native_turing) throw;
     native.native_execution_failed = true;
     last_shaders_valid = false;
-    LOG_ERROR(HW_GPU, "Native graphics shader rejected: {}", error.what());
+    static std::unordered_set<std::string> logged;
+    if (logged.insert(error.what()).second) {
+        LOG_ERROR(HW_GPU, "Native graphics shader rejected: {}", error.what());
+    }
     // Once: show what the vertex stage has bound, to find where an unbound bank's data lives.
     static std::vector<std::string> dumped_errors;
     if (const std::string what{error.what()};
