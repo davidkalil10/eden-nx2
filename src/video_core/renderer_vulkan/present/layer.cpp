@@ -96,6 +96,17 @@ void Layer::ConfigureDraw(const Device& device, PresentPushConstants* out_push_c
     const u32 scaled_width = texture_info ? texture_info->scaled_width : texture_width;
     const u32 scaled_height = texture_info ? texture_info->scaled_height : texture_height;
     const bool use_accelerated = texture_info.has_value();
+    static u32 s_present_log_count = 0;
+    if (s_present_log_count < 8) {
+        ++s_present_log_count;
+        LOG_WARNING(Render_Vulkan,
+                    "Layer::ConfigureDraw #{}: accel={} addr={:#x} fb={}x{} tex={}x{} fmt={} crop=({},{},{},{})",
+                    s_present_log_count, use_accelerated ? 1 : 0,
+                    framebuffer.address + framebuffer.offset, framebuffer.width, framebuffer.height,
+                    texture_width, texture_height, static_cast<u32>(framebuffer.pixel_format),
+                    framebuffer.crop_rect.left, framebuffer.crop_rect.top,
+                    framebuffer.crop_rect.right, framebuffer.crop_rect.bottom);
+    }
     const bool is_applet =
         (framebuffer.layer_stack_mask & Service::Nvnflinger::LayerStackBit(
                                             Service::Nvnflinger::LayerStackId::Recording)) == 0;

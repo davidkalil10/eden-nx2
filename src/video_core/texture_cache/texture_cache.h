@@ -842,6 +842,8 @@ std::pair<typename P::ImageView*, bool> TextureCache<P>::TryFindFramebufferImage
             return PixelFormat::R5G6B5_UNORM;
         case Service::android::PixelFormat::Bgra8888:
             return PixelFormat::B8G8R8A8_UNORM;
+        case Service::android::PixelFormat::Rgba1010102:
+            return PixelFormat::A2B10G10R10_UNORM;
         default:
             return PixelFormat::A8B8G8R8_UNORM;
         }
@@ -860,7 +862,7 @@ std::pair<typename P::ImageView*, bool> TextureCache<P>::TryFindFramebufferImage
         }
         if (!VideoCore::Surface::IsViewCompatible(image.info.format, view_format, false, true)) {
             static u32 rejected_alias_count{};
-            if (std::getenv("EDEN_NATIVE_DRAW_DIAGNOSTICS") && rejected_alias_count++ < 8) {
+            if (rejected_alias_count++ < 8) {
                 LOG_WARNING(HW_GPU, "Ignoring incompatible framebuffer alias: address={:#x}, image={}, view={}",
                             cpu_addr, image.info.format, view_format);
             }

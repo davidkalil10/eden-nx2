@@ -827,12 +827,22 @@ private:
         }
         u32 crop_width = layout.width;
         u32 crop_height = layout.height;
-        if (present_size != 0) {
-            crop_width = (std::min)(crop_width, (present_size & 0xffffU) + 1);
-            crop_height = (std::min)(crop_height, (present_size >> 16) + 1);
+        const u32 shown_width = (present_size & 0xffffU) + 1;
+        const u32 shown_height = (present_size >> 16) + 1;
+        const bool has_shown_size = present_size != 0 && shown_width >= 64 && shown_height >= 64 &&
+                                    shown_width <= layout.width && shown_height <= layout.height;
+        if (has_shown_size) {
+            crop_width = shown_width;
+            crop_height = shown_height;
         } else if (!Settings::IsDockedMode() && crop_width > 1920 && crop_height > 1080) {
             crop_width = 1920;
             crop_height = 1080;
+        }
+        if (m_presents <= 6 || (m_presents % 300) == 0) {
+            LOG_WARNING(Service,
+                        "nx2:vi2 Composite #{}: img={} addr={:#x} dev={:#x} layout={}x{} fmt={} w7={:#x} crop={}x{}",
+                        m_presents, image_id, address, *device, layout.width, layout.height,
+                        image_format, present_size, crop_width, crop_height);
         }
         std::vector<Tegra::FramebufferConfig> layers{Tegra::FramebufferConfig{
             .address = *device,
