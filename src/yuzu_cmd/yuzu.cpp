@@ -1899,17 +1899,23 @@ int main(int argc, char** argv) {
         Core::Nx2Trace::Dump("session_end");
     }
     Common::Log::DumpRecentLogTail("sdmc:/switch/eden-nx2/last_eden_log_tail.txt");
+    Switch2BootTrace("99a: detach+pause");
     system->DetachDebugger();
     if (system->IsPoweredOn()) {
         system->Pause();
+        Switch2BootTrace("99b: ShutdownMainProcess");
         system->ShutdownMainProcess();
     }
+    Switch2BootTrace("99c: UnloadInputDevices");
     system->HIDCore().UnloadInputDevices();
-    emu_window.reset();
+    Switch2BootTrace("99d: system.reset");
     system.reset();
+    Switch2BootTrace("99e: emu_window.reset");
+    emu_window.reset();
     manual_provider.reset();
     input_subsystem->Shutdown();
     input_subsystem.reset();
+    Switch2BootTrace("99f: Log::Stop + JitPool");
     Common::Log::Stop();
     Dynarmic::Backend::Arm64::Switch2JitPool::Shutdown();
     if (should_return_to_launcher) {

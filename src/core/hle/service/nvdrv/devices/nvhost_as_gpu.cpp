@@ -35,6 +35,11 @@ nvhost_as_gpu::nvhost_as_gpu(Core::System& system_, Module& module_, NvCore::Con
 
 nvhost_as_gpu::~nvhost_as_gpu() {
     Nx2GpuMemoryRegistry::Get().RemoveListener(this);
+    for (const auto& [key, range] : nx2_device_ranges) {
+        if (range.shared) {
+            Nx2GpuMemoryRegistry::Get().ReleaseDeviceRange(range.asid, key.first, key.second);
+        }
+    }
 }
 
 NvResult nvhost_as_gpu::Ioctl1(DeviceFD fd, Ioctl command, std::span<const u8> input,

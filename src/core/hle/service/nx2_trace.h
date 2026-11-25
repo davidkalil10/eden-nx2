@@ -40,6 +40,7 @@ struct SvcEntry {
     u64 a0{};
     u64 a1{};
     u64 a2{};
+    u32 repeat{1};
 };
 
 struct State {
@@ -122,6 +123,16 @@ inline void RecordIpc(const char* svc, u32 cmd, const char* fn, bool is_tipc, bo
 inline void RecordSvc(u32 id, u64 a0, u64 a1, u64 a2, u32 res) {
     auto& s = GetState();
     std::scoped_lock lk{s.mtx};
+    if (s.svc_count > 0) {
+        const std::size_t prev_idx = (s.svc_head + kMaxSvc - 1) % kMaxSvc;
+        auto& prev = s.svc[prev_idx];
+        if (prev.id == id && prev.a0 == a0 && prev.res == res &&
+            (id == 0x0b || (prev.a1 == a1 && prev.a2 == a2))) {
+            ++prev.repeat;
+            prev.seq = ++s.seq;
+            return;
+        }
+    }
     auto& e = s.svc[s.svc_head];
     e.seq = ++s.seq;
     e.id = id;
@@ -129,6 +140,7 @@ inline void RecordSvc(u32 id, u64 a0, u64 a1, u64 a2, u32 res) {
     e.a0 = a0;
     e.a1 = a1;
     e.a2 = a2;
+    e.repeat = 1;
     s.svc_head = (s.svc_head + 1) % kMaxSvc;
     if (s.svc_count < kMaxSvc) {
         ++s.svc_count;
@@ -194,15 +206,15 @@ inline void Dump(const char* reason) {
 #endif
     for (std::size_t i = 0; i < svc_count; ++i) {
         const auto& e = svc_copy[(svc_start + i) % kMaxSvc];
-        LOG_WARNING(Kernel_SVC, "  [#{:05d}] SVC {:#04x} a0={:#x} a1={:#x} a2={:#x} -> {:#x}",
-                    e.seq, e.id, e.a0, e.a1, e.a2, e.res);
+        LOG_WARNING(Kernel_SVC, "  [#{:05d}] SVC {:#04x} a0={:#x} a1={:#x} a2={:#x} -> {:#x} (x{})",
+                    e.seq, e.id, e.a0, e.a1, e.a2, e.res, e.repeat);
 #ifdef __SWITCH2__
         if (tf != nullptr) {
-            std::fprintf(tf, "  [#%05llu] SVC 0x%02x a0=0x%llx a1=0x%llx a2=0x%llx -> 0x%x\n",
+            std::fprintf(tf, "  [#%05llu] SVC 0x%02x a0=0x%llx a1=0x%llx a2=0x%llx -> 0x%x (x%u)\n",
                          static_cast<unsigned long long>(e.seq), e.id,
                          static_cast<unsigned long long>(e.a0),
                          static_cast<unsigned long long>(e.a1),
-                         static_cast<unsigned long long>(e.a2), e.res);
+                         static_cast<unsigned long long>(e.a2), e.res, e.repeat);
         }
 #endif
     }

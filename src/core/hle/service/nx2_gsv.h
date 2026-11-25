@@ -286,7 +286,7 @@ public:
             {101, &INx2GpuSession::SubRegisterMemory, "CreateGpuAccessibleMemory"},
             {102, &INx2GpuSession::SubDestroyMemory, "DestroyGpuMemory"},
             {211, &INx2GpuSession::SubSubmitJob, "NormalMapGpuMemory4K"},
-            {212, &INx2GpuSession::SubSlotJob<8>, "NormalModifyMemoryKind4K"},
+            {212, &INx2GpuSession::SubModifyKind, "NormalModifyMemoryKind4K"},
             {213, &INx2GpuSession::SubUnmapJob, "NormalUnmapGpuMemory4K"},
             {214, &INx2GpuSession::SubCreateGpuOnlyRegion, "CreateGpuOnlyRegion (guessed)"},
             {23, &INx2GpuSession::StubReplyZeroed, "Unknown23"},
@@ -382,7 +382,8 @@ private:
 
     void GetGsvPartition(HLERequestContext& ctx) {
         LOG_WARNING(Service, "(STUBBED) nx2:gpu TIPC 202 [2]={:#x}, empty", ctx.CommandBuffer()[2]);
-        TipcReplyWords(ctx, {0, 0, 0, 0});
+        // Empty partition is min ~0, max 0 (not 0, 0 which the SDK reads as a 1-byte partition).
+        TipcReplyWords(ctx, {0xffffffffU, 0xffffffffU, 0, 0});
     }
 
     void CreateGraphicsDevice(HLERequestContext& ctx) {
@@ -481,6 +482,17 @@ private:
         EventFor(slot)->Signal(system.Kernel());
         IPC::ResponseBuilder rb{ctx, 2};
         rb.Push(ResultSuccess);
+    }
+
+    void SubModifyKind(HLERequestContext& ctx) {
+        const auto* w = ctx.CommandBuffer();
+        const u64 first = u64{w[3]} | (u64{w[4]} << 32);
+        const u64 last = u64{w[5]} | (u64{w[6]} << 32);
+        const u32 kind = w[7] & 0xff;
+        LOG_DEBUG(Service, "nx2:gpu 212 modify [{:#x}, {:#x}] kind={:#x} fallback={:#x} slot={}",
+                  first, last, kind, w[8] & 0xff, w[10]);
+        EventFor(w[10])->Signal(system.Kernel());
+        TipcReplyWords(ctx, {kind});
     }
 
     void SubUnmapJob(HLERequestContext& ctx) {
@@ -1109,6 +1121,9 @@ public:
     }
 
     ~INx2GraphicsSystemSession() override {
+        if (m_syncpt_memory != nullptr) {
+            system.Host1x().GetSyncpointManager().SetGuestMirror({});
+        }
         if (m_syncpt_poll) {
             system.CoreTiming().UnscheduleEvent(m_syncpt_poll);
         }
@@ -1187,6 +1202,16 @@ private:
             memory.Write32(m_syncpt_ro + 0x18, SyncptRwBitsOffset);
             memory.Write32(m_syncpt_ro + 0x1c, SyncptRoBitsOffset);
             UpdateSyncptValues();
+            // Mirror each guest increment as it happens, before the waits it meets are answered:
+            // the client's TryWaitNativeSync reads this page, and a client woken by an answered
+            // wait (nx2:syncpt 201) before the next poll would otherwise read the stale value.
+            system.Host1x().GetSyncpointManager().SetGuestMirror(
+                [memory = m_syncpt_memory, values = m_syncpt_ro + SyncptValuesOffset,
+                 count = std::min(m_syncpt_count, HostSyncpoints)](u32 id, u32 value) {
+                    if (id < count) {
+                        memory->Write64(values + u64{id} * 8, value);
+                    }
+                });
             if (!m_syncpt_poll) {
                 m_syncpt_poll = Core::Timing::CreateEvent(
                     "nx2:gsv:SyncptPoll",
@@ -1215,14 +1240,16 @@ private:
     bool UpdateSyncptValues() {
         auto& manager = system.Host1x().GetSyncpointManager();
         bool changed = false;
-        for (u32 id = 0; id < std::min(m_syncpt_count, HostSyncpoints); ++id) {
-            const u64 value = manager.GetGuestSyncpointValue(id);
-            const u64 address = m_syncpt_ro + SyncptValuesOffset + id * 8;
-            if (m_syncpt_memory->Read64(address) != value) {
-                m_syncpt_memory->Write64(address, value);
-                changed = true;
+        manager.WithGuestValuesStable([&] {
+            for (u32 id = 0; id < std::min(m_syncpt_count, HostSyncpoints); ++id) {
+                const u64 value = manager.GetGuestSyncpointValue(id);
+                const u64 address = m_syncpt_ro + SyncptValuesOffset + id * 8;
+                if (m_syncpt_memory->Read64(address) != value) {
+                    m_syncpt_memory->Write64(address, value);
+                    changed = true;
+                }
             }
-        }
+        });
         return changed;
     }
 
