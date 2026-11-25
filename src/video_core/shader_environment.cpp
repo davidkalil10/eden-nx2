@@ -177,7 +177,7 @@ std::optional<u64> GenericEnvironment::Analyze() {
     if (native_source_size) {
         // Include the converted header and a version tag to isolate this experimental ABI.
         return Common::CityHash64(reinterpret_cast<const char*>(code.data()),
-                                  code.size() * sizeof(u64)) ^ 0x4f554e4345000003ULL;
+                                  code.size() * sizeof(u64)) ^ 0x4f554e4345000004ULL;
     }
     const std::optional<u64> size{TryFindSize()};
     if (!size) {
@@ -315,9 +315,19 @@ std::optional<u64> GenericEnvironment::TryFindSize() {
 Tegra::Texture::TICEntry GenericEnvironment::ReadTextureInfo(GPUVAddr tic_addr, u32 tic_limit,
                                                              bool via_header_index, u32 raw) {
     const auto handle{Tegra::Texture::TexturePair(raw, via_header_index)};
-    ASSERT(handle.first <= tic_limit);
-    const GPUVAddr descriptor_addr{tic_addr + handle.first * sizeof(Tegra::Texture::TICEntry)};
-    Tegra::Texture::TICEntry entry;
+    const u32 index{Tegra::Texture::TextureHeaderIndex(handle.first, tic_limit,
+                                                       gpu_memory->UsesNativeTiling())};
+    if (index > tic_limit) {
+        static u32 s_oob_logs = 0;
+        if (s_oob_logs++ < 8) {
+            LOG_WARNING(Shader,
+                        "ReadTextureInfo OOB: raw={:#x} tic_id={:#x} limit={:#x} via_hdr={}",
+                        raw, handle.first, tic_limit, via_header_index ? 1 : 0);
+        }
+        return {};
+    }
+    const GPUVAddr descriptor_addr{tic_addr + index * sizeof(Tegra::Texture::TICEntry)};
+    Tegra::Texture::TICEntry entry{};
     gpu_memory->ReadBlock(descriptor_addr, &entry, sizeof(entry));
     return entry;
 }

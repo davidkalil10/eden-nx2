@@ -870,7 +870,8 @@ private:
 
     void CaptureFrame() {
         static const char* const directory = std::getenv("EDEN_NX2_FRAME_CAPTURE");
-        const bool probe_pixels = (m_presents == 60 || m_presents == 300 || m_presents == 600);
+        const bool probe_pixels = (m_presents == 60 || m_presents == 300 || m_presents == 600 ||
+                                   m_presents == 1200 || m_presents == 2400);
         if ((directory == nullptr || (m_presents % 120) != 1) && !probe_pixels) {
             return;
         }
